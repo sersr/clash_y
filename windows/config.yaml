@@ -1,0 +1,14 @@
+# HTTP 端口
+port: 7890
+# SOCKS5 端口
+socks-port: 7891
+# Linux 及 macOS 的 redir 端口
+redir-port: 7892
+allow-lan: true
+# Rule / Global/ Direct (默认为 Rule 模式)
+mode: Rule
+log-level: info
+# RESTful API for clash
+external-controller: 0.0.0.0:9090
+experimental:
+  ignore-resolve-fail: true # ignore dns resolve fail, default value is true
