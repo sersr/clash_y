@@ -66,26 +66,22 @@ class _ClashConnectionsState extends State<ClashConnections> {
                     child: Row(
                       children: [
                         Expanded(
-                            child: Row(
-                          children: [
-                            Text(
-                              '${item?.metadata?.host}',
-                              style: const TextStyle(fontSize: 18),
-                            ),
-                            const SizedBox(width: 4),
-                            btn1(
-                                radius: 3,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 3, vertical: 4),
-                                bgColor: Colors.blue,
-                                child: Text(
-                                  lastChain,
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey.shade100),
-                                ))
-                          ],
-                        )),
+                          child: Text(
+                            '${item?.metadata?.host}',
+                            style: const TextStyle(fontSize: 18),
+                          ),
+                        ),
+                        btn1(
+                            radius: 3,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 3, vertical: 4),
+                            bgColor: Colors.blue,
+                            child: Text(
+                              lastChain,
+                              style: TextStyle(
+                                  fontSize: 14, color: Colors.grey.shade100),
+                            )),
+                        const SizedBox(width: 6),
                         btn1(
                             radius: 3,
                             padding: const EdgeInsets.symmetric(

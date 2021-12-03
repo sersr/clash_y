@@ -209,70 +209,20 @@ mixin ConfigsEventMessager on SendEvent {
   }
 }
 mixin MultiEventDefaultMessagerMixin
-    on SendEvent, Send, ListenMixin, SendMultiIsolateMixin /*impl*/ {
-  SendPortOwner? get defaultSendPortOwner => eventDefaultSendPortOwner;
-  Future<Isolate> createIsolateEventDefault();
+    on SendEvent, ListenMixin, SendMultiServerMixin /*impl*/ {
+  String get defaultSendPortOwnerName => 'eventDefault';
+  Future<RemoteServer> createRemoteServerEventDefault();
 
-  SendPortOwner? eventDefaultSendPortOwner;
-
-  void createAllIsolate(add) {
-    final maps = {'eventDefault': createIsolateEventDefault};
-    for (var creater in maps.entries) {
-      addNewIsolate(creater.key, creater.value, add);
-    }
-    super.createAllIsolate(add);
+  Iterable<MapEntry<String, CreateRemoteServer>>
+      createRemoteServerIterable() sync* {
+    yield MapEntry('eventDefault', createRemoteServerEventDefault);
+    yield* super.createRemoteServerIterable();
   }
 
-  void onListenReceivedSendPort(SendPortName sendPortName) {
-    final Map<String, List<Type>> allProtocols = {
-      'eventDefault': [ClashEventMessage, ConfigsEventMessage],
-    };
-    final protocols = allProtocols[sendPortName.name];
-    if (protocols != null) {
-      final equal = sendPortName.protocols != null &&
-          sendPortName.protocols!.every(protocols.contains);
-      final sendPortOwner = SendPortOwner(
-        localSendPort: sendPortName.sendPort,
-        remoteSendPort: localSendPort,
-      );
-      switch (sendPortName.name) {
-        case 'eventDefault':
-          eventDefaultSendPortOwner = sendPortOwner;
-          break;
-        default:
-      }
-      Log.i('init: protocol status: $equal | ${sendPortName.name}',
-          onlyDebug: false);
-      return;
-    }
-    super.onListenReceivedSendPort(sendPortName);
-  }
-
-  void onResumeListen() {
-    if (eventDefaultSendPortOwner == null) {
-      Log.e('sendPortOwner error', onlyDebug: false);
-    }
-
-    super.onResumeListen();
-  }
-
-  SendPortOwner? getSendPortOwner(isolateName) {
-    switch (isolateName) {
-      case 'eventDefault':
-        return eventDefaultSendPortOwner;
-      default:
-    }
-    return super.getSendPortOwner(isolateName);
-  }
-
-  void disposeIsolate(String isolateName) {
-    switch (isolateName) {
-      case 'eventDefault':
-        eventDefaultSendPortOwner = null;
-        return;
-      default:
-    }
-    super.disposeIsolate(isolateName);
+  Iterable<MapEntry<String, List<Type>>> allProtocolsItreable() sync* {
+    yield const MapEntry(
+        'eventDefault', [ClashEventMessage, ConfigsEventMessage]);
+    yield* super.allProtocolsItreable();
   }
 }
 

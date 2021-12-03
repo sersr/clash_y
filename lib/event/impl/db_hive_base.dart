@@ -7,12 +7,18 @@ import 'package:utils/utils.dart';
 
 import '../base/database.dart';
 
-mixin HiveMixin on ListenMixin {
+mixin HiveMixin on Resolve {
   String get cachePath;
   @override
   void initStateListen(add) {
     super.initStateListen(add);
     Hive.init(join(cachePath, 'hive'));
+  }
+
+  @override
+  FutureOr<bool> onClose() async {
+    await Hive.close();
+    return super.onClose();
   }
 }
 

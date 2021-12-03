@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:isolate';
 
 import 'package:clash_window_dll/clash_window_dll.dart';
 import 'package:file/local.dart';
 import 'package:flutter/services.dart';
-import 'package:hive/hive.dart';
 import 'package:nop_db/nop_db.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
@@ -18,6 +16,7 @@ import 'impl/db_config.dart';
 import 'impl/db_hive_base.dart';
 import 'impl/dio_base.dart';
 import 'impl/dio_on_db.dart';
+import 'window.dart';
 
 class Repository extends EventMessagerMain
     with
@@ -25,7 +24,7 @@ class Repository extends EventMessagerMain
         SendEventMixin,
         SendCacheMixin,
         SendInitCloseMixin,
-        SendMultiIsolateMixin,
+        SendMultiServerMixin,
         MultiEventDefaultMessagerMixin {
   String? appPath;
   @override
@@ -35,9 +34,11 @@ class Repository extends EventMessagerMain
   }
 
   @override
-  Future<Isolate> createIsolateEventDefault() {
+  Future<RemoteServer> createRemoteServerEventDefault() async {
     assert(appPath != null);
-    return Isolate.spawn(_eventEntryPoint, [localSendPort, appPath]);
+    final isolate =
+        await Isolate.spawn(_eventEntryPoint, [localSendPort, appPath]);
+    return RemoteIsolateServer(isolate);
   }
 
   @override
@@ -64,12 +65,18 @@ class Repository extends EventMessagerMain
   }
 }
 
-void _eventEntryPoint(args) {
+void _eventEntryPoint(args) async {
   final remoteSendPort = args[0] as SendPort;
   final appPath = args[1] as String;
-  Log.i('enter isolate');
   final event = EventIsolate(remoteSendPort: remoteSendPort, appPath: appPath);
   event.run();
+  // final rec = ReceivePort();
+  // Isolate.spawn(windowEntryPoint, rec.sendPort);
+
+  // final sp = await rec.first as SendPort;
+  // Timer.periodic(const Duration(seconds: 1), (timer) {
+  //   sp.send('count: ${timer.tick}');
+  // });
 }
 
 const fs = LocalFileSystem();
@@ -96,29 +103,6 @@ class EventIsolate extends MultiEventDefaultResolveMain
   String externalUi = 'http://127.0.0.1:9090/';
   @override
   String proxyPort = 'http://127.0.0.1:7890';
-
-  // Future<void> downConfig() async {
-  //   try {
-  //     final response = await dio.get<String>('https://bulink.me/sub/gdxfxw/cl');
-  //     final data = response.data;
-  //     if (data != null) {
-  //       // Log.i('data: $data');
-  //       // final yaml = loadYaml(data);
-
-  //       // Log.w(yaml);
-  //       const fs = LocalFileSystem();
-  //       final f =
-  //           fs.currentDirectory.childDirectory(dir).childFile('config.yaml');
-  //       if (!f.existsSync()) {
-  //         f.createSync(recursive: true);
-  //       }
-  //       Log.e(f.path);
-  //       await f.writeAsString(data);
-  //     }
-  //   } catch (e) {
-  //     Log.e(e);
-  //   }
-  // }
 
   @override
   late final clashRoot = appPath;

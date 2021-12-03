@@ -80,10 +80,10 @@ class _HomeState extends State<Home> {
             showUnselectedLabels: true,
             selectedFontSize: 14,
             unselectedFontSize: 14,
-            selectedItemColor: const Color.fromARGB(255, 51, 51, 51),
-            unselectedItemColor: const Color.fromARGB(255, 182, 182, 182),
+            selectedItemColor: const Color.fromARGB(255, 1, 139, 194),
+            unselectedItemColor: const Color.fromARGB(255, 129, 129, 129),
             unselectedLabelStyle:
-                const TextStyle(color: Color.fromARGB(255, 126, 126, 126)),
+                const TextStyle(color: Color.fromARGB(255, 73, 73, 73)),
             selectedLabelStyle:
                 const TextStyle(color: Color.fromARGB(255, 3, 3, 3)),
             items: const [
@@ -99,7 +99,7 @@ class _HomeState extends State<Home> {
             ],
             currentIndex: _notifier.value,
             onTap: (index) {
-              if(_notifier.value == 0 && index == 0) {
+              if (_notifier.value == 0 && index == 0) {
                 clashMainNotifier.getData();
               }
               _notifier.value = index;

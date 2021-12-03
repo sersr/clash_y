@@ -28,7 +28,7 @@ class ClashConfigNotifier extends ChangeNotifier {
   bool get listening => _sub != null;
   StreamSubscription<ConfigsCurrent>? _sub;
   void _getConfigDb() {
-    Log.w('listen..');
+    Log.w('listen');
     _sub?.cancel();
     _sub = repository.getConfigsCurrent().listen((event) {
       if (_data != null && event == ConfigsCurrent.none) {
@@ -39,7 +39,7 @@ class ClashConfigNotifier extends ChangeNotifier {
       notifyListeners();
     }, onDone: () {
       _sub = null;
-      Log.e('done....');
+      Log.e('done');
     });
   }
 
