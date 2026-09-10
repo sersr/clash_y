@@ -7,18 +7,18 @@ part of 'all_configs.dart';
 // **************************************************************************
 
 AllConfigs _$AllConfigsFromJson(Map<String, dynamic> json) => AllConfigs(
-      port: json['port'] as int?,
-      socksPort: json['socks-port'] as int?,
-      redirPort: json['redir-port'] as int?,
-      tproxyPort: json['tproxy-port'] as int?,
-      mixedPort: json['mixed-port'] as int?,
-      authentication: json['authentication'] as List<dynamic>?,
-      allowLan: json['allow-lan'] as bool?,
-      bindAddress: json['bind-address'] as String?,
-      mode: json['mode'] as String?,
-      logLevel: json['log-level'] as String?,
-      ipv6: json['ipv6'] as bool?,
-    );
+  port: (json['port'] as num?)?.toInt(),
+  socksPort: (json['socks-port'] as num?)?.toInt(),
+  redirPort: (json['redir-port'] as num?)?.toInt(),
+  tproxyPort: (json['tproxy-port'] as num?)?.toInt(),
+  mixedPort: (json['mixed-port'] as num?)?.toInt(),
+  authentication: json['authentication'] as List<dynamic>?,
+  allowLan: json['allow-lan'] as bool?,
+  bindAddress: json['bind-address'] as String?,
+  mode: json['mode'] as String?,
+  logLevel: json['log-level'] as String?,
+  ipv6: json['ipv6'] as bool?,
+);
 
 Map<String, dynamic> _$AllConfigsToJson(AllConfigs instance) =>
     <String, dynamic>{

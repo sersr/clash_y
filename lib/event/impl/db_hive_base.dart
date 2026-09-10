@@ -1,9 +1,8 @@
 import 'dart:async';
 
 import 'package:hive/hive.dart';
-import 'package:nop_db/nop_db.dart';
+import 'package:nop/nop.dart';
 import 'package:path/path.dart';
-import 'package:utils/utils.dart';
 
 import '../base/database.dart';
 
@@ -16,7 +15,7 @@ mixin HiveMixin on Resolve {
   }
 
   @override
-  FutureOr<bool> onClose() async {
+  FutureOr<void> onClose() async {
     await Hive.close();
     return super.onClose();
   }
@@ -33,7 +32,7 @@ mixin DatabaseMixin on Resolve {
   }
 
   @override
-  FutureOr<bool> onClose() {
+  FutureOr<void> onClose() {
     db.dispose();
     return super.onClose();
   }

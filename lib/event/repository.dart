@@ -1,13 +1,9 @@
 import 'dart:async';
-import 'dart:isolate';
 
-import 'package:clash_window_dll/clash_window_dll.dart';
 import 'package:file/local.dart';
-import 'package:flutter/services.dart';
-import 'package:nop_db/nop_db.dart';
+import 'package:nop/nop.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:utils/utils.dart';
 
 import 'base/events.dart';
 import 'impl/clash_process.dart';
@@ -16,16 +12,9 @@ import 'impl/db_config.dart';
 import 'impl/db_hive_base.dart';
 import 'impl/dio_base.dart';
 import 'impl/dio_on_db.dart';
-import 'window.dart';
 
-class Repository extends EventMessagerMain
-    with
-        ListenMixin,
-        SendEventMixin,
-        SendCacheMixin,
-        SendInitCloseMixin,
-        SendMultiServerMixin,
-        MultiEventDefaultMessagerMixin {
+class Repository extends MultiEventDefaultMessagerMain
+    with SendCacheMixin, SendInitCloseMixin {
   String? appPath;
   @override
   FutureOr<void> onInitStart() async {
@@ -34,42 +23,23 @@ class Repository extends EventMessagerMain
   }
 
   @override
-  Future<RemoteServer> createRemoteServerEventDefault() async {
-    assert(appPath != null);
-    final isolate =
-        await Isolate.spawn(_eventEntryPoint, [localSendPort, appPath]);
-    return RemoteIsolateServer(isolate);
-  }
-
-  @override
-  void onResumeListen() {
-    super.onResumeListen();
-    ClashWindowDll.setListen(_listen);
-  }
-
-  Future _listen(MethodCall call) async {
-    Log.i('method: ${call.method}', onlyDebug: false);
-    if (call.method == 'close') {
-      await close();
-    }
-    if (call.method == 'getHideOnClose') {
-      return false;
-    }
-  }
-
-  @override
   void dispose() {
     super.dispose();
-    ClashWindowDll.setListen(null);
     appPath = null;
   }
+
+  @override
+  RemoteServer get eventDefaultRemoteServer =>
+      IsolateRemoteServer(entryPoint: _eventEntryPoint, args: getArgs(appPath));
+
+  @override
+  Messager get messager => this;
 }
 
-void _eventEntryPoint(args) async {
-  final remoteSendPort = args[0] as SendPort;
-  final appPath = args[1] as String;
-  final event = EventIsolate(remoteSendPort: remoteSendPort, appPath: appPath);
-  event.run();
+Future<Runner> _eventEntryPoint(ServerConfigurations<String?> config) async {
+  final runner = EventIsolate(configurations: config, appPath: config.args!);
+
+  return Runner(runner: runner);
   // final rec = ReceivePort();
   // Isolate.spawn(windowEntryPoint, rec.sendPort);
 
@@ -90,12 +60,7 @@ class EventIsolate extends MultiEventDefaultResolveMain
         ClashRequestMixin,
         ConfigDatabaseMixin,
         DioOnDatabaseMixin {
-  EventIsolate({
-    required this.remoteSendPort,
-    required this.appPath,
-  });
-  @override
-  final SendPort remoteSendPort;
+  EventIsolate({required this.appPath, required super.configurations});
   @override
   final String appPath;
 
@@ -112,6 +77,6 @@ class EventIsolate extends MultiEventDefaultResolveMain
 
   @override
   void onError(message, error) {
-    Log.e('$message: $error', onlyDebug: false);
+    Log.e('$message: $error');
   }
 }

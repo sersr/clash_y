@@ -7,16 +7,18 @@ part of 'all_rules.dart';
 // **************************************************************************
 
 AllRules _$AllRulesFromJson(Map<String, dynamic> json) => AllRules(
-      rules: (json['rules'] as List<dynamic>?)
-          ?.map((e) => e == null
-              ? null
-              : AllRulesRules.fromJson(e as Map<String, dynamic>))
-          .toList(),
-    );
+  rules: (json['rules'] as List<dynamic>?)
+      ?.map(
+        (e) => e == null
+            ? null
+            : AllRulesRules.fromJson(e as Map<String, dynamic>),
+      )
+      .toList(),
+);
 
 Map<String, dynamic> _$AllRulesToJson(AllRules instance) => <String, dynamic>{
-      'rules': instance.rules?.map((e) => e?.toJson()).toList(),
-    };
+  'rules': instance.rules?.map((e) => e?.toJson()).toList(),
+};
 
 AllRulesRules _$AllRulesRulesFromJson(Map<String, dynamic> json) =>
     AllRulesRules(

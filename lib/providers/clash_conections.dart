@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:utils/utils.dart';
+import 'package:nop/nop.dart';
 import 'dart:async';
 import '../data/data.dart';
 import '../event/repository.dart';
@@ -16,25 +16,30 @@ class ClashConnectionsNotifier extends ChangeNotifier {
 
   void watchConnections() {
     _sub?.cancel();
-    _sub = repository.watchConnections().listen((event) {
-      _connections = event;
-      notifyListeners();
-    }, onDone: () {
-      _sub = null;
-      Log.e('done');
-    });
+    _sub = repository.watchConnections().listen(
+      (event) {
+        _connections = event;
+        notifyListeners();
+      },
+      onDone: () {
+        _sub = null;
+        Log.e('done');
+      },
+    );
   }
 
   void pause() {
     _sub?.pause();
   }
+
   void resume() {
     _sub?.resume();
   }
+
   void pauseOrResume(bool paused) {
-    if(paused) {
+    if (paused) {
       pause();
-    }else{
+    } else {
       resume();
     }
   }

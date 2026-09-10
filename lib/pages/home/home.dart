@@ -1,4 +1,3 @@
-import 'package:clash_window_dll/clash_window_dll.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:useful_tools/useful_tools.dart';
@@ -12,10 +11,10 @@ import 'clash_connections.dart';
 import 'clash_list_item.dart';
 
 class Home extends StatefulWidget {
-  const Home({Key? key}) : super(key: key);
+  const Home({super.key});
 
   @override
-  _HomeState createState() => _HomeState();
+  State<Home> createState() => _HomeState();
 }
 
 class _HomeState extends State<Home> {
@@ -26,12 +25,10 @@ class _HomeState extends State<Home> {
   @override
   void initState() {
     super.initState();
-    ClashWindowDll.onShowWindow = _onShowWindow;
   }
 
   @override
   void dispose() {
-    ClashWindowDll.onShowWindow = null;
     super.dispose();
   }
 
@@ -44,13 +41,6 @@ class _HomeState extends State<Home> {
     clashConnectionsNotifier = context.read();
     repository.init();
     clashMainNotifier.getData();
-    EventQueue.runOneTaskOnQueue(hideOnClose, () async {
-      hideOnClose.value = await ClashWindowDll.hideOnClose;
-    });
-  }
-
-  void _onShowWindow() {
-    setState(() {});
   }
 
   final open = ValueNotifier(true);
@@ -61,17 +51,15 @@ class _HomeState extends State<Home> {
       clashPage(),
       const ClashConfigUrl(),
       const ClashConnections(),
-      win32()
+      win32(),
     ];
     return Scaffold(
       body: AnimatedBuilder(
-          animation: _notifier,
-          builder: (context, _) {
-            return IndexedStack(
-              children: children,
-              index: _notifier.value,
-            );
-          }),
+        animation: _notifier,
+        builder: (context, _) {
+          return IndexedStack(index: _notifier.value, children: children);
+        },
+      ),
       bottomNavigationBar: AnimatedBuilder(
         animation: _notifier,
         builder: (context, _) {
@@ -82,20 +70,27 @@ class _HomeState extends State<Home> {
             unselectedFontSize: 14,
             selectedItemColor: const Color.fromARGB(255, 1, 139, 194),
             unselectedItemColor: const Color.fromARGB(255, 129, 129, 129),
-            unselectedLabelStyle:
-                const TextStyle(color: Color.fromARGB(255, 73, 73, 73)),
-            selectedLabelStyle:
-                const TextStyle(color: Color.fromARGB(255, 3, 3, 3)),
+            unselectedLabelStyle: const TextStyle(
+              color: Color.fromARGB(255, 73, 73, 73),
+            ),
+            selectedLabelStyle: const TextStyle(
+              color: Color.fromARGB(255, 3, 3, 3),
+            ),
             items: const [
               BottomNavigationBarItem(
-                  icon: Icon(Icons.air_sharp), label: 'clash', tooltip: ''),
+                icon: Icon(Icons.air_sharp),
+                label: 'clash',
+                tooltip: '',
+              ),
               BottomNavigationBarItem(
-                  icon: Icon(Icons.confirmation_number_outlined),
-                  label: 'configs'),
+                icon: Icon(Icons.confirmation_number_outlined),
+                label: 'configs',
+              ),
               BottomNavigationBarItem(
-                  icon: Icon(Icons.cloud_download_rounded),
-                  label: 'connections'),
-              BottomNavigationBarItem(icon: Icon(Icons.window), label: 'win32')
+                icon: Icon(Icons.cloud_download_rounded),
+                label: 'connections',
+              ),
+              BottomNavigationBarItem(icon: Icon(Icons.window), label: 'win32'),
             ],
             currentIndex: _notifier.value,
             onTap: (index) {
@@ -110,89 +105,86 @@ class _HomeState extends State<Home> {
         },
       ),
       floatingActionButton: AnimatedBuilder(
-          animation: open,
-          builder: (context, _) {
-            return FloatingActionButton(
-              onPressed: () {
+        animation: open,
+        builder: (context, _) {
+          return FloatingActionButton(
+            onPressed: () {
+              if (open.value) {
+                repository.close();
+              } else {
+                repository.init();
+              }
+              setState(() {
+                open.value = !open.value;
                 if (open.value) {
-                  repository.close();
-                } else {
-                  repository.init();
+                  clashConfigNotifier.getConfigs();
+                  clashConnectionsNotifier.watchConnections();
+                  clashConnectionsNotifier.pauseOrResume(_notifier.value != 2);
                 }
-                setState(() {
-                  open.value = !open.value;
-                  if (open.value) {
-                    clashConfigNotifier.getConfigs();
-                    clashConnectionsNotifier.watchConnections();
-                    clashConnectionsNotifier
-                        .pauseOrResume(_notifier.value != 2);
-                  }
-                });
-              },
-              child: Text('${open.value}'),
-            );
-          }),
+              });
+            },
+            child: Text('${open.value}'),
+          );
+        },
+      ),
     );
   }
 
   final hideOnClose = ValueNotifier(true);
   Widget win32() {
     return Container(
-        color: Colors.grey.shade200,
-        child: Center(
-          child: Wrap(children: [
+      color: Colors.grey.shade200,
+      child: Center(
+        child: Wrap(
+          children: [
             const SizedBox(height: 10),
             Center(
               child: btn1(
-                  bgColor: const Color.fromARGB(255, 43, 121, 97),
-                  radius: 5,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-                  child: AnimatedBuilder(
-                      animation: hideOnClose,
-                      builder: (context, _) {
-                        return Text(
-                          hideOnClose.value ? 'status: 缩小到托盘' : 'status: 关闭应用',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headline6
-                              ?.copyWith(
-                                  color:
-                                      const Color.fromARGB(255, 226, 226, 226)),
-                        );
-                      }),
-                  onTap: () {
-                    EventQueue.runOneTaskOnQueue(hideOnClose, () {
-                      hideOnClose.value = !hideOnClose.value;
-                      ClashWindowDll.setHideOnClose(hideOnClose.value);
-                    });
-                  }),
+                bgColor: const Color.fromARGB(255, 43, 121, 97),
+                radius: 5,
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                child: AnimatedBuilder(
+                  animation: hideOnClose,
+                  builder: (context, _) {
+                    return Text(
+                      hideOnClose.value ? 'status: 缩小到托盘' : 'status: 关闭应用',
+                      style: Theme.of(context).textTheme.headlineLarge
+                          ?.copyWith(
+                            color: const Color.fromARGB(255, 226, 226, 226),
+                          ),
+                    );
+                  },
+                ),
+                onTap: () {},
+              ),
             ),
-          ]),
-        ));
+          ],
+        ),
+      ),
+    );
   }
 
   Widget clashPage() {
     return ColoredBox(
       color: Colors.grey.shade300,
       child: AnimatedBuilder(
-          animation: clashMainNotifier,
-          builder: (context, _) {
-            final data = clashMainNotifier.data;
-            final proxies = data?.proxies;
-            final hasData = proxies != null &&
-                proxies.any((element) => proxyHasData(element));
-            if (data == null) {
-              return loadingIndicator();
-            } else if (!hasData) {
-              return reloadBotton(clashMainNotifier.getData);
-            }
-            return CustomScrollView(
-              slivers: [
-                for (var item in proxies) ClashListItem(proxyItem: item)
-              ],
-            );
-          }),
+        animation: clashMainNotifier,
+        builder: (context, _) {
+          final data = clashMainNotifier.data;
+          final proxies = data?.proxies;
+          final hasData =
+              proxies != null &&
+              proxies.any((element) => proxyHasData(element));
+          if (data == null) {
+            return loadingIndicator();
+          } else if (!hasData) {
+            return reloadBotton(clashMainNotifier.getData);
+          }
+          return CustomScrollView(
+            slivers: [for (var item in proxies) ClashListItem(proxyItem: item)],
+          );
+        },
+      ),
     );
   }
 }

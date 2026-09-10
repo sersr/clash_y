@@ -1,8 +1,9 @@
-import 'dart:async';
 
 import 'package:file/local.dart';
 import 'package:nop_db/nop_db.dart';
 import 'package:nop_db_sqlite/nop_db_sqlite.dart';
+
+import 'package:nop_annotations/nop_annotations.dart';
 part 'database.g.dart';
 
 class ConfigTable extends Table {
@@ -13,7 +14,7 @@ class ConfigTable extends Table {
     this.updateTime,
     this.url,
   });
-  @NopItem(primaryKey: true)
+  @NopDbItem(primaryKey: true)
   String? id;
   String? url;
   String? name;
@@ -26,7 +27,7 @@ class ConfigTable extends Table {
   }
 }
 
-@Nop(tables: [ConfigTable])
+@NopDb(tables: [ConfigTable])
 class ClashDatabase extends _GenClashDatabase {
   ClashDatabase._(this.path);
   int version = 1;
@@ -37,14 +38,18 @@ class ClashDatabase extends _GenClashDatabase {
     return db;
   }
 
-  void _open() {
+  void _open() async {
     const fs = LocalFileSystem();
     final dbFile = fs.currentDirectory.childFile(path);
     if (!dbFile.existsSync()) {
       dbFile.createSync(recursive: true);
     }
-    final db = NopDatabaseImpl.open(path,
-        version: version, onCreate: onCreate, onUpgrade: onUpgrade);
+    final db = NopDatabaseImpl.open(
+      path,
+      version: version,
+      onCreate: onCreate,
+      onUpgrade: onUpgrade,
+    );
     setDb(db);
   }
 }

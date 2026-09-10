@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:utils/utils.dart';
+import 'package:nop/nop.dart';
 
 import '../../data/data.dart';
 import '../event.dart';
@@ -33,7 +33,7 @@ mixin ClashRequestMixin on DioInitMixin implements ClashEvent {
                   final bTime = DateTime.tryParse('${b?.time}');
                   return aTime != null && bTime != null
                       ? aTime.millisecondsSinceEpoch -
-                          bTime.millisecondsSinceEpoch
+                            bTime.millisecondsSinceEpoch
                       : 0;
                 });
                 histories.add(history);
@@ -46,20 +46,23 @@ mixin ClashRequestMixin on DioInitMixin implements ClashEvent {
     } catch (e) {
       Log.e(e);
     }
+    return null;
   }
 
   Future<void> getTraffic() async {
     try {
-      final response = await dio.get<ResponseBody>('traffic',
-          options: Options(responseType: ResponseType.stream));
+      final response = await dio.get<ResponseBody>(
+        'traffic',
+        options: Options(responseType: ResponseType.stream),
+      );
       final data = response.data?.stream;
       if (data != null) {
-        final _sub = data.listen((event) {
+        final sub = data.listen((event) {
           final s = utf8.decode(event);
-          Log.i('Traffic: $s', onlyDebug: false);
+          Log.i('Traffic: $s');
         });
         Timer(const Duration(seconds: 10), () {
-          _sub.cancel();
+          sub.cancel();
         });
       }
     } catch (e) {
@@ -69,17 +72,19 @@ mixin ClashRequestMixin on DioInitMixin implements ClashEvent {
 
   Future<void> getLogs(String level) async {
     try {
-      final response = await dio.get<ResponseBody>('logs',
-          options: Options(responseType: ResponseType.stream),
-          queryParameters: {'level': level});
+      final response = await dio.get<ResponseBody>(
+        'logs',
+        options: Options(responseType: ResponseType.stream),
+        queryParameters: {'level': level},
+      );
       final data = response.data?.stream;
       if (data != null) {
-        final _sub = data.listen((event) {
+        final sub = data.listen((event) {
           final s = utf8.decode(event);
-          Log.i('Logs: $s', onlyDebug: false);
+          Log.i('Logs: $s');
         });
         Timer(const Duration(seconds: 10), () {
-          _sub.cancel();
+          sub.cancel();
         });
       }
     } catch (e) {
@@ -103,10 +108,12 @@ mixin ClashRequestMixin on DioInitMixin implements ClashEvent {
   @override
   Future<void> selectProxy(String selector, String proxy) async {
     try {
-      Log.i('$selector : $proxy', onlyDebug: false);
-      await dio.put('proxies/${Uri.encodeComponent(selector)}',
-          data: {'name': proxy});
-    } on DioError catch (e) {
+      Log.i('$selector : $proxy');
+      await dio.put(
+        'proxies/${Uri.encodeComponent(selector)}',
+        data: {'name': proxy},
+      );
+    } on DioException catch (e) {
       Log.e('${e.response}');
     }
   }
@@ -114,22 +121,24 @@ mixin ClashRequestMixin on DioInitMixin implements ClashEvent {
   @override
   FutureOr<void> getRules() async {
     final data = await gets('rules');
-    Log.i('all Rules: $data', onlyDebug: false);
+    Log.i('all Rules: $data');
   }
 
   @override
   FutureOr<void> getConfigs() async {
     final data = await gets('configs');
-    Log.i('all Configs: $data', onlyDebug: false);
+    Log.i('all Configs: $data');
   }
 
   @override
   FutureOr<void> reloadConfigs(bool force, String path) async {
     try {
-      final response =
-          await dio.put<String>('configs?force=$force', data: {'path': path});
+      final response = await dio.put<String>(
+        'configs?force=$force',
+        data: {'path': path},
+      );
       Log.i(response.data);
-    } on DioError catch (e) {
+    } on DioException catch (e) {
       Log.i(e.response);
     }
   }
@@ -148,18 +157,17 @@ mixin ClashRequestMixin on DioInitMixin implements ClashEvent {
   FutureOr<Delay?> getDelay(String proxy, int timeout, String testUrl) async {
     try {
       final response = await dio.get<String>(
-          'proxies/${Uri.encodeComponent(proxy)}/delay',
-          queryParameters: {
-            'timeout': timeout,
-            'url': testUrl,
-          });
+        'proxies/${Uri.encodeComponent(proxy)}/delay',
+        queryParameters: {'timeout': timeout, 'url': testUrl},
+      );
       final data = response.data;
       if (data != null) {
         return Delay.fromJson(jsonDecode(data));
       }
-    } on DioError catch (e) {
+    } on DioException catch (e) {
       Log.w(e.response);
     }
+    return null;
   }
 
   StreamController<Connections>? _controller;
@@ -169,10 +177,11 @@ mixin ClashRequestMixin on DioInitMixin implements ClashEvent {
       return _controller!.stream;
     }
     final controller = StreamController<Connections>(
-        onListen: _reset,
-        onCancel: () => _controller = null,
-        onPause: () => _reset(true),
-        onResume: _reset);
+      onListen: _reset,
+      onCancel: () => _controller = null,
+      onPause: () => _reset(true),
+      onResume: _reset,
+    );
 
     _controller = controller;
     return controller.stream;
@@ -186,7 +195,7 @@ mixin ClashRequestMixin on DioInitMixin implements ClashEvent {
   Timer? _timer;
   void _onTimer(Timer t) {
     if (_controller != null) {
-      EventQueue.runOneTaskOnQueue(_onTimer, () async {
+      EventQueue.runOne(_onTimer, () async {
         final data = await getConnections();
         if (_controller != null && data != null) {
           _controller!.add(data);
@@ -205,8 +214,9 @@ mixin ClashRequestMixin on DioInitMixin implements ClashEvent {
       if (data != null) {
         return Connections.fromJson(jsonDecode(data));
       }
-    } on DioError catch (e) {
+    } on DioException catch (e) {
       Log.i(e.response);
     }
+    return null;
   }
 }

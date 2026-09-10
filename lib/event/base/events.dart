@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:isolate';
 
-import 'package:nop_db/nop_db.dart';
-import 'package:utils/utils.dart';
+import 'package:nop/nop.dart';
+import 'package:nop_annotations/nop_annotations.dart';
 
 import '../../data/data.dart';
 import 'data.dart';
@@ -10,12 +9,12 @@ import 'database.dart';
 export 'database.dart';
 part 'events.g.dart';
 
-@NopIsolateEvent()
+@NopServerEvent()
 abstract class Event with ClashEvent, ConfigsEvent {
   ClashEvent get clashEvent => this;
 }
 
-abstract class ClashEvent {
+abstract mixin class ClashEvent {
   FutureOr<ProxiesData?> getProxies();
   FutureOr<void> selectProxy(String selector, String proxy);
   FutureOr<void> resetConfigs(ConfigsData data);
@@ -26,7 +25,7 @@ abstract class ClashEvent {
   Stream<Connections> watchConnections();
 }
 
-abstract class ConfigsEvent {
+abstract mixin class ConfigsEvent {
   Stream<ConfigsCurrent> getConfigsCurrent();
   FutureOr<void> addNewConfigUrl(String url, int updateInterval, String? name);
   FutureOr<void> removeConfigUrl(String url);

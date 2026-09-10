@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:useful_tools/useful_tools.dart';
+import 'package:nop/nop.dart';
 
 import '../event/event.dart';
 import '../event/repository.dart';
@@ -14,7 +14,7 @@ class ClashMainNotifier extends ChangeNotifier {
 
   ValueNotifier<int> getSelector(String key) {
     return _mainChangedNotifier.putIfAbsent(key, () {
-      EventQueue.runTaskOnQueue(getDelay, () => getDelay(key),channels: 5);
+      EventQueue.runOne(getDelay, () => getDelay(key), channels: 5);
       return ValueNotifier(-1);
     });
   }
@@ -23,7 +23,8 @@ class ClashMainNotifier extends ChangeNotifier {
   ProxiesData? get data => _data;
 
   Future<void> getData() async {
-    final remoteData = await repository.getProxies() ??
+    final remoteData =
+        await repository.getProxies() ??
         const ProxiesData(history: [], proxies: []);
     _data = remoteData;
     notifyListeners();
@@ -40,7 +41,7 @@ class ClashMainNotifier extends ChangeNotifier {
 
   Future<void> selectProxy(String? selector, String? proxy) async {
     if (selector == null || proxy == null) return;
-    return EventQueue.runOneTaskOnQueue([selector, selector], () async {
+    return EventQueue.runOne([selector, selector], () async {
       await repository.selectProxy(selector, proxy);
       return getData();
     });
@@ -48,7 +49,10 @@ class ClashMainNotifier extends ChangeNotifier {
 
   Future<void> getDelay(String proxy) async {
     final delay = await repository.getDelay(
-        proxy, 3000, 'http://www.gstatic.com/generate_204');
+      proxy,
+      3000,
+      'http://www.gstatic.com/generate_204',
+    );
 
     getSelector(proxy).value = delay?.delay ?? 0;
   }

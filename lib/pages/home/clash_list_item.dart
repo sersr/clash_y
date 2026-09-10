@@ -7,10 +7,10 @@ import '../../data/data.dart';
 import '../../providers/clash_main_provider.dart';
 
 class ClashListItem extends StatefulWidget {
-  const ClashListItem({Key? key, required this.proxyItem}) : super(key: key);
+  const ClashListItem({super.key, required this.proxyItem});
   final ProxyItem proxyItem;
   @override
-  _ClashListItemState createState() => _ClashListItemState();
+  State<ClashListItem> createState() => _ClashListItemState();
 }
 
 class _ClashListItemState extends State<ClashListItem> {
@@ -39,7 +39,10 @@ class _ClashListItemState extends State<ClashListItem> {
           child: Text(
             '${widget.proxyItem.name}',
             style: const TextStyle(
-                fontSize: 18, fontWeight: FontWeight.w500, fontFamily: '微软雅黑'),
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+              fontFamily: '微软雅黑',
+            ),
           ),
         ),
       ),
@@ -116,22 +119,20 @@ class _ClashListItemState extends State<ClashListItem> {
           final items = proxyItem.all;
           if (_showBody.value && items != null) {
             return SliverGrid(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final item = items[index];
-                  return ProxyCard(
-                    itemName: '$item',
-                    proxyGroupName: '${proxyItem.name}',
-                    type: '${proxyItem.type}',
-                    selected: proxyItem.now != null && proxyItem.now == item,
-                    clashMainNotifier: clashMainNotifier,
-                  );
-                },
-                childCount: items.length,
-              ),
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final item = items[index];
+                return ProxyCard(
+                  itemName: '$item',
+                  proxyGroupName: '${proxyItem.name}',
+                  type: '${proxyItem.type}',
+                  selected: proxyItem.now != null && proxyItem.now == item,
+                  clashMainNotifier: clashMainNotifier,
+                );
+              }, childCount: items.length),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 mainAxisExtent: 60,
-                  crossAxisCount: 2),
+                crossAxisCount: 2,
+              ),
             );
           }
           return const SliverToBoxAdapter(child: SizedBox());
@@ -143,14 +144,14 @@ class _ClashListItemState extends State<ClashListItem> {
 
 class ProxyCard extends StatelessWidget {
   const ProxyCard({
-    Key? key,
+    super.key,
     required this.clashMainNotifier,
     required this.itemName,
     required this.selected,
     required this.type,
     required this.proxyGroupName,
     this.left,
-  }) : super(key: key);
+  });
   final String type;
   final String proxyGroupName;
   final ClashMainNotifier clashMainNotifier;
@@ -161,75 +162,79 @@ class ProxyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final select = clashMainNotifier.getSelector(itemName);
     return ListItem(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        outPadding: EdgeInsets.only(
-            left: left == true ? 8 : 4,
-            right: left == false ? 8 : 4,
-            top: 3,
-            bottom: 3),
-        onTap: () {
-          if (type == 'Selector') {
-            clashMainNotifier.selectProxy(proxyGroupName, itemName);
-          }
-        },
-        bgColor: selected ? Colors.grey.shade400 : null,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Expanded(
-              child: Text(
-                itemName,
-                maxLines: 2,
-                style: const TextStyle(
-                    overflow: TextOverflow.ellipsis,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    fontFamily: '微软雅黑'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      outPadding: EdgeInsets.only(
+        left: left == true ? 8 : 4,
+        right: left == false ? 8 : 4,
+        top: 3,
+        bottom: 3,
+      ),
+      onTap: () {
+        if (type == 'Selector') {
+          clashMainNotifier.selectProxy(proxyGroupName, itemName);
+        }
+      },
+      bgColor: selected ? Colors.grey.shade400 : null,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: Text(
+              itemName,
+              maxLines: 2,
+              style: const TextStyle(
+                overflow: TextOverflow.ellipsis,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                fontFamily: '微软雅黑',
               ),
             ),
-            RepaintBoundary(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 5),
-                child: btn1(
-                  onTap: () {
-                    clashMainNotifier.getDelay(itemName);
-                  },
-                  radius: 3,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  bgColor: Colors.transparent,
-                  child: AnimatedBuilder(
-                      animation: select,
-                      builder: (context, _) {
-                        final timeout = select.value == 0;
-                        final test = select.value == -1;
-                        var delayStr = timeout
-                            ? 'timeout'
-                            : test
-                                ? 'testing'
-                                : '${select.value} ms';
+          ),
+          RepaintBoundary(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 5),
+              child: btn1(
+                onTap: () {
+                  clashMainNotifier.getDelay(itemName);
+                },
+                radius: 3,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                bgColor: Colors.transparent,
+                child: AnimatedBuilder(
+                  animation: select,
+                  builder: (context, _) {
+                    final timeout = select.value == 0;
+                    final test = select.value == -1;
+                    var delayStr = timeout
+                        ? 'timeout'
+                        : test
+                        ? 'testing'
+                        : '${select.value} ms';
 
-                        return Text(
-                          delayStr,
-                          style: TextStyle(
-                              color: timeout
-                                  ? const Color.fromARGB(255, 247, 88, 76)
-                                  : Colors.green.shade600),
-                        );
-                      }),
+                    return Text(
+                      delayStr,
+                      style: TextStyle(
+                        color: timeout
+                            ? const Color.fromARGB(255, 247, 88, 76)
+                            : Colors.green.shade600,
+                      ),
+                    );
+                  },
                 ),
               ),
-            )
-          ],
-        ));
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 class ProxyListItem extends StatefulWidget {
-  const ProxyListItem({Key? key}) : super(key: key);
+  const ProxyListItem({super.key});
 
   @override
-  _ProxyListItemState createState() => _ProxyListItemState();
+  State<ProxyListItem> createState() => _ProxyListItemState();
 }
 
 class _ProxyListItemState extends State<ProxyListItem> {

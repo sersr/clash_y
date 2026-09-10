@@ -6,10 +6,9 @@ part of 'delay.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
-Delay _$DelayFromJson(Map<String, dynamic> json) => Delay(
-      delay: json['delay'] as int?,
-    );
+Delay _$DelayFromJson(Map<String, dynamic> json) =>
+    Delay(delay: (json['delay'] as num?)?.toInt());
 
 Map<String, dynamic> _$DelayToJson(Delay instance) => <String, dynamic>{
-      'delay': instance.delay,
-    };
+  'delay': instance.delay,
+};

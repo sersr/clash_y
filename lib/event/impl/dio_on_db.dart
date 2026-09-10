@@ -2,11 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:hive/hive.dart';
+import 'package:nop/nop.dart';
 import 'package:path/path.dart';
 
-import 'package:utils/utils.dart';
-
-import '../base/events.dart';
 import '../event.dart';
 import '../repository.dart';
 import 'clash_process.dart';
@@ -24,7 +22,7 @@ mixin DioOnDatabaseMixin
   late Box _box;
 
   @override
-  FutureOr<bool> onClose() {
+  FutureOr<void> onClose() {
     _timer?.cancel();
     return super.onClose();
   }
@@ -47,12 +45,13 @@ mixin DioOnDatabaseMixin
     if (current is String) {
       return utf8.decode(base64Decode(current));
     }
+    return null;
   }
 
   @override
   FutureOr<void> updateCurrentConfig(String url) async {
     final current = await getCurrentConfig();
-    await reloadConfigs(true, url, update: true, reload: current == url);
+    await reloadConfigsUrl(true, url, update: true, reload: current == url);
   }
 
   StreamController<ConfigsCurrent>? controller;
@@ -61,14 +60,16 @@ mixin DioOnDatabaseMixin
     if (controller != null) {
       return controller!.stream;
     }
-    final _controller = StreamController<ConfigsCurrent>(onCancel: () {
-      controller = null;
-    });
+    final newController = StreamController<ConfigsCurrent>(
+      onCancel: () {
+        controller = null;
+      },
+    );
     sendConfigCurrent();
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(minutes: 1), onTimer);
-    controller = _controller;
-    return _controller.stream;
+    controller = newController;
+    return newController.stream;
   }
 
   bool _scheduled = false;
@@ -86,7 +87,7 @@ mixin DioOnDatabaseMixin
   }
 
   Timer? _timer;
-  void onTimer(t) {
+  void onTimer(_) {
     if (controller != null) {
       controller!.add(ConfigsCurrent.none);
     }
@@ -94,10 +95,13 @@ mixin DioOnDatabaseMixin
 
   static const interval = 1000 * 60 * 60 * 24;
 
-  @override
-  FutureOr<void> reloadConfigs(bool force, String url,
-      {bool update = false, bool reload = true}) async {
-    return EventQueue.runOneTaskOnQueue(reloadConfigs, () async {
+  FutureOr<void> reloadConfigsUrl(
+    bool force,
+    String url, {
+    bool update = false,
+    bool reload = true,
+  }) async {
+    return EventQueue.runOne(reloadConfigsUrl, () async {
       try {
         final baseName = getBaseNameFromUrl(url);
         final file = fs.currentDirectory.childFile(join(cachePath, baseName));
@@ -110,7 +114,7 @@ mixin DioOnDatabaseMixin
             updateTime is int &&
                 updateTime.difference(DateTime.now()).inMilliseconds <
                     interval) {
-          Log.w('update: $url', onlyDebug: false);
+          Log.w('update: $url');
           final responseFile = await dio.get<String>(url);
           final fileData = responseFile.data;
           if (fileData != null) {
@@ -130,7 +134,7 @@ mixin DioOnDatabaseMixin
           if (reload) {
             sendConfigCurrent();
             await _box.put('current', baseName);
-            await super.reloadConfigs(force, file.path);
+            await reloadConfigs(force, file.path);
           }
         }
       } catch (e) {
@@ -145,6 +149,7 @@ mixin DioOnDatabaseMixin
     if (tables.isNotEmpty) {
       return tables.last.updateTime;
     }
+    return null;
   }
 
   FutureOr<void> setConfigDateTime(String url) async {

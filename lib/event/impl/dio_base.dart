@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:nop_db/isolate_event.dart';
+import 'package:nop/nop.dart';
 import 'dart:io';
 
 mixin DioInitMixin on ListenMixin {
@@ -15,7 +15,9 @@ mixin DioInitMixin on ListenMixin {
   }
 
   String _findProxy(Uri uri) {
-    return HttpClient.findProxyFromEnvironment(uri,
-        environment: {'http_proxy': proxyPort, 'https_proxy': proxyPort});
+    return HttpClient.findProxyFromEnvironment(
+      uri,
+      environment: {'http_proxy': proxyPort, 'https_proxy': proxyPort},
+    );
   }
 }

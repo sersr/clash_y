@@ -24,12 +24,12 @@ Map<String, dynamic> _ConfigTable_toJson(ConfigTable table) {
     'url': table.url,
     'name': table.name,
     'updateInterval': table.updateInterval,
-    'updateTime': table.updateTime
+    'updateTime': table.updateTime,
   };
 }
 
 class GenConfigTable extends DatabaseTable<ConfigTable, GenConfigTable> {
-  GenConfigTable($Database db) : super(db);
+  GenConfigTable(super.db);
 
   @override
   final table = 'ConfigTable';
@@ -39,8 +39,10 @@ class GenConfigTable extends DatabaseTable<ConfigTable, GenConfigTable> {
   final updateInterval = 'updateInterval';
   final updateTime = 'updateTime';
 
-  void updateConfigTable(UpdateStatement<ConfigTable, GenConfigTable> update,
-      ConfigTable configTable) {
+  void updateConfigTable(
+    UpdateStatement<ConfigTable, GenConfigTable> update,
+    ConfigTable configTable,
+  ) {
     if (configTable.id != null) update.id.set(configTable.id);
 
     if (configTable.url != null) update.url.set(configTable.url);
@@ -56,16 +58,17 @@ class GenConfigTable extends DatabaseTable<ConfigTable, GenConfigTable> {
 
   @override
   String createTable() {
-    return 'CREATE TABLE $table ($id TEXT PRIMARY KEY, $url TEXT, $name TEXT, '
-        '$updateInterval INTEGER, $updateTime TEXT)';
+    return 'CREATE TABLE IF NOT EXISTS $table ($id TEXT PRIMARY KEY, $url TEXT, '
+        '$name TEXT, $updateInterval INTEGER, $updateTime TEXT)';
   }
 
   static ConfigTable mapToTable(Map<String, dynamic> map) => ConfigTable(
-      id: map['id'] as String?,
-      url: map['url'] as String?,
-      name: map['name'] as String?,
-      updateInterval: map['updateInterval'] as int?,
-      updateTime: DateTime.tryParse(map['updateTime'] as String? ?? ''));
+    id: map['id'] as String?,
+    url: map['url'] as String?,
+    name: map['name'] as String?,
+    updateInterval: map['updateInterval'] as int?,
+    updateTime: DateTime.tryParse(map['updateTime'] as String? ?? ''),
+  );
 
   @override
   List<ConfigTable> toTable(Iterable<Map<String, Object?>> query) =>
@@ -84,26 +87,25 @@ extension ItemExtensionConfigTable<T extends ItemExtension<GenConfigTable>>
 
   T get updateTime => item(table.updateTime) as T;
 
-  T get genConfigTable_id => id;
+  T get configTable_id => id;
 
-  T get genConfigTable_url => url;
+  T get configTable_url => url;
 
-  T get genConfigTable_name => name;
+  T get configTable_name => name;
 
-  T get genConfigTable_updateInterval => updateInterval;
+  T get configTable_updateInterval => updateInterval;
 
-  T get genConfigTable_updateTime => updateTime;
+  T get configTable_updateTime => updateTime;
 }
 
 extension JoinItemConfigTable<J extends JoinItem<GenConfigTable>> on J {
-  J get genConfigTable_id => joinItem(joinTable.id) as J;
+  J get configTable_id => joinItem(joinTable.id) as J;
 
-  J get genConfigTable_url => joinItem(joinTable.url) as J;
+  J get configTable_url => joinItem(joinTable.url) as J;
 
-  J get genConfigTable_name => joinItem(joinTable.name) as J;
+  J get configTable_name => joinItem(joinTable.name) as J;
 
-  J get genConfigTable_updateInterval =>
-      joinItem(joinTable.updateInterval) as J;
+  J get configTable_updateInterval => joinItem(joinTable.updateInterval) as J;
 
-  J get genConfigTable_updateTime => joinItem(joinTable.updateTime) as J;
+  J get configTable_updateTime => joinItem(joinTable.updateTime) as J;
 }

@@ -48,14 +48,14 @@ class ConfigsData {
   final String? logLevel;
 
   Map<String, Object> get body {
-    final _body = <String, Object>{};
-    if (port != null) _body['port'] = port!;
-    if (socksPort != null) _body['socks-port'] = socksPort!;
-    if (redirPort != null) _body['redir-port'] = redirPort!;
-    if (allowLan != null) _body['allow-lan'] = allowLan!;
-    if (mode != null) _body['mode'] = mode!;
-    if (logLevel != null) _body['log-level'] = logLevel!;
+    final body = <String, Object>{};
+    if (port != null) body['port'] = port!;
+    if (socksPort != null) body['socks-port'] = socksPort!;
+    if (redirPort != null) body['redir-port'] = redirPort!;
+    if (allowLan != null) body['allow-lan'] = allowLan!;
+    if (mode != null) body['mode'] = mode!;
+    if (logLevel != null) body['log-level'] = logLevel!;
 
-    return _body;
+    return body;
   }
 }

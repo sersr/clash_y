@@ -1,13 +1,13 @@
 import 'dart:async';
 
-import 'package:utils/utils.dart';
-import 'package:utils/future_or_ext.dart';
+import 'package:nop/nop.dart';
+import 'package:path/path.dart';
 import '../event.dart';
 import 'db_hive_base.dart';
 
 mixin ConfigDatabaseMixin on DatabaseMixin implements ConfigsEvent {
   String getConfigBaseName(String url) {
-    final baseName = url.split('/').last.replaceAll(RegExp(r'\..*'), '');
+    final baseName = withoutExtension(basename(url));
     return baseName;
   }
 
@@ -26,11 +26,14 @@ mixin ConfigDatabaseMixin on DatabaseMixin implements ConfigsEvent {
         Log.e('....s');
 
         return db.configTable.insert
-            .insertTable(ConfigTable(
+            .insertTable(
+              ConfigTable(
                 url: url,
                 updateInterval: updateInterval,
                 name: realName,
-                updateTime: DateTime.now()))
+                updateTime: DateTime.now(),
+              ),
+            )
             .go
             .then((insert) => Log.i('insert $realName: $insert'));
       } else {
