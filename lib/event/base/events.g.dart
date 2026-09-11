@@ -50,34 +50,37 @@ abstract class MultiEventDefaultResolveMain
   final SendHandle remoteSendHandle;
 }
 
-mixin ClashEventResolve implements ClashEvent {
-  Type get protocol => ClashEventMessage;
-  Map<Type, List<Function>> functionMap() {
-    return {
-      ClashEventMessage: [
+mixin ClashEventResolve on Resolve implements ClashEvent {
+  Map<String, List<Type>> getResolveProtocols() {
+    return super.getResolveProtocols()
+      ..putIfAbsent('eventDefault', () => []).add(ClashEventMessage);
+  }
+
+  Map<Type, List<Function>> resolveFunctionIterable() {
+    return super.resolveFunctionIterable()
+      ..[ClashEventMessage] = [
         (args) => getProxies(),
-        (args) => selectProxy(args[0], args[1]),
+        (args) => selectProxy(args.$1, args.$2),
         resetConfigs,
-        (args) => reloadConfigs(args[0], args[1]),
+        (args) => reloadConfigs(args.$1, args.$2),
         (args) => getRules(),
         (args) => getConfigs(),
-        (args) => getDelay(args[0], args[1], args[2]),
+        (args) => getDelay(args.$1, args.$2, args.$3),
         (args) => watchConnections(),
-      ],
-    };
+      ];
   }
 }
 
 /// implements [ClashEvent]
-mixin ClashEventMessager {
-  Messager get messager;
+mixin ClashEventMessager on SendEvent, Messager {
   String get eventDefault => 'eventDefault';
-  Type get protocol => ClashEventMessage;
-  Map<String, List<Type>> get protocolMap => {
-    'eventDefault': [ClashEventMessage],
-  };
+  Map<String, List<Type>> getProtocols() {
+    return super.getProtocols()
+      ..putIfAbsent(eventDefault, () => []).add(ClashEventMessage);
+  }
+
   FutureOr<ProxiesData?> getProxies() {
-    return messager.sendMessage(
+    return sendMessage(
       ClashEventMessage.getProxies,
       null,
       serverName: eventDefault,
@@ -85,14 +88,14 @@ mixin ClashEventMessager {
   }
 
   FutureOr<void> selectProxy(String selector, String proxy) {
-    return messager.sendMessage(ClashEventMessage.selectProxy, [
+    return sendMessage(ClashEventMessage.selectProxy, (
       selector,
       proxy,
-    ], serverName: eventDefault);
+    ), serverName: eventDefault);
   }
 
   FutureOr<void> resetConfigs(ConfigsData data) {
-    return messager.sendMessage(
+    return sendMessage(
       ClashEventMessage.resetConfigs,
       data,
       serverName: eventDefault,
@@ -100,14 +103,14 @@ mixin ClashEventMessager {
   }
 
   FutureOr<void> reloadConfigs(bool force, String path) {
-    return messager.sendMessage(ClashEventMessage.reloadConfigs, [
+    return sendMessage(ClashEventMessage.reloadConfigs, (
       force,
       path,
-    ], serverName: eventDefault);
+    ), serverName: eventDefault);
   }
 
   FutureOr<void> getRules() {
-    return messager.sendMessage(
+    return sendMessage(
       ClashEventMessage.getRules,
       null,
       serverName: eventDefault,
@@ -115,7 +118,7 @@ mixin ClashEventMessager {
   }
 
   FutureOr<void> getConfigs() {
-    return messager.sendMessage(
+    return sendMessage(
       ClashEventMessage.getConfigs,
       null,
       serverName: eventDefault,
@@ -123,47 +126,50 @@ mixin ClashEventMessager {
   }
 
   FutureOr<Delay?> getDelay(String proxy, int timeout, String testUrl) {
-    return messager.sendMessage(ClashEventMessage.getDelay, [
+    return sendMessage(ClashEventMessage.getDelay, (
       proxy,
       timeout,
       testUrl,
-    ], serverName: eventDefault);
+    ), serverName: eventDefault);
   }
 
   Stream<Connections> watchConnections() {
-    return messager.sendMessageStream(
+    return sendMessageStream(
       ClashEventMessage.watchConnections,
       null,
       serverName: eventDefault,
     );
   }
 }
-mixin ConfigsEventResolve implements ConfigsEvent {
-  Type get protocol => ConfigsEventMessage;
-  Map<Type, List<Function>> functionMap() {
-    return {
-      ConfigsEventMessage: [
+mixin ConfigsEventResolve on Resolve implements ConfigsEvent {
+  Map<String, List<Type>> getResolveProtocols() {
+    return super.getResolveProtocols()
+      ..putIfAbsent('eventDefault', () => []).add(ConfigsEventMessage);
+  }
+
+  Map<Type, List<Function>> resolveFunctionIterable() {
+    return super.resolveFunctionIterable()
+      ..[ConfigsEventMessage] = [
         (args) => getConfigsCurrent(),
-        (args) => addNewConfigUrl(args[0], args[1], args[2]),
+        (args) => addNewConfigUrl(args.$1, args.$2, args.$3),
         removeConfigUrl,
-        (args) => updateConfigsUrl(args[0], args[1]),
+        (args) => updateConfigsUrl(args.$1, args.$2),
         (args) => getCurrentConfig(),
         updateCurrentConfig,
-      ],
-    };
+      ];
   }
 }
 
 /// implements [ConfigsEvent]
-mixin ConfigsEventMessager {
-  Messager get messager;
+mixin ConfigsEventMessager on SendEvent, Messager {
   String get eventDefault => 'eventDefault';
-  Type get protocol => ConfigsEventMessage;
-  Map<String, List<Type>> get protocolMap => {
-    'eventDefault': [ConfigsEventMessage],
-  };
+  Map<String, List<Type>> getProtocols() {
+    return super.getProtocols()
+      ..putIfAbsent(eventDefault, () => []).add(ConfigsEventMessage);
+  }
+
   Stream<ConfigsCurrent> getConfigsCurrent() {
-    return messager.sendMessageStream(
+    return sendMessageStream(
       ConfigsEventMessage.getConfigsCurrent,
       null,
       serverName: eventDefault,
@@ -171,15 +177,15 @@ mixin ConfigsEventMessager {
   }
 
   FutureOr<void> addNewConfigUrl(String url, int updateInterval, String? name) {
-    return messager.sendMessage(ConfigsEventMessage.addNewConfigUrl, [
+    return sendMessage(ConfigsEventMessage.addNewConfigUrl, (
       url,
       updateInterval,
       name,
-    ], serverName: eventDefault);
+    ), serverName: eventDefault);
   }
 
   FutureOr<void> removeConfigUrl(String url) {
-    return messager.sendMessage(
+    return sendMessage(
       ConfigsEventMessage.removeConfigUrl,
       url,
       serverName: eventDefault,
@@ -187,14 +193,14 @@ mixin ConfigsEventMessager {
   }
 
   FutureOr<void> updateConfigsUrl(String url, ConfigTable config) {
-    return messager.sendMessage(ConfigsEventMessage.updateConfigsUrl, [
+    return sendMessage(ConfigsEventMessage.updateConfigsUrl, (
       url,
       config,
-    ], serverName: eventDefault);
+    ), serverName: eventDefault);
   }
 
   FutureOr<String?> getCurrentConfig() {
-    return messager.sendMessage(
+    return sendMessage(
       ConfigsEventMessage.getCurrentConfig,
       null,
       serverName: eventDefault,
@@ -202,7 +208,7 @@ mixin ConfigsEventMessager {
   }
 
   FutureOr<void> updateCurrentConfig(String url) {
-    return messager.sendMessage(
+    return sendMessage(
       ConfigsEventMessage.updateCurrentConfig,
       url,
       serverName: eventDefault,

@@ -1,9 +1,7 @@
-import 'dart:async';
-
+import 'package:common/common.dart';
 import 'package:file/local.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 
 import 'base/events.dart';
 import 'impl/clash_process.dart';
@@ -15,38 +13,15 @@ import 'impl/dio_on_db.dart';
 
 class Repository extends MultiEventDefaultMessagerMain
     with SendCacheMixin, SendInitCloseMixin {
-  String? appPath;
   @override
-  FutureOr<void> onInitStart() async {
-    final docDir = await getApplicationDocumentsDirectory();
-    appPath = join(docDir.path, 'clash_y');
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-    appPath = null;
-  }
-
-  @override
-  RemoteServer get eventDefaultRemoteServer =>
-      IsolateRemoteServer(entryPoint: _eventEntryPoint, args: getArgs(appPath));
-
-  @override
-  Messager get messager => this;
+  RemoteServer get eventDefaultRemoteServer => IsolateRemoteServer(
+    entryPoint: _eventEntryPoint,
+    args: getArgs(G.appPath),
+  );
 }
 
-Future<Runner> _eventEntryPoint(ServerConfigurations<String?> config) async {
-  final runner = EventIsolate(configurations: config, appPath: config.args!);
-
-  return Runner(runner: runner);
-  // final rec = ReceivePort();
-  // Isolate.spawn(windowEntryPoint, rec.sendPort);
-
-  // final sp = await rec.first as SendPort;
-  // Timer.periodic(const Duration(seconds: 1), (timer) {
-  //   sp.send('count: ${timer.tick}');
-  // });
+Runner _eventEntryPoint(ServerConfigurations<String> config) {
+  return Runner(runner: EventIsolate(configurations: config));
 }
 
 const fs = LocalFileSystem();
@@ -60,9 +35,12 @@ class EventIsolate extends MultiEventDefaultResolveMain
         ClashRequestMixin,
         ConfigDatabaseMixin,
         DioOnDatabaseMixin {
-  EventIsolate({required this.appPath, required super.configurations});
+  EventIsolate({required this.configurations})
+    : super(configurations: configurations);
+  final ServerConfigurations<String> configurations;
+
   @override
-  final String appPath;
+  String get appPath => configurations.args;
 
   @override
   String externalUi = 'http://127.0.0.1:9090/';

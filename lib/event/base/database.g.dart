@@ -29,7 +29,7 @@ Map<String, dynamic> _ConfigTable_toJson(ConfigTable table) {
 }
 
 class GenConfigTable extends DatabaseTable<ConfigTable, GenConfigTable> {
-  GenConfigTable(super.db);
+  GenConfigTable($Database db) : super(db);
 
   @override
   final table = 'ConfigTable';

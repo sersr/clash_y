@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_sticky_header/flutter_sticky_header.dart';
 import 'package:provider/provider.dart';
 import 'package:useful_tools/useful_tools.dart';
 
@@ -24,120 +23,59 @@ class _ClashListItemState extends State<ClashListItem> {
   final _showBody = ValueNotifier(false);
   @override
   Widget build(BuildContext context) {
-    return SliverStickyHeader(
-      header: Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: btn1(
-          bgColor: const Color.fromARGB(255, 79, 181, 228),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          onTap: () {
-            _showBody.value = !_showBody.value;
-            if (!_showBody.value) {
-              clashMainNotifier.removeDisposeListener();
-            }
-          },
-          child: Text(
-            '${widget.proxyItem.name}',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              fontFamily: '微软雅黑',
-            ),
+    var header = Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: btn1(
+        bgColor: const Color.fromARGB(255, 79, 181, 228),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        onTap: () {
+          _showBody.value = !_showBody.value;
+          if (!_showBody.value) {
+            clashMainNotifier.removeDisposeListener();
+          }
+        },
+        child: Text(
+          '${widget.proxyItem.name}',
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
+            fontFamily: '微软雅黑',
           ),
         ),
       ),
-      // sliver: SliverToBoxAdapter(
-      //   child: RepaintBoundary(
-      //     child: AnimatedBuilder(
-      //       animation: _showBody,
-      //       builder: (context, _) {
-      //         if (_showBody.value) {
-      //           final proxies = widget.proxyItem.all;
-      //           if (proxies != null) {
-      //             final proxyItem = widget.proxyItem;
-      //             return LayoutBuilder(builder: (context, constraints) {
-      //               final size = constraints.biggest;
-      //               if (size.width > 600) {
-      //                 final half = proxies.length ~/ 2;
-      //                 return Row(
-      //                   mainAxisAlignment: MainAxisAlignment.start,
-      //                   crossAxisAlignment: CrossAxisAlignment.start,
-      //                   children: [
-      //                     Expanded(
-      //                         child: Column(
-      //                             children: proxies.sublist(0, half).map((e) {
-      //                       return ProxyCard(
-      //                         itemName: '$e',
-      //                         proxyGroupName: '${proxyItem.name}',
-      //                         type: '${proxyItem.type}',
-      //                         selected:
-      //                             proxyItem.now != null && proxyItem.now == e,
-      //                         clashMainNotifier: clashMainNotifier,
-      //                         left: true,
-      //                       );
-      //                     }).toList())),
-      //                     Expanded(
-      //                         child: Column(
-      //                             children: proxies.sublist(half).map((e) {
-      //                       return ProxyCard(
-      //                         itemName: '$e',
-      //                         proxyGroupName: '${proxyItem.name}',
-      //                         type: '${proxyItem.type}',
-      //                         selected:
-      //                             proxyItem.now != null && proxyItem.now == e,
-      //                         clashMainNotifier: clashMainNotifier,
-      //                         left: false,
-      //                       );
-      //                     }).toList()))
-      //                   ],
-      //                 );
-      //               }
-      //               return Column(
-      //                   children: proxyItem.all!.map((e) {
-      //                 // final delay = clashMainNotifier.getHistory('$e')?.delay;
+    );
+    var body = AnimatedBuilder(
+      animation: _showBody,
+      builder: (context, _) {
+        final proxyItem = widget.proxyItem;
+        final items = proxyItem.all;
+        if (_showBody.value && items != null) {
+          return SliverGrid(
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final item = items[index];
+              return ProxyCard(
+                itemName: '$item',
+                proxyGroupName: '${proxyItem.name}',
+                type: '${proxyItem.type}',
+                selected: proxyItem.now != null && proxyItem.now == item,
+                clashMainNotifier: clashMainNotifier,
+              );
+            }, childCount: items.length),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              mainAxisExtent: 60,
+              crossAxisCount: 2,
+            ),
+          );
+        }
+        return const SliverToBoxAdapter(child: SizedBox());
+      },
+    );
 
-      //                 return ProxyCard(
-      //                   itemName: '$e',
-      //                   proxyGroupName: '${proxyItem.name}',
-      //                   type: '${proxyItem.type}',
-      //                   selected: proxyItem.now != null && proxyItem.now == e,
-      //                   clashMainNotifier: clashMainNotifier,
-      //                 );
-      //               }).toList());
-      //             });
-      //           }
-      //         }
-      //         return const SizedBox();
-      //       },
-      //     ),
-      //   ),
-      // ),
-      sliver: AnimatedBuilder(
-        animation: _showBody,
-        builder: (context, _) {
-          final proxyItem = widget.proxyItem;
-          final items = proxyItem.all;
-          if (_showBody.value && items != null) {
-            return SliverGrid(
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final item = items[index];
-                return ProxyCard(
-                  itemName: '$item',
-                  proxyGroupName: '${proxyItem.name}',
-                  type: '${proxyItem.type}',
-                  selected: proxyItem.now != null && proxyItem.now == item,
-                  clashMainNotifier: clashMainNotifier,
-                );
-              }, childCount: items.length),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                mainAxisExtent: 60,
-                crossAxisCount: 2,
-              ),
-            );
-          }
-          return const SliverToBoxAdapter(child: SizedBox());
-        },
-      ),
+    return SliverMainAxisGroup(
+      slivers: [
+        PinnedHeaderSliver(child: header),
+        body,
+      ],
     );
   }
 }
