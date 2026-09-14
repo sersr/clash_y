@@ -1,47 +1,67 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:common/common.dart';
+import 'package:dio/dio.dart';
+import 'package:file/file.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart';
 
 import '../event.dart';
 import '../repository.dart';
-import 'clash_process.dart';
-import 'clash_request.dart';
-import 'db_config.dart';
-import 'db_hive_base.dart';
+import 'db_hive/db_config.dart';
+import 'db_hive/db_hive_base.dart';
+import 'dio/clash_request.dart';
 
-mixin DioOnDatabaseMixin
-    on HiveMixin, ClashProcessMixin, ClashRequestMixin, ConfigDatabaseMixin
+abstract final class _BoxKey {
+  static const current = 'current';
+}
+
+mixin DioOnDatabaseMixin on HiveMixin, ClashRequestMixin, ConfigDatabaseMixin
     implements ConfigsEvent {
   String getBaseNameFromUrl(String url) {
     return base64.encode(utf8.encode(url));
   }
 
-  late Box _box;
+  File getFile(String url) {
+    return fs.currentDirectory.childFile(
+      join(appCachePath, getBaseNameFromUrl(url)),
+    );
+  }
+
+  static const _currentSelectConfig = '_current_select_config';
+
+  IsolatedBox get _box => IsolatedHive.box(_currentSelectConfig);
+
+  /// download config.ymal
+  final dlConfigDio = Dio();
 
   @override
-  FutureOr<void> onClose() {
-    _timer?.cancel();
-    return super.onClose();
+  void onResumeListen() {
+    super.onResumeListen();
+    onClashInit();
   }
 
   @override
+  void initOpenBox(void Function(String name) add) {
+    super.initOpenBox(add);
+    add(_currentSelectConfig);
+  }
+
   Future<void> onClashInit() async {
-    _box = await Hive.openBox('_current_select_config');
-    final current = _box.get('current');
+    final current = await _box.get(_BoxKey.current);
     if (current != null) {
-      final file = fs.currentDirectory.childFile(join(cachePath, '$current'));
+      final file = getFile('$current');
       if (file.existsSync()) {
-        return super.reloadConfigs(true, file.path);
+        return reloadConfigs(true, file.path);
       }
     }
   }
 
   @override
   Future<String?> getCurrentConfig() async {
-    final current = _box.get('current');
+    final current = await _box.get(_BoxKey.current);
     if (current is String) {
       return utf8.decode(base64Decode(current));
     }
@@ -51,105 +71,82 @@ mixin DioOnDatabaseMixin
   @override
   FutureOr<void> updateCurrentConfig(String url) async {
     final current = await getCurrentConfig();
-    await reloadConfigsUrl(true, url, update: true, reload: current == url);
+    await reloadConfigs(true, url, update: true, reload: current == url);
   }
 
-  StreamController<ConfigsCurrent>? controller;
   @override
   Stream<ConfigsCurrent> getConfigsCurrent() {
-    if (controller != null) {
-      return controller!.stream;
-    }
-    final newController = StreamController<ConfigsCurrent>(
-      onCancel: () {
-        controller = null;
-      },
-    );
-    sendConfigCurrent();
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(minutes: 1), onTimer);
-    controller = newController;
-    return newController.stream;
-  }
+    final stream = getConfigsDbStream();
 
-  bool _scheduled = false;
-  void sendConfigCurrent() {
-    if (_scheduled) return;
-    scheduleMicrotask(() async {
-      final tables = await getConfigsDb();
+    return stream.asyncMap((e) async {
       final current = await getCurrentConfig();
-      _scheduled = false;
-      if (tables != null && current != null) {
-        controller?.add(ConfigsCurrent(current, tables));
-      }
+      return ConfigsCurrent(current ?? '', e);
     });
-    _scheduled = true;
-  }
-
-  Timer? _timer;
-  void onTimer(_) {
-    if (controller != null) {
-      controller!.add(ConfigsCurrent.none);
-    }
   }
 
   static const interval = 1000 * 60 * 60 * 24;
 
-  FutureOr<void> reloadConfigsUrl(
+  @override
+  FutureOr<void> reloadConfigs(
     bool force,
-    String url, {
+    String path, {
     bool update = false,
     bool reload = true,
   }) async {
-    return EventQueue.runOne(reloadConfigsUrl, () async {
-      try {
-        final baseName = getBaseNameFromUrl(url);
-        final file = fs.currentDirectory.childFile(join(cachePath, baseName));
-        final fileExists = file.existsSync();
-        final updateTime = await getConfigDateTime(url);
+    final url = path;
+    return EventQueue.runOne(reloadConfigs, () async {
+      final file = getFile(url);
+      final baseName = file.basename;
 
-        if (!fileExists ||
-            update ||
-            updateTime == null ||
-            updateTime is int &&
-                updateTime.difference(DateTime.now()).inMilliseconds <
-                    interval) {
+      try {
+        final fileExists = file.existsSync();
+        final config = await getConfig(url);
+
+        if (!fileExists || update || config?.shouldUpdate() == true) {
           Log.w('update: $url');
-          final responseFile = await dio.get<String>(url);
+
+          final responseFile = await dlConfigDio.get<String>(
+            url,
+            options: .new(
+              responseType: ResponseType.plain,
+              headers: {'User-Agent': 'clash'},
+            ),
+          );
           final fileData = responseFile.data;
           if (fileData != null) {
+            final editor = YamlUtils.edit(json.encode(fileData));
+
+            updateDelegateConfig(editor);
             final fileTemp = file.parent.childFile('$baseName.temp');
-            fileTemp.writeAsStringSync(fileData);
+            fileTemp.writeAsStringSync(editor.toString());
             if (!fileExists) {
               file.createSync(recursive: true);
             }
             fileTemp.renameSync(file.path);
             await setConfigDateTime(url);
-            sendConfigCurrent();
           }
         }
         final exists = file.existsSync();
         if (exists) {
           Log.w('$exists $file');
           if (reload) {
-            sendConfigCurrent();
-            await _box.put('current', baseName);
-            await reloadConfigs(force, file.path);
+            await _box.put(_BoxKey.current, baseName);
+            await super.reloadConfigs(force, file.path);
           }
         }
       } catch (e) {
         Log.i(e);
+        await super.reloadConfigs(force, file.path);
+        await _box.put(_BoxKey.current, baseName);
       }
     });
   }
 
-  Future<DateTime?> getConfigDateTime(String url) async {
+  Future<ConfigTable?> getConfig(String url) async {
     final query = db.configTable.query.updateTime..where.url.equalTo(url);
     final tables = await query.goToTable;
-    if (tables.isNotEmpty) {
-      return tables.last.updateTime;
-    }
-    return null;
+
+    return tables.firstOrNull;
   }
 
   FutureOr<void> setConfigDateTime(String url) async {
@@ -157,5 +154,26 @@ mixin DioOnDatabaseMixin
       ..updateTime.set(DateTime.now())
       ..where.url.equalTo(url);
     await query.go;
+  }
+
+  void updateDelegateConfig(YamlEditor editor) {
+    editor.update([], {
+      'external-controller-unix': unixSocketPath,
+      'log-level': 'info',
+      'mode': 'rule',
+      'mixed-port': 7890,
+      'allown-lan': false,
+      // ipv6:
+      // ntp:
+      // geodata-mode:
+      // geox-url:
+      // geo-auto-update:
+      // geo-update-interval: 24
+      // rule-providers:
+      //
+      //
+      // 'dns':
+      // 'rules':
+    });
   }
 }

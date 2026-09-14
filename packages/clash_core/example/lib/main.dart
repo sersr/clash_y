@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'dart:async';
 
-import 'package:clash_core/clash_core.dart' as clash_core;
-
 void main() {
   runApp(const MyApp());
 }
@@ -22,8 +20,6 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    sumResult = clash_core.sum(1, 2);
-    sumAsyncResult = clash_core.sumAsync(3, 4);
   }
 
   @override

@@ -1,14 +1,18 @@
+import 'package:flutter_nop/flutter_nop.dart';
+import 'package:flutter_nop/router.dart';
+import 'package:macos_daemon/macos_daemon.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:nop/nop.dart';
 import 'package:useful_tools/useful_tools.dart';
 
 import '../../event/event.dart';
 import '../../event/repository.dart';
-
-import '../../providers/providers.dart';
-import 'clash_config_url.dart';
-import 'clash_connections.dart';
-import 'clash_list_item.dart';
+import 'controller/clash_conections.dart';
+import 'controller/clash_configs.dart';
+import 'widget/clash_config_url.dart';
+import 'widget/clash_connections.dart';
+import 'widget/clash_list_item.dart';
+import 'controller/clash_main_provider.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -18,30 +22,10 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  late Repository repository;
-  late ClashMainNotifier clashMainNotifier;
-  late ClashConfigNotifier clashConfigNotifier;
-  late ClashConnectionsNotifier clashConnectionsNotifier;
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    repository = context.read();
-    clashMainNotifier = context.read();
-    clashConfigNotifier = context.read();
-    clashConnectionsNotifier = context.read();
-    repository.init();
-    clashMainNotifier.getData();
-  }
+  late Repository repository = getType();
+  late ClashMainNotifier clashMainNotifier = getType();
+  late ClashConfigNotifier clashConfigNotifier = getType();
+  late ClashConnectionsNotifier clashConnectionsNotifier = getType();
 
   final open = ValueNotifier(true);
   final _notifier = ValueNotifier(0);
@@ -164,27 +148,92 @@ class _HomeState extends State<Home> {
     );
   }
 
+  Widget actions() {
+    return Wrap(
+      spacing: 10,
+      children: [
+        btn1(
+          padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          onTap: () {
+            VPNService.stop();
+          },
+          child: Text('stop'),
+        ),
+
+        btn1(
+          padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          onTap: () {
+            VPNService.unregister();
+          },
+          child: Text('unregister'),
+        ),
+        btn1(
+          padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          onTap: () async {
+            clashMainNotifier.start();
+          },
+          child: Text("start"),
+        ),
+
+        btn1(
+          padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          onTap: () {
+            clashMainNotifier.stopListen();
+          },
+          child: Text("stop listen"),
+        ),
+        btn1(
+          padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          onTap: () {
+            clashMainNotifier.startListen();
+          },
+          child: Text("start listen"),
+        ),
+      ],
+    );
+  }
+
   Widget clashPage() {
     return ColoredBox(
       color: Colors.grey.shade300,
-      child: AnimatedBuilder(
-        animation: clashMainNotifier,
-        builder: (context, _) {
-          final data = clashMainNotifier.data;
-          final proxies = data?.proxies;
-          final hasData =
-              proxies != null &&
-              proxies.any((element) => proxyHasData(element));
-          if (data == null) {
-            return loadingIndicator();
-          } else if (!hasData) {
-            return reloadBotton(clashMainNotifier.getData);
-          }
-          return CustomScrollView(
-            slivers: [for (var item in proxies) ClashListItem(proxyItem: item)],
+      child: Cs(() {
+        final data = clashMainNotifier.data;
+        final proxies = data?.proxies;
+        final hasData =
+            proxies != null && proxies.any((element) => proxyHasData(element));
+        if (data == null) {
+          return loadingIndicator();
+        } else if (!hasData) {
+          final child = reloadBotton(clashMainNotifier.getData);
+          return Column(
+            children: [
+              actions(),
+              GestureDetector(
+                onTap: () async {
+                  final res = await VPNService.unregister();
+                  Log.w('...unregister: $res');
+                },
+                child: Text("unregister"),
+              ),
+              child,
+            ],
           );
-        },
-      ),
+        }
+        return Column(
+          children: [
+            actions(),
+            Expanded(
+              child: CustomScrollView(
+                slivers: [
+                  for (var item in proxies) ClashListItem(proxyItem: item),
+                ],
+              ),
+            ),
+          ],
+        );
+      }),
     );
   }
 }
+
+void calb() {}

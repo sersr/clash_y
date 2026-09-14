@@ -1,57 +1,15 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:file/local.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart';
-import 'package:process/process.dart';
 
 mixin ClashProcessMixin on ListenMixin, Resolve {
   Process? _process;
-  String get proxyPort;
-  String get clashRoot;
-  String get clashDir => join(clashRoot, 'config');
-  @override
-  void initStateListen(add) {
-    super.initStateListen(add);
-    add(_init());
-  }
+  String get appPath;
+  String get clashDir => join(appPath, 'config');
 
   late String dir;
-  Future<void> _init() async {
-    const fs = LocalFileSystem();
-    final f = Platform.resolvedExecutable;
-    dir = fs.currentDirectory.childDirectory(f).dirname;
-
-    Log.i('dir: $dir');
-    final docPath = fs.currentDirectory
-        .childDirectory(clashDir)
-        .childFile('config.yaml');
-    if (!docPath.existsSync()) {
-      Log.w(docPath);
-      final configFile = fs.currentDirectory
-          .childDirectory(f)
-          .parent
-          .childFile('config.yaml');
-      Log.w(configFile);
-      if (configFile.existsSync()) {
-        configFile.copySync(docPath.path);
-      }
-    }
-    _process = await const LocalProcessManager().start([
-      '$dir/clash.exe',
-      '-d',
-      clashDir,
-    ], mode: ProcessStartMode.detachedWithStdio);
-    _process?.stdout.transform(utf8.decoder).listen((event) {
-      Log.i(event);
-    });
-    // regSetKeyValue(true);
-    await onClashInit();
-  }
-
-  Future<void> onClashInit() async {}
 
   // void regSetKeyValue(bool enable) {
   //   final subKey = TEXT(

@@ -16,7 +16,8 @@ enum ClashEventMessage {
   getRules,
   getConfigs,
   getDelay,
-  watchConnections,
+  watchTraffic,
+  watchLogs,
 }
 
 enum ConfigsEventMessage {
@@ -66,7 +67,8 @@ mixin ClashEventResolve on Resolve implements ClashEvent {
         (args) => getRules(),
         (args) => getConfigs(),
         (args) => getDelay(args.$1, args.$2, args.$3),
-        (args) => watchConnections(),
+        (args) => watchTraffic(),
+        watchLogs,
       ];
   }
 }
@@ -133,10 +135,18 @@ mixin ClashEventMessager on SendEvent, Messager {
     ), serverName: eventDefault);
   }
 
-  Stream<Connections> watchConnections() {
+  Stream<TrafficModel> watchTraffic() {
     return sendMessageStream(
-      ClashEventMessage.watchConnections,
+      ClashEventMessage.watchTraffic,
       null,
+      serverName: eventDefault,
+    );
+  }
+
+  Stream<LogModel> watchLogs(String level) {
+    return sendMessageStream(
+      ClashEventMessage.watchLogs,
+      level,
       serverName: eventDefault,
     );
   }

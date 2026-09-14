@@ -6,6 +6,7 @@ version: 1.0.0+1
 workspace:
   - packages/common
   - packages/clash_core
+  - packages/macos_daemon
 
 environment:
   sdk: ">=3.12.0 <4.0.0"
@@ -26,7 +27,6 @@ dependencies:
     path: ../packages/useful_tools
 
   nop: ^0.3.0
-  provider: ^6.0.1
   http: ^1.6.0
   dio: ^5.11.1
   file: ^7.0.1
@@ -39,6 +39,9 @@ dependencies:
 
   clash_core: any
   common: ^0.0.1
+  macos_daemon: ^0.0.1
+  flutter_nop: ^4.0.0
+  material_ui: ^1.2.0
 
 dev_dependencies:
   flutter_test:
@@ -52,6 +55,8 @@ dev_dependencies:
 dependency_overrides:
   nop_annotations:
     path: ../packages/nop_annotations
+  flutter_nop:
+    path: ../packages/flutter_nop
   nop_db:
     path: ../packages/nop_db
   nop_db_sqlite:
@@ -63,3 +68,6 @@ dependency_overrides:
 
 flutter:
   uses-material-design: true
+
+  # assets:
+  #   - assets/

@@ -1,49 +1,11 @@
 # clash_core
 
-A new Dart FFI package project.
+使用 hook 打包 Go 项目 [core](core)。
 
-## Getting Started
+- Android：通过 `c-shared` 生成并打包 `libclash.so` 动态库。
+- 其他平台：通过 `go build` 生成可执行文件，并作为 data asset 打包。
 
-This project is a starting point for a Flutter
-[FFI package](https://flutter.dev/to/ffi-package),
-a specialized package that includes native code directly invoked with Dart FFI.
+构建 Flutter 项目时会自动执行 `hook/build.dart`。Android 构建需要可用的
+Android NDK；其他平台构建需要 `go` 命令和对应的本机 C 工具链。首次使用
+data asset 前请执行 `flutter config --enable-dart-data-assets`。
 
-## Project structure
-
-This template uses the following structure:
-
-* `src`: Contains the native source code, and a CmakeFile.txt file for building
-  that source code into a dynamic library.
-
-* `lib`: Contains the Dart code that defines the API of the plugin, and which
-  calls into the native code using `dart:ffi`.
-
-* `bin`: Contains the `build.dart` that performs the external native builds.
-
-## Building and bundling native code
-
-`build.dart` does the building of native components.
-
-Bundling is done by Flutter based on the output from `build.dart`.
-
-## Binding to native code
-
-To use the native code, bindings in Dart are needed.
-To avoid writing these by hand, they are generated from the header file
-(`src/clash_core.h`) by `package:ffigen`.
-Regenerate the bindings by running `dart run ffigen --config ffigen.yaml`.
-
-## Invoking native code
-
-Very short-running native functions can be directly invoked from any isolate.
-For example, see `sum` in `lib/clash_core.dart`.
-
-Longer-running functions should be invoked on a helper isolate to avoid
-dropping frames in Flutter applications.
-For example, see `sumAsync` in `lib/clash_core.dart`.
-
-## Flutter help
-
-For help getting started with Flutter, view our
-[online documentation](https://docs.flutter.dev), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.

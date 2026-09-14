@@ -1,4 +1,3 @@
-
 import 'package:file/local.dart';
 import 'package:nop_db/nop_db.dart';
 import 'package:nop_db_sqlite/nop_db_sqlite.dart';
@@ -20,6 +19,15 @@ class ConfigTable extends Table {
   String? name;
   int? updateInterval;
   DateTime? updateTime;
+
+  bool shouldUpdate() {
+    final lastUpdateTime = updateTime;
+    if (lastUpdateTime == null) return true;
+    final interval = updateInterval;
+    if (interval == null) return true;
+    
+    return DateTime.now().difference(lastUpdateTime).inMinutes >= interval;
+  }
 
   @override
   Map<String, dynamic> toJson() {

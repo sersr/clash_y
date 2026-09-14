@@ -1,13 +1,12 @@
-import 'package:flutter/material.dart';
-import 'package:hive_ce/hive.dart';
-import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:material_ui/material_ui.dart';
 
+import 'init.dart';
 import 'pages/app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final appDir = await getApplicationDocumentsDirectory();
-  Hive.init(join(appDir.path, 'clash_y', 'configs'));
-  runApp(const MultiProviders());
+
+  await initMain();
+
+  runApp(const ClashApp());
 }

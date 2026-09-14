@@ -4,6 +4,7 @@ import 'package:nop/nop.dart';
 import 'package:nop_annotations/nop_annotations.dart';
 
 import '../../data/data.dart';
+import '../../model/log_model.dart';
 import 'data.dart';
 import 'database.dart';
 export 'database.dart';
@@ -22,7 +23,10 @@ abstract mixin class ClashEvent {
   FutureOr<void> getRules();
   FutureOr<void> getConfigs();
   FutureOr<Delay?> getDelay(String proxy, int timeout, String testUrl);
-  Stream<Connections> watchConnections();
+
+  Stream<TrafficModel> watchTraffic();
+  Stream<LogModel> watchLogs(String level);
+  // Stream<Connections> watchConnections();
 }
 
 abstract mixin class ConfigsEvent {
