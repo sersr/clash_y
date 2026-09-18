@@ -4,11 +4,7 @@ part 'connections.g.dart';
 
 @JsonSerializable(explicitToJson: true)
 class Connections {
-  const Connections({
-    this.downloadTotal,
-    this.uploadTotal,
-    this.connections,
-  });
+  const Connections({this.downloadTotal, this.uploadTotal, this.connections});
   @JsonKey(name: 'downloadTotal')
   final int? downloadTotal;
   @JsonKey(name: 'uploadTotal')
@@ -16,8 +12,9 @@ class Connections {
   @JsonKey(name: 'connections')
   final List<ConnectionsConnections?>? connections;
 
-  factory Connections.fromJson(Map<String,dynamic> json) => _$ConnectionsFromJson(json);
-  Map<String,dynamic> toJson() => _$ConnectionsToJson(this);
+  factory Connections.fromJson(Map<String, dynamic> json) =>
+      _$ConnectionsFromJson(json);
+  Map<String, dynamic> toJson() => _$ConnectionsToJson(this);
 }
 
 @JsonSerializable(explicitToJson: true)
@@ -49,8 +46,9 @@ class ConnectionsConnections {
   @JsonKey(name: 'rulePayload')
   final String? rulePayload;
 
-  factory ConnectionsConnections.fromJson(Map<String,dynamic> json) => _$ConnectionsConnectionsFromJson(json);
-  Map<String,dynamic> toJson() => _$ConnectionsConnectionsToJson(this);
+  factory ConnectionsConnections.fromJson(Map<String, dynamic> json) =>
+      _$ConnectionsConnectionsFromJson(json);
+  Map<String, dynamic> toJson() => _$ConnectionsConnectionsToJson(this);
 }
 
 @JsonSerializable(explicitToJson: true)
@@ -82,7 +80,11 @@ class ConnectionsConnectionsMetadata {
   @JsonKey(name: 'dnsMode')
   final String? dnsMode;
 
-  factory ConnectionsConnectionsMetadata.fromJson(Map<String,dynamic> json) => _$ConnectionsConnectionsMetadataFromJson(json);
-  Map<String,dynamic> toJson() => _$ConnectionsConnectionsMetadataToJson(this);
-}
+  String get ipName {
+    return toJson().toString();
+  }
 
+  factory ConnectionsConnectionsMetadata.fromJson(Map<String, dynamic> json) =>
+      _$ConnectionsConnectionsMetadataFromJson(json);
+  Map<String, dynamic> toJson() => _$ConnectionsConnectionsMetadataToJson(this);
+}

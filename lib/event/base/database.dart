@@ -1,8 +1,9 @@
 import 'package:file/local.dart';
+import 'package:nop/nop.dart';
+import 'package:nop_annotations/nop_annotations.dart';
 import 'package:nop_db/nop_db.dart';
 import 'package:nop_db_sqlite/nop_db_sqlite.dart';
 
-import 'package:nop_annotations/nop_annotations.dart';
 part 'database.g.dart';
 
 class ConfigTable extends Table {
@@ -12,6 +13,10 @@ class ConfigTable extends Table {
     this.updateInterval,
     this.updateTime,
     this.url,
+    this.upload,
+    this.download,
+    this.total,
+    this.expire,
   });
   @NopDbItem(primaryKey: true)
   String? id;
@@ -20,12 +25,18 @@ class ConfigTable extends Table {
   int? updateInterval;
   DateTime? updateTime;
 
+  // subscription-userinfo
+  final int? upload;
+  final int? download;
+  final int? total;
+  final int? expire;
+
   bool shouldUpdate() {
     final lastUpdateTime = updateTime;
     if (lastUpdateTime == null) return true;
     final interval = updateInterval;
     if (interval == null) return true;
-    
+
     return DateTime.now().difference(lastUpdateTime).inMinutes >= interval;
   }
 
@@ -38,7 +49,7 @@ class ConfigTable extends Table {
 @NopDb(tables: [ConfigTable])
 class ClashDatabase extends _GenClashDatabase {
   ClashDatabase._(this.path);
-  int version = 1;
+  int version = 2;
   final String path;
   static ClashDatabase open(String path) {
     final db = ClashDatabase._(path);
@@ -59,5 +70,28 @@ class ClashDatabase extends _GenClashDatabase {
       onUpgrade: onUpgrade,
     );
     setDb(db);
+  }
+
+  @override
+  void onUpgrade(NopDatabase db, int oldVersion, int newVersion) {
+    if (oldVersion <= 1) {
+      try {
+        final indexTable = configTable.table;
+        db.execute(
+          'ALTER TABLE $indexTable ADD COLUMN ${configTable.upload} INTEGER',
+        );
+        db.execute(
+          'ALTER TABLE $indexTable ADD COLUMN ${configTable.download} INTEGER',
+        );
+        db.execute(
+          'ALTER TABLE $indexTable ADD COLUMN ${configTable.total} INTEGER',
+        );
+        db.execute(
+          'ALTER TABLE $indexTable ADD COLUMN ${configTable.expire} INTEGER',
+        );
+      } catch (e) {
+        Log.i('error: $e');
+      }
+    }
   }
 }

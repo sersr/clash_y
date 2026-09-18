@@ -113,30 +113,32 @@ class _ClashConfigUrlState extends State<ClashConfigUrl> {
                 final name = item.name ?? url;
                 // final updateInterval = item.updateInterval ?? 0;
                 final updateTime = item.updateTime ?? DateTime.now();
-                return ListItem(
-                  bgColor: clashConfigNotifier.current == url
-                      ? Color.fromARGB(255, 179, 192, 192)
-                      : null,
-                  onTap: () {
-                    clashConfigNotifier.reloadConfig(url);
-                  },
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(name)),
-                      Text(updateTime.difference(DateTime.now()).ago),
-                      TextButton(
-                        onPressed: () {
-                          clashConfigNotifier.updateConfigData(url);
-                        },
-                        child: const Text('update'),
-                      ),
-                    ],
-                  ),
-                );
+                return Cs(() {
+                  return ListItem(
+                    bgColor: clashConfigNotifier.current == url
+                        ? Color.fromARGB(255, 179, 192, 192)
+                        : null,
+                    onTap: () {
+                      clashConfigNotifier.reloadConfig(url);
+                    },
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(name)),
+                        Text(updateTime.difference(DateTime.now()).ago),
+                        TextButton(
+                          onPressed: () {
+                            clashConfigNotifier.updateConfigData(url);
+                          },
+                          child: const Text('update'),
+                        ),
+                      ],
+                    ),
+                  );
+                });
               },
             );
           }),

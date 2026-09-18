@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_nop/flutter_nop.dart';
+import 'package:nop/nop.dart';
 
 import '../../../data/data.dart';
 import '../../../event/repository.dart';
@@ -14,39 +15,30 @@ class ClashConnectionsNotifier with NopLifecycle {
   StreamSubscription<Connections>? _sub;
 
   bool get listening => _sub != null;
-
-  @override
-  void nopInit() {
-    super.nopInit();
-    watchConnections();
-  }
+  final interval = Duration(seconds: 1).al;
 
   void watchConnections() {
-    // _sub?.cancel();
-    // _sub = repository.watchConnections().listen(
-    //   (event) {
-    //     _connections.value = event;
-    //   },
-    //   onDone: () {
-    //     _sub = null;
-    //     Log.e('done');
-    //   },
-    // );
+    _sub?.cancel();
+    _sub = repository.clashEvent
+        .watchConnections(interval.value)
+        .listen(
+          (event) {
+            _connections.value = event;
+          },
+          onDone: () {
+            _sub = null;
+            Log.e('done');
+          },
+        );
   }
 
-  void pause() {
-    _sub?.pause();
-  }
-
-  void resume() {
-    _sub?.resume();
-  }
-
-  void pauseOrResume(bool paused) {
-    if (paused) {
-      pause();
+  void toggle(bool active) {
+    if (active) {
+      if (_sub != null) return;
+      watchConnections();
     } else {
-      resume();
+      _sub?.cancel();
+      _sub = null;
     }
   }
 

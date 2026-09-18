@@ -1,5 +1,5 @@
-import Foundation
 import Darwin
+import Foundation
 
 final class MihomoPidStore {
 
@@ -31,7 +31,10 @@ final class MihomoPidStore {
         }
     }
 
-    func clear() {
+    func clear(pid: Int32) {
+        if load()?.pid != pid {
+            return
+        }
         try? FileManager.default.removeItem(at: fileURL)
     }
 

@@ -1,0 +1,10 @@
+{
+  // /usr/local/include contains Homebrew copies of the C headers that shadow
+  // the macOS SDK ones, so cgo fails while compiling runtime/cgo and the Go
+  // language server cannot load packages/clash_core/core. Swallowing that
+  // specific warning keeps the editor working without hardcoding an SDK path.
+  // The real build (hook/build.dart) passes SDKROOT and is unaffected.
+  "go.toolsEnvVars": {
+    "CGO_CFLAGS": "-Wno-nullability-completeness"
+  }
+}

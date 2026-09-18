@@ -1,4 +1,4 @@
-# macos_daemon
+# vpn_service
 
 A new Flutter plugin project.
 

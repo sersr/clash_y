@@ -1,7 +1,7 @@
 String baseConfigYaml(String unixSocket) {
   return '''
 # HTTP 端口
-port: 7890
+mixed-port: 7890
 # SOCKS5 端口
 socks-port: 7891
 # Linux 及 macOS 的 redir 端口

@@ -1,4 +1,4 @@
-name: macos_daemon
+name: vpn_service
 description: "A new Flutter plugin project."
 version: 0.0.1
 homepage:
@@ -36,8 +36,13 @@ flutter:
   # adding or updating assets for this project.
   plugin:
     platforms:
+      android:
+        package: com.example.vpn_service
+        pluginClass: VpnServicePlugin
+      ios:
+        pluginClass: VpnServicePlugin
       macos:
-        pluginClass: MacosDaemonPlugin
+        pluginClass: VpnServicePlugin
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:

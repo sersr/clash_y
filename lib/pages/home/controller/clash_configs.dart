@@ -23,21 +23,25 @@ class ClashConfigNotifier with NopLifecycle {
   }
 
   Future<void> reloadConfig(String path) async {
-    await repository.reloadConfigs(true, path);
+    await repository.clashEvent.reloadConfigs(true, path);
     await release(const Duration(milliseconds: 300));
     clashMainNotifier.getData();
+    final c = await repository.clashEvent.getCurrentConfig() ?? '';
+    _current.value = c;
   }
 
   final AV<ConfigsCurrent?> _data = .new(null);
   ConfigsCurrent? get data => _data.value;
   List<ConfigTable>? get tables => data?.tables;
-  String get current => data?.current ?? '';
+  final _current = ''.al;
+  String get current => _current.value;
+
   bool get listening => _sub != null;
   StreamSubscription<ConfigsCurrent>? _sub;
-  void _getConfigDb() {
+  void _getConfigDb() async {
     Log.w('listen');
     _sub?.cancel();
-    _sub = repository.getConfigsCurrent().listen(
+    _sub = repository.configsEvent.getConfigsCurrent().listen(
       (event) {
         _data.value = event;
       },
@@ -45,7 +49,13 @@ class ClashConfigNotifier with NopLifecycle {
         _sub = null;
         Log.e('done');
       },
+      onError: (e) {
+        _sub = null;
+        Log.w('error: $e.');
+      },
     );
+    final c = await repository.clashEvent.getCurrentConfig() ?? '';
+    _current.value = c;
   }
 
   Future<void> addNewConfigUrl(
@@ -53,7 +63,7 @@ class ClashConfigNotifier with NopLifecycle {
     String? name,
     int updateInterval,
   ) async {
-    await repository.addNewConfigUrl(url, updateInterval, name);
+    await repository.configsEvent.addNewConfigUrl(url, updateInterval, name);
   }
 
   Future<void> updateConfigUrl(
@@ -61,14 +71,16 @@ class ClashConfigNotifier with NopLifecycle {
     String? name,
     int? updateInterval,
   ) async {
-    await repository.updateConfigsUrl(
+    await repository.configsEvent.updateConfigsUrl(
       url,
       ConfigTable(url: url, name: name, updateInterval: updateInterval),
     );
   }
 
   Future<void> updateConfigData(String url) async {
-    await repository.updateCurrentConfig(url);
+    await repository.clashEvent.updateCurrentConfig(url);
+    final c = await repository.clashEvent.getCurrentConfig() ?? '';
+    _current.value = c;
   }
 
   @override

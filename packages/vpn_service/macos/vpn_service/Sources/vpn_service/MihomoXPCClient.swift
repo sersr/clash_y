@@ -43,7 +43,7 @@ final class MihomoXPCClient {
     }
 
     func start(
-        configPath: String,
+        configDir: String,
         completion: @escaping ([String: Any]) -> Void
     ) {
         let service: any MihomoServiceProtocol = getService { error in
@@ -54,7 +54,7 @@ final class MihomoXPCClient {
         }
 
         service.start(
-            configPath: configPath
+            configDir: configDir
         ) { res in
             completion(res)
         }
@@ -76,7 +76,7 @@ final class MihomoXPCClient {
     }
 
     func restart(
-        configPath: String,
+        configDir: String,
         completion: @escaping ([String: Any]) -> Void
     ) {
         let service = getService { error in
@@ -87,7 +87,7 @@ final class MihomoXPCClient {
         }
 
         service.restart(
-            configPath: configPath
+            configDir: configDir
         ) { res in
             completion(res)
         }

@@ -1,9 +1,9 @@
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
-import 'package:macos_daemon/macos_daemon.dart';
 import 'package:flutter/material.dart';
 import 'package:nop/nop.dart';
 import 'package:useful_tools/useful_tools.dart';
+import 'package:vpn_service/vpn_service.dart';
 
 import '../../event/event.dart';
 import '../../event/repository.dart';
@@ -83,7 +83,7 @@ class _HomeState extends State<Home> {
               }
               _notifier.value = index;
 
-              clashConnectionsNotifier.pauseOrResume(_notifier.value != 2);
+              clashConnectionsNotifier.toggle(_notifier.value == 2);
             },
           );
         },
@@ -103,7 +103,7 @@ class _HomeState extends State<Home> {
                 if (open.value) {
                   clashConfigNotifier.getConfigs();
                   clashConnectionsNotifier.watchConnections();
-                  clashConnectionsNotifier.pauseOrResume(_notifier.value != 2);
+                  clashConnectionsNotifier.toggle(_notifier.value == 2);
                 }
               });
             },
@@ -155,7 +155,7 @@ class _HomeState extends State<Home> {
         btn1(
           padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           onTap: () {
-            VPNService.stop();
+            clashMainNotifier.stop();
           },
           child: Text('stop'),
         ),

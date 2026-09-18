@@ -133,10 +133,10 @@ packages:
     dependency: transitive
     description:
       name: code_assets
-      sha256: cfd4f5f575a49c5f10ca856e9846073f1e6c3ee94912377eea5f6cefc5272941
+      sha256: "828110d598123b5ea96c00c9f3c72105bf79f8ee36c20a39b26209ade421ec57"
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.0"
+    version: "2.1.0"
   collection:
     dependency: transitive
     description:
@@ -162,7 +162,7 @@ packages:
     source: hosted
     version: "1.15.1"
   crypto:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: crypto
       sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
@@ -181,10 +181,10 @@ packages:
     dependency: transitive
     description:
       name: cupertino_ui
-      sha256: e9dfe7fac704028f8928cbe4028a0be5e8a709498e8daf8247de99e99a32aef3
+      sha256: c6747018d37d32feeeb858a1d7043831cb541460ebe1a890a995cdb8df8ea5a5
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.2"
+    version: "1.1.0"
   dart_style:
     dependency: transitive
     description:
@@ -331,10 +331,10 @@ packages:
     dependency: "direct main"
     description:
       name: hive_ce
-      sha256: "8e9980e68643afb1e765d3af32b47996552a64e190d03faf622cea07c1294418"
+      sha256: "650b64282b7ea664ea58a08492d2b163ac6dc6d0ef552d0d77aac6678e1518e9"
       url: "https://pub.dev"
     source: hosted
-    version: "2.19.3"
+    version: "2.20.0"
   hooks:
     dependency: transitive
     description:
@@ -499,10 +499,18 @@ packages:
     dependency: "direct main"
     description:
       name: material_ui
-      sha256: fbfb53cab6c4629438feeade5f3d305f72944bc9d9f25786b19106d32b80ec45
+      sha256: "6d056d60ce745335fcf1c726a4fc46a481a62229f202b65dbc2db5edbbabc7e2"
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.0"
+    version: "1.3.0"
+  menu_base:
+    dependency: transitive
+    description:
+      name: menu_base
+      sha256: "820368014a171bd1241030278e6c2617354f492f5c703d7b7d4570a6b8b84405"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1"
   meta:
     dependency: transitive
     description:
@@ -523,10 +531,10 @@ packages:
     dependency: transitive
     description:
       name: native_toolchain_c
-      sha256: "9d233b6f2d9c52e1a2b5fbe70451d2c10ac674d3bb419d0ec8de14989d437c26"
+      sha256: "90eaad8059ebc2004a63810a4696ea9acdb02473e47ed3b6b3bafb100ac77e31"
       url: "https://pub.dev"
     source: hosted
-    version: "0.19.4"
+    version: "0.19.5"
   node_preamble:
     dependency: transitive
     description:
@@ -541,7 +549,7 @@ packages:
       path: "../packages/nop"
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.3.1"
   nop_annotations:
     dependency: "direct main"
     description:
@@ -562,14 +570,14 @@ packages:
       path: "../packages/nop_db_sqlite"
       relative: true
     source: path
-    version: "0.0.4"
+    version: "0.0.5"
   nop_gen:
     dependency: "direct dev"
     description:
       path: "../packages/nop_gen"
       relative: true
     source: path
-    version: "0.4.1"
+    version: "0.4.2"
   objective_c:
     dependency: transitive
     description:
@@ -738,6 +746,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.0"
+  shortid:
+    dependency: transitive
+    description:
+      name: shortid
+      sha256: d0b40e3dbb50497dad107e19c54ca7de0d1a274eb9b4404991e443dadb9ebedb
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.2"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -787,10 +803,10 @@ packages:
     dependency: transitive
     description:
       name: sqlite3
-      sha256: "4c7fe79840389aaeaf05fd093f795b631b5a98e2bd28d54e555c100f4a9c7a1c"
+      sha256: fa3fd961e83b2dca8890a7b1014ab1226831d2b5908067c0ab7f385ffb655caf
       url: "https://pub.dev"
     source: hosted
-    version: "3.5.2"
+    version: "3.6.0"
   stack_trace:
     dependency: transitive
     description:
@@ -855,6 +871,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.6.19"
+  tray_manager:
+    dependency: "direct main"
+    description:
+      name: tray_manager
+      sha256: "1a659b08baa6e9b91ef8ce16eda37740de398be1c4cf322b8a1ddfef25c68c5a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.3"
   typed_data:
     dependency: transitive
     description:
@@ -911,7 +935,7 @@ packages:
     source: hosted
     version: "1.0.1"
   web_socket_channel:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: web_socket_channel
       sha256: d645757fb0f4773d602444000a8131ff5d48c9e47adfe9772652dd1a4f2d45c8

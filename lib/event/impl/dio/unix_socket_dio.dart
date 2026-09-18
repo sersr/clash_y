@@ -3,15 +3,28 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
-import 'unix_socket_http.dart';
-
 class UnixSocketAdapter implements HttpClientAdapter {
-  final String socketPath;
+  String socketPath;
   late final HttpClient _client;
   var _closed = false;
 
   UnixSocketAdapter(this.socketPath) {
-    _client = createUnixSocketClient(socketPath);
+    _client = createUnixSocketClient();
+  }
+
+  HttpClient createUnixSocketClient() {
+    final client = HttpClient();
+    HttpClientAdapter;
+    client.connectionFactory = (uri, proxyHost, proxyPort) {
+      final address = InternetAddress(
+        socketPath,
+        type: InternetAddressType.unix,
+      );
+      return Socket.startConnect(address, 0);
+    };
+    client.findProxy = (uri) => 'DIRECT';
+
+    return client;
   }
 
   @override

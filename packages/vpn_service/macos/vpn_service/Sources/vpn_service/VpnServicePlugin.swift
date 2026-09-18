@@ -2,15 +2,17 @@ import Cocoa
 import FlutterMacOS
 import ServiceManagement
 
+
 private let mihomoHelperPlistName =
   "com.aote.clashy.helper.plist"
 
-public class MacosDaemonPlugin: NSObject, FlutterPlugin {
-  private let mihomoClient = MihomoXPCClient()
+public class VpnServicePlugin: NSObject, FlutterPlugin {
+
+    private let mihomoClient = MihomoXPCClient()
 
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "macos_daemon", binaryMessenger: registrar.messenger)
-    let instance = MacosDaemonPlugin()
+    let channel = FlutterMethodChannel(name: "vpn_service", binaryMessenger: registrar.messenger)
+    let instance = VpnServicePlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
   }
 
@@ -74,7 +76,7 @@ public class MacosDaemonPlugin: NSObject, FlutterPlugin {
   func start(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
     guard
       let args = call.arguments as? [String: Any],
-      let configPath = args["configPath"] as? String
+      let configDir = args["configDir"] as? String
     else {
       result(
         FlutterError(
@@ -87,7 +89,7 @@ public class MacosDaemonPlugin: NSObject, FlutterPlugin {
       return
     }
 
-    self.mihomoClient.start(configPath: configPath) { res in
+    self.mihomoClient.start(configDir: configDir) { res in
       DispatchQueue.main.async {
         result(res)
       }
@@ -109,4 +111,5 @@ public class MacosDaemonPlugin: NSObject, FlutterPlugin {
       }
     }
   }
+
 }

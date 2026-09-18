@@ -14,14 +14,12 @@ import 'impl/dio_on_db.dart';
 final class Paths {
   final String appPath;
   final String appSupportPath;
-  final String unixSocketPath;
   final String appConfigPath;
 
   const Paths({
     required this.appPath,
     required this.appConfigPath,
     required this.appSupportPath,
-    required this.unixSocketPath,
   });
 
   factory Paths.g() {
@@ -29,7 +27,6 @@ final class Paths {
       appPath: G.appPath,
       appConfigPath: join(G.appSubPath, 'clash_config'),
       appSupportPath: G.appSubPath,
-      unixSocketPath: join(G.appPath, unixSocket),
     );
   }
 
@@ -38,73 +35,66 @@ final class Paths {
     return '''
 appPath: $appPath,
 appSupportPath: $appSupportPath,
-unixSockePath: $unixSocketPath,
 appConfigPath: $appConfigPath,
 ''';
   }
 }
 
-class Repository extends MultiEventDefaultMessagerMain
-    with SendCacheMixin, SendInitCloseMixin, NopLifecycle {
+class Repository with NopLifecycle {
   static Paths? _paths;
   static Paths get paths => _paths ??= .g();
 
-  @override
-  RemoteServer get eventDefaultRemoteServer => IsolateRemoteServer(
-    entryPoint: _eventEntryPoint,
-    args: getArgs(_paths = Paths.g()),
+  late final IsolateManager isolateMain = .new()..addRunner(event);
+
+  void init() {
+    isolateMain.start();
+  }
+
+  ConfigsEvent get configsEvent => event.messageItem;
+  late final event = ConfigsEventMessage.getMessage(
+    IsolateRemoteServer(entryPoint: _eventEntryPoint, args: paths),
   );
+
+  late final ClashRequest clashEvent = .new(paths: paths, repo: this);
 
   @override
   void nopInit() {
-    super.nopInit();
     init();
+    super.nopInit();
+  }
+
+  void close() {
+    isolateMain.dispose();
   }
 
   @override
   void nopDispose() {
-    close();
+    isolateMain.dispose();
     super.nopDispose();
   }
 }
 
-Runner _eventEntryPoint(ServerConfigurations<Paths> config) {
+Runner _eventEntryPoint(Paths args) {
   initLog();
-  return Runner(runner: EventIsolate(configurations: config));
+  final resolve = IsolateResolve();
+
+  final isolate = EventIsolate(paths: args);
+  resolve.addResolveItem(
+    ConfigsEventMessage.getResolve(
+      configsEvent: isolate,
+      onInit: isolate.init,
+      onClose: isolate.onClose,
+    ),
+  );
+
+  return Runner(runner: resolve);
 }
 
 const fs = LocalFileSystem();
 
-class EventIsolate extends MultiEventDefaultResolveMain
-    with
-        DatabaseMixin,
-        HiveMixin,
-        ClashRequestMixin,
-        ConfigDatabaseMixin,
-        DioOnDatabaseMixin {
-  EventIsolate({required this.configurations})
-    : super(configurations: configurations);
-  final ServerConfigurations<Paths> configurations;
+class EventIsolate with HiveDbMixin, ConfigDatabaseMixin, DioOnDatabaseMixin {
+  EventIsolate({required this.paths});
 
   @override
-  late final appPath = configurations.args.appPath;
-
-  /// macos: ~/Library/com.aote.clashy
-  late final appSupportPath = configurations.args.appSupportPath;
-
-  // @override
-  // String externalUi = 'http://127.0.0.1:9090/';
-  // @override
-  // String proxyPort = 'http://127.0.0.1:7890';
-
-  @override
-  late final unixSocketPath = configurations.args.unixSocketPath;
-
-  @override
-  late final appConfigPath = configurations.args.appConfigPath;
-
-  @override
-  void onError(message, error) {
-    Log.e('$message: $error');
-  }
+  final Paths paths;
 }

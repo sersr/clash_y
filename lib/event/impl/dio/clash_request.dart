@@ -1,8 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' as io;
+import 'dart:math';
 
+import 'package:clash_y/event/impl/dio/unix_socket_http.dart';
 import 'package:clash_y/event/repository.dart';
+import 'package:common/common.dart';
 import 'package:dio/dio.dart';
+import 'package:file/file.dart';
+import 'package:hive_ce/hive.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart';
 
@@ -11,16 +17,21 @@ import '../../../model/log_model.dart';
 import '../../event.dart';
 import 'unix_socket_dio.dart';
 
-mixin ClashRequestMixin on Resolve implements ClashEvent {
-  String get appConfigPath;
-  String get unixSocketPath;
+abstract final class _BoxKey {
+  static const current = 'current';
+}
+
+final class ClashRequest implements ClashEvent {
+  ClashRequest({required this.paths, required this.repo}) {
+    init();
+  }
+  String get appConfigPath => paths.appConfigPath;
+  String get unixSocketPath => HiveConfig.unixSockPath;
+  final Repository repo;
+  final Paths paths;
   late Dio _dio;
 
-  @override
-  void initStateListen(add) {
-    super.initStateListen(add);
-    // client = HttpClient()..findProxy = _findProxy;
-
+  void init() {
     _dio = Dio(
       BaseOptions(
         baseUrl: 'http://localhost/',
@@ -29,6 +40,12 @@ mixin ClashRequestMixin on Resolve implements ClashEvent {
     );
 
     _dio.httpClientAdapter = UnixSocketAdapter(unixSocketPath);
+  }
+
+  void update() {
+    // _dio.close();
+    _dio.httpClientAdapter = UnixSocketAdapter(unixSocketPath);
+    // init();
   }
 
   @override
@@ -75,9 +92,6 @@ mixin ClashRequestMixin on Resolve implements ClashEvent {
   @override
   Stream<TrafficModel> watchTraffic() async* {
     try {
-
-      // final socket = await createUnixSocket(unixSocketPath);
-
       final response = await _dio.get<ResponseBody>(
         'traffic',
         options: Options(responseType: ResponseType.stream),
@@ -105,7 +119,6 @@ mixin ClashRequestMixin on Resolve implements ClashEvent {
   @override
   Stream<LogModel> watchLogs(String level) async* {
     try {
-
       final response = await _dio.get<ResponseBody>(
         'logs',
         options: Options(responseType: ResponseType.stream),
@@ -113,8 +126,8 @@ mixin ClashRequestMixin on Resolve implements ClashEvent {
       );
       final data = response.data;
 
-      if ( data != null) {
-      final stream = data.stream;
+      if (data != null) {
+        final stream = data.stream;
 
         yield* stream.map((event) {
           try {
@@ -129,6 +142,56 @@ mixin ClashRequestMixin on Resolve implements ClashEvent {
           return LogModel();
         });
       }
+    } catch (e) {
+      Log.e(e);
+    }
+  }
+
+  String generateWebSocketKey() {
+    // 1. 生成 16 个字节的随机数
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+
+    // 2. 将其转换为 Base64 字符串
+    return base64.encode(bytes);
+  }
+
+  @override
+  Stream<Connections> watchConnections(Duration interval) async* {
+    try {
+      final socket = await io.WebSocket.connect(
+        'ws://localhost/connections?interval=${interval.inMilliseconds}',
+        customClient: createUnixSocketClient(unixSocketPath),
+      );
+
+      yield* socket.map((message) {
+        switch (message) {
+          case List<int> bytes:
+            try {
+              final v = utf8.decode(bytes);
+              Log.w(v);
+              final data = jsonDecode(v);
+              if (data case Map data) {
+                final s = Connections.fromJson(data.cast());
+                return s;
+              }
+            } catch (e) {
+              Log.e('error: $e');
+            }
+          case String text:
+            try {
+              final data = jsonDecode(text);
+              if (data case Map data) {
+                final s = Connections.fromJson(data.cast());
+                return s;
+              }
+            } catch (e) {
+              Log.e('error: $e');
+            }
+        }
+
+        return Connections();
+      });
     } catch (e) {
       Log.e(e);
     }
@@ -173,8 +236,7 @@ mixin ClashRequestMixin on Resolve implements ClashEvent {
     Log.i('all Configs: $data');
   }
 
-  @override
-  FutureOr<void> reloadConfigs(bool force, String path) async {
+  FutureOr<void> updateConfig(bool force, String path) async {
     try {
       // final bytes = await fs.currentDirectory.childFile(path).readAsBytes();
       final file = fs.currentDirectory.childFile(
@@ -219,52 +281,124 @@ mixin ClashRequestMixin on Resolve implements ClashEvent {
     return null;
   }
 
-  // @override
-  // Stream<Connections> watchConnections() {
-  // if (_controller != null) {
-  //   return _controller!.stream;
-  // }
-  // final controller = StreamController<Connections>(
-  //   onListen: _reset,
-  //   onCancel: () => _controller = null,
-  //   onPause: () => _reset(true),
-  //   onResume: _reset,
-  // );
+  String get appCachePath => join(paths.appPath, 'caches');
 
-  // _controller = controller;
-  // return controller.stream;
-  // }
+  String getBaseNameFromUrl(String url) {
+    return basename(url);
+  }
 
-  // void _reset([bool close = false]) {
-  //   _timer?.cancel();
-  //   if (!close) _timer = Timer.periodic(const Duration(seconds: 2), _onTimer);
-  // }
+  File getFile(String url) {
+    return fs.currentDirectory.childFile(
+      join(appCachePath, getBaseNameFromUrl(url)),
+    );
+  }
 
-  // Timer? _timer;
-  // void _onTimer(Timer t) {
-  //   if (_controller != null) {
-  //     EventQueue.runOne(_onTimer, () async {
-  //       final data = await getConnections();
-  //       if (_controller != null && data != null) {
-  //         _controller!.add(data);
-  //       }
-  //     });
-  //     return;
-  //   }
-  //   t.cancel();
-  //   _timer = null;
-  // }
+  final dlConfigDio = Dio();
 
-  Future<Connections?> getConnections() async {
-    try {
-      final response = await _dio.get<String>('connections');
-      final data = response.data;
-      if (data != null) {
-        return Connections.fromJson(jsonDecode(data));
+  Box get _box => Hives.config;
+
+  Future<void> onClashInit() async {
+    final current = await _box.get(_BoxKey.current);
+    if (current != null) {
+      final file = getFile('$current');
+      if (file.existsSync()) {
+        return reloadConfigs(true, file.path);
       }
-    } on DioException catch (e) {
-      Log.i(e.response);
+    }
+  }
+
+  @override
+  FutureOr<void> updateCurrentConfig(String url) async {
+    final current = _box.get(_BoxKey.current);
+    await reloadConfigs(true, url, update: true, reload: url == current);
+  }
+
+  @override
+  Future<String?> getCurrentConfig() async {
+    final current = await _box.get(_BoxKey.current);
+    if (current is String) {
+      return current;
     }
     return null;
+  }
+
+  /// clashEvent
+
+  FutureOr<void> reloadConfigs(
+    bool force,
+    String url, {
+    bool update = false,
+    bool reload = true,
+  }) async {
+    return EventQueue.runOne(reloadConfigs, () async {
+      final file = getFile(url);
+      final baseName = file.path;
+
+      try {
+        final fileExists = file.existsSync();
+        final config = await repo.configsEvent.getConfig(url);
+
+        if (!fileExists || update || config?.shouldUpdate() == true) {
+          Log.w('update: $url');
+
+          final responseFile = await dlConfigDio.get<String>(
+            url,
+            options: .new(
+              responseType: ResponseType.plain,
+              headers: {'User-Agent': 'clash'},
+            ),
+          );
+          final fileData = responseFile.data;
+          final info =
+              responseFile.headers['subscription-userinfo']?.firstOrNull ?? '';
+          Log.w("header: $info");
+          if (fileData != null) {
+            final editor = YamlUtils.edit(json.encode(fileData));
+
+            updateDelegateConfig(editor);
+            final fileTemp = file.parent.childFile('$baseName.temp');
+            fileTemp.writeAsStringSync(editor.toString());
+            if (!fileExists) {
+              file.createSync(recursive: true);
+            }
+            fileTemp.renameSync(file.path);
+            await repo.configsEvent.setConfigDateTime(url, info);
+          }
+        }
+        final exists = file.existsSync();
+        if (exists) {
+          Log.w('$exists $file');
+          if (reload) {
+            await _box.put(_BoxKey.current, url);
+            await updateConfig(force, file.path);
+          }
+        }
+      } catch (e) {
+        Log.i(e);
+        await _box.put(_BoxKey.current, url);
+        await updateConfig(force, file.path);
+      }
+    });
+  }
+
+  void updateDelegateConfig(YamlEditor editor) {
+    editor.update([], {
+      // 'external-controller-unix': paths.unixSocketPath,
+      'log-level': 'info',
+      'mode': 'rule',
+      'mixed-port': 7890,
+      'allown-lan': false,
+      // ipv6:
+      // ntp:
+      // geodata-mode:
+      // geox-url:
+      // geo-auto-update:
+      // geo-update-interval: 24
+      // rule-providers:
+      //
+      //
+      // 'dns':
+      // 'rules':
+    });
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
 import 'package:useful_tools/useful_tools.dart';
 
@@ -50,7 +51,6 @@ class _ClashListItemState extends State<ClashListItem> {
                 proxyGroupName: '${proxyItem.name}',
                 type: '${proxyItem.type}',
                 selected: proxyItem.now != null && proxyItem.now == item,
-                clashMainNotifier: clashMainNotifier,
               );
             }, childCount: items.length),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -75,7 +75,6 @@ class _ClashListItemState extends State<ClashListItem> {
 class ProxyCard extends StatelessWidget {
   const ProxyCard({
     super.key,
-    required this.clashMainNotifier,
     required this.itemName,
     required this.selected,
     required this.type,
@@ -84,13 +83,14 @@ class ProxyCard extends StatelessWidget {
   });
   final String type;
   final String proxyGroupName;
-  final ClashMainNotifier clashMainNotifier;
   final String itemName;
   final bool selected;
   final bool? left;
   @override
   Widget build(BuildContext context) {
+    final clashMainNotifier = context.getType<ClashMainNotifier>();
     final select = clashMainNotifier.getSelector(itemName);
+
     return ListItem(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       outPadding: EdgeInsets.only(
@@ -109,15 +109,18 @@ class ProxyCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Expanded(
-            child: Text(
-              itemName,
-              maxLines: 2,
-              style: const TextStyle(
-                overflow: TextOverflow.ellipsis,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                fontFamily: '微软雅黑',
-              ),
+            child: Cs(() {
+                return Text(
+                  clashMainNotifier.getName(itemName),
+                  maxLines: 2,
+                  style: const TextStyle(
+                    overflow: TextOverflow.ellipsis,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: '微软雅黑',
+                  ),
+                );
+              }
             ),
           ),
           RepaintBoundary(

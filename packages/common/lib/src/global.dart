@@ -1,3 +1,4 @@
+import 'package:common/src/hive.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -21,5 +22,14 @@ abstract final class G {
         _appCachePath = join(cache.path, 'clash_y');
       }),
     ].wait;
+
+    return Hives.init(join(appSubPath, 'hives'));
+  }
+}
+
+abstract final class HiveConfig {
+  static String get unixSockPath => Hives.config.get('unixSockPath') ?? join(G.appCachePath, 'clash_config', 'socket_clash.sock');
+  static set unixSocketPath(String n) {
+    Hives.config.put('unixSockPath', n);
   }
 }

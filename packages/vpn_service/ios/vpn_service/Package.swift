@@ -4,25 +4,25 @@
 import PackageDescription
 
 let package = Package(
-    name: "macos_daemon",
+    name: "vpn_service",
     platforms: [
-        .macOS(.v13)
+        .iOS("15.0")
     ],
     products: [
-        .library(name: "macos-daemon", targets: ["macos_daemon"])
+        .library(name: "vpn-service", targets: ["vpn_service"])
     ],
     dependencies: [
         .package(name: "FlutterFramework", path: "../FlutterFramework")
     ],
     targets: [
         .target(
-            name: "macos_daemon",
+            name: "vpn_service",
             dependencies: [
                 .product(name: "FlutterFramework", package: "FlutterFramework")
             ],
             resources: [
-                // If your plugin requires a privacy manifest, for example if it collects user
-                // data, update the PrivacyInfo.xcprivacy file to describe your plugin's
+                // If your plugin requires a privacy manifest, for example if it uses any required
+                // reason APIs, update the PrivacyInfo.xcprivacy file to describe your plugin's
                 // privacy impact, and then uncomment these lines. For more information, see
                 // https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
                 // .process("PrivacyInfo.xcprivacy"),

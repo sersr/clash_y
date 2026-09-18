@@ -12,7 +12,7 @@ import Foundation
 protocol MihomoServiceProtocol {
 
     func start(
-        configPath: String,
+        configDir: String?,
         reply: @escaping ([String:Any]) -> Void
     )
 
@@ -21,7 +21,7 @@ protocol MihomoServiceProtocol {
     )
 
     func restart(
-        configPath: String,
+        configDir: String,
         reply: @escaping ([String:Any]) -> Void
     )
 

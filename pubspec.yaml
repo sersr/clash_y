@@ -6,10 +6,10 @@ version: 1.0.0+1
 workspace:
   - packages/common
   - packages/clash_core
-  - packages/macos_daemon
+  - packages/vpn_service
 
 environment:
-  sdk: ">=3.12.0 <4.0.0"
+  sdk: ">=3.13.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -39,9 +39,12 @@ dependencies:
 
   clash_core: any
   common: ^0.0.1
-  macos_daemon: ^0.0.1
+  vpn_service: ^0.0.1
   flutter_nop: ^4.0.0
   material_ui: ^1.2.0
+  web_socket_channel: ^3.0.3
+  crypto: ^3.0.7
+  tray_manager: ^0.5.3
 
 dev_dependencies:
   flutter_test:

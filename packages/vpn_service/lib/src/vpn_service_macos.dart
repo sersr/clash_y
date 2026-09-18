@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import '../vpn_service_platform_interface.dart';
+
 enum VPNType { notRegistered, enabled, requiresApproval, notFound }
 
 final class VPNStatus {
@@ -19,8 +21,8 @@ final class VPNStatus {
   }
 }
 
-class VPNService {
-  static const MethodChannel _channel = MethodChannel('macos_daemon');
+class VPNService extends VpnServicePlatform {
+  static const MethodChannel methodChannel = MethodChannel('vpn_service');
 
   static VPNStatus? _toVpnStatus(dynamic value) {
     if (value case {'status': int status, "error": String error}) {
@@ -32,27 +34,27 @@ class VPNService {
   }
 
   static Future<VPNStatus?> installHelper() async {
-    final value = await _channel.invokeMethod('installHelper');
+    final value = await methodChannel.invokeMethod('installHelper');
 
     return _toVpnStatus(value);
   }
 
   static Future<VPNStatus?> unregister() async {
-    final value = await _channel.invokeMethod('unregister');
+    final value = await methodChannel.invokeMethod('unregister');
 
     return _toVpnStatus(value);
   }
 
-  static Future<VPNStatus?> start(String configPath) async {
-    final value = await _channel.invokeMethod('start', {
-      'configPath': configPath,
+  static Future<VPNStatus?> start(String configDir) async {
+    final value = await methodChannel.invokeMethod('start', {
+      'configDir': configDir,
     });
 
     return _toVpnStatus(value);
   }
 
   static Future<VPNStatus?> stop() async {
-    final value = await _channel.invokeMethod('stop');
+    final value = await methodChannel.invokeMethod('stop');
 
     return _toVpnStatus(value);
   }

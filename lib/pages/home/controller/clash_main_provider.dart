@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:clash_y/event/base/data.dart';
 import 'package:clash_y/event/repository.dart';
@@ -7,8 +8,9 @@ import 'package:clash_y/model/log_model.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
-import 'package:macos_daemon/macos_daemon.dart';
 import 'package:nop/nop.dart';
+import 'package:path/path.dart';
+import 'package:vpn_service/vpn_service.dart';
 
 class ClashMainNotifier with NopLifecycle {
   ClashMainNotifier();
@@ -26,14 +28,26 @@ class ClashMainNotifier with NopLifecycle {
   final AV<ProxiesData?> _data = .new(null);
   ProxiesData? get data => _data.value;
 
+  String getName(String proxyName) {
+    if (data case var data?) {
+      for (var item in data.proxies) {
+        if (item.name == proxyName) {
+          return '$proxyName: ${item.now}';
+        }
+      }
+    }
+    return proxyName;
+  }
+
   @override
   void nopInit() async {
     super.nopInit();
 
     getData();
     await start();
-
-    // listenLogTraffic();
+    if (data?.proxies.isNotEmpty != true) {
+      getData();
+    }
   }
 
   @override
@@ -44,7 +58,7 @@ class ClashMainNotifier with NopLifecycle {
   }
 
   Future<void> start() async {
-    final initPathAsync = initConfigPath();
+    final initPathAsync = initConfigPath(HiveConfig.unixSockPath);
     final r = await VPNService.installHelper();
     Log.w('register: $r');
     final path = await initPathAsync;
@@ -59,7 +73,7 @@ class ClashMainNotifier with NopLifecycle {
 
   Future<void> getData() async {
     final remoteData =
-        await repository.getProxies() ??
+        await repository.clashEvent.getProxies() ??
         const ProxiesData(history: [], proxies: []);
     _data.value = remoteData;
     removeProxyDelay();
@@ -77,6 +91,16 @@ class ClashMainNotifier with NopLifecycle {
     }
   }
 
+  void stop() {
+    VPNService.stop();
+
+    HiveConfig.unixSocketPath = join(
+      Repository.paths.appSupportPath,
+      'socket_${Random().nextInt(65556)}.sock',
+    );
+    repository.clashEvent.update();
+  }
+
   void removeProxyDelay() {
     final list = proxyKeys.toList();
     _mainChangedNotifier.removeWhere((e, _) => list.contains(e));
@@ -85,13 +109,13 @@ class ClashMainNotifier with NopLifecycle {
   Future<void> selectProxy(String? selector, String? proxy) async {
     if (selector == null || proxy == null) return;
     return EventQueue.runOne([selector, selector], () async {
-      await repository.selectProxy(selector, proxy);
+      await repository.clashEvent.selectProxy(selector, proxy);
       return getData();
     });
   }
 
   Future<void> getDelay(String proxy) async {
-    final delay = await repository.getDelay(
+    final delay = await repository.clashEvent.getDelay(
       proxy,
       3000,
       'http://www.gstatic.com/generate_204',
@@ -126,7 +150,7 @@ class ClashMainNotifier with NopLifecycle {
   void listenLogTraffic() {
     _log?.cancel();
     _traffic?.cancel();
-    _log = repository
+    _log = repository.clashEvent
         .watchLogs('debug')
         .listen(
           _logListen,
@@ -134,7 +158,7 @@ class ClashMainNotifier with NopLifecycle {
           onError: (e) => _log = null,
         );
 
-    _traffic = repository.watchTraffic().listen(
+    _traffic = repository.clashEvent.watchTraffic().listen(
       _trafficListen,
       onDone: () => _traffic = null,
       onError: (e) => _traffic = null,

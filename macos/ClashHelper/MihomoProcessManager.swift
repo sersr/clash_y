@@ -6,25 +6,135 @@
 import Darwin
 import Foundation
 
+let clashPath = "packages/clash_core/clash"
+
 final class MihomoProcessManager {
+
+    // MARK: - Constants
+
+    private enum Constants {
+
+        static let configDirFile =
+            "/Library/Application Support/clash_y/config_dir"
+
+        static let stopTimeout: TimeInterval = 5
+        static let pollInterval: TimeInterval = 0.1
+    }
+
+    // MARK: - Properties
 
     private let pidStore = MihomoPidStore()
 
     private var process: Process?
-    private var stdoutPipe: Pipe?
-    private var stderrPipe: Pipe?
+
+    // mihomo stdout/stderr 日志文件
+    private var logHandle: FileHandle?
+
+    // 防止 stop 被重复调用
+    private var isStopping = false
+
+    // MARK: - State
 
     var isRunning: Bool {
-        process?.isRunning ?? false
+        process?.isRunning == true
     }
 
     var pid: Int32 {
         process?.processIdentifier ?? 0
     }
 
+    // MARK: - Config Directory
+
+    /// 当前保存的 configDir
+    var configDir: String? {
+        loadConfigDir()
+    }
+
+    /// 保存 configDir
+    @discardableResult
+    func saveConfigDir(_ configDir: String) -> Bool {
+
+        let path = configDir.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !path.isEmpty else {
+            return false
+        }
+
+        let fileURL = URL(fileURLWithPath: Constants.configDirFile)
+        let directoryURL = fileURL.deletingLastPathComponent()
+
+        do {
+
+            try FileManager.default.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: true
+            )
+
+            try path.write(
+                toFile: Constants.configDirFile,
+                atomically: true,
+                encoding: .utf8
+            )
+
+            print("[mihomo] configDir saved: \(path)")
+
+            return true
+
+        } catch {
+
+            print("[mihomo] failed to save configDir: \(error)")
+
+            return false
+        }
+    }
+
+    /// 读取已经保存的 configDir
+    private func loadConfigDir() -> String? {
+
+        guard
+            let data = FileManager.default.contents(
+                atPath: Constants.configDirFile
+            )
+        else {
+            return nil
+        }
+
+        guard
+            let value = String(
+                data: data,
+                encoding: .utf8
+            )
+        else {
+            return nil
+        }
+
+        let path = value.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !path.isEmpty else {
+            return nil
+        }
+
+        return path
+    }
+
+    /// 删除保存的 configDir
+    func clearConfigDir() {
+
+        try? FileManager.default.removeItem(
+            atPath: Constants.configDirFile
+        )
+
+        print("[mihomo] configDir cleared")
+    }
+
     // MARK: - Asset Path
 
-    func flutterAssetURL(for assetKey: String) -> URL? {
+    private func flutterAssetURL(for assetKey: String) -> URL? {
+
         guard var url = Bundle.main.executableURL else {
             return nil
         }
@@ -44,96 +154,267 @@ final class MihomoProcessManager {
 
     // MARK: - Start
 
-    func start(configPath: String) throws -> [String: Any] {
-        if isRunning {
+    /// 第一次启动：
+    ///
+    ///     start(configDir: "/Library/Application Support/clash_y")
+    ///
+    /// 后续 Helper 重启：
+    ///
+    ///     start()
+    ///
+    /// 自动读取之前保存的 configDir。
+    @discardableResult
+    func start(configDir: String? = nil) throws -> [String: Any] {
+
+        // ---------------------------------------------------------
+        // 1. 如果当前已经运行，直接返回
+        // ---------------------------------------------------------
+
+        if let process, process.isRunning {
+
             return [
                 "status": 0,
-                "pid": pid,
+                "pid": process.processIdentifier,
                 "msg": "running",
                 "error": "",
             ]
         }
 
-        guard let clashURL = flutterAssetURL(for: "packages/clash_core/clash") else {
-            throw NSError(
-                domain: "clash",
+        // ---------------------------------------------------------
+        // 2. 查找 mihomo executable
+        // ---------------------------------------------------------
+
+        guard
+            let clashURL = flutterAssetURL(
+                for: clashPath
+            )
+        else {
+
+            throw mihomoError(
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Cannot find clash executable"]
+                message: "Cannot find clash executable"
             )
         }
 
-        guard FileManager.default.fileExists(atPath: configPath) else {
-            throw NSError(
-                domain: "clash",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Config file does not exist: \(configPath)"]
+        // ---------------------------------------------------------
+        // 4. 确定 configDir
+        //
+        // 第一次：
+        //     start(configDir: xxx)
+        //
+        // 后续：
+        //     start()
+        // ---------------------------------------------------------
+
+        let resolvedConfigDir: String
+
+        if let configDir {
+
+            let path = configDir.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+            guard !path.isEmpty else {
+
+                throw mihomoError(
+                    code: 2,
+                    message: "configDir is empty"
+                )
+            }
+
+            resolvedConfigDir = path
+
+            // 第一次启动时保存
+            guard saveConfigDir(path) else {
+                throw mihomoError(
+                    code: 3,
+                    message:
+                        "Failed to save configDir: \(path)"
+                )
+            }
+
+        } else {
+
+            guard let savedDir = loadConfigDir() else {
+
+                print(
+                    "[mihomo] no configDir saved, do not start"
+                )
+
+                return [
+                    "status": 1,
+                    "pid": 0,
+                    "msg": "configDir not configured",
+                    "error": "",
+                ]
+            }
+
+            resolvedConfigDir = savedDir
+        }
+
+        // ---------------------------------------------------------
+        // 5. 检查 configDir
+        // ---------------------------------------------------------
+
+        var isDirectory: ObjCBool = false
+
+        guard
+            FileManager.default.fileExists(
+                atPath: resolvedConfigDir,
+                isDirectory: &isDirectory
+            ),
+            isDirectory.boolValue
+        else {
+            throw mihomoError(
+                code: 4,
+                message:
+                    "Config directory does not exist: \(resolvedConfigDir)"
             )
         }
 
-        // 🧹 清理上次残留（helper 崩溃 / 系统重启后遗留的 mihomo）
-        cleanupStaleProcess(expectedPath: clashURL.path)
+        // ---------------------------------------------------------
+        // 6. 检查 config.yaml
+        // ---------------------------------------------------------
 
-        cleanupPipes()
+        let configURL = URL(fileURLWithPath: resolvedConfigDir)
+            .appendingPathComponent("config.yaml")
 
-        let process = Process()
-        process.executableURL = clashURL
-        process.arguments = [
+        guard
+            FileManager.default.fileExists(
+                atPath: configURL.path
+            )
+        else {
+            throw mihomoError(
+                code: 5,
+                message:
+                    "config.yaml does not exist: \(configURL.path)"
+            )
+        }
+
+        // ---------------------------------------------------------
+        // 7. 清理旧日志句柄
+        // ---------------------------------------------------------
+
+        cleanupLog()
+        cleanupStaleProcess(path: clashURL.path)
+
+        // ---------------------------------------------------------
+        // 8. 创建 Process
+        // ---------------------------------------------------------
+
+        let newProcess = Process()
+
+        newProcess.executableURL = clashURL
+
+        newProcess.arguments = [
             "-d",
-            URL(fileURLWithPath: configPath)
-                .deletingLastPathComponent()
-                .path,
+            resolvedConfigDir,
         ]
 
-        let stdout = Pipe()
-        let stderr = Pipe()
+        let logURL =
+            configURL
+            .deletingPathExtension()
+            .appendingPathExtension("yaml.log")
 
-        process.standardOutput = stdout
-        process.standardError = stderr
+        do {
 
-        stdout.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
-            if let text = String(data: data, encoding: .utf8) {
-                print("[mihomo] \(text)", terminator: "")
+            if !FileManager.default.fileExists(
+                atPath: logURL.path
+            ) {
+
+                FileManager.default.createFile(
+                    atPath: logURL.path,
+                    contents: nil
+                )
+            }
+
+            let handle = try FileHandle(
+                forWritingTo: logURL
+            )
+
+            // 追加写入，不覆盖之前日志
+            handle.seekToEndOfFile()
+
+            logHandle = handle
+
+            newProcess.standardOutput = handle
+            newProcess.standardError = handle
+
+            print(
+                "[mihomo] log file: \(logURL.path)"
+            )
+
+        } catch {
+            throw mihomoError(
+                code: 6,
+                message:
+                    "Failed to open mihomo log: \(error)"
+            )
+        }
+
+        // ---------------------------------------------------------
+        // 10. terminationHandler
+        // ---------------------------------------------------------
+
+        newProcess.terminationHandler = {
+            [weak self] process in
+
+            guard let self else {
+                return
+            }
+
+            print(
+                "mihomo terminated: " + "status=\(process.terminationStatus), "
+                    + "pid=\(process.processIdentifier)"
+            )
+
+            DispatchQueue.main.async {
+                if self.process === process {
+                    self.process = nil
+                    self.cleanupLog()
+                    self.isStopping = false
+                }
             }
         }
 
-        stderr.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
-            if let text = String(data: data, encoding: .utf8) {
-                print("[mihomo:error] \(text)", terminator: "")
-            }
+        // ---------------------------------------------------------
+        // 11. 启动
+        // ---------------------------------------------------------
+
+        do {
+
+            try newProcess.run()
+
+        } catch {
+
+            cleanupLog()
+
+            throw mihomoError(
+                code: 7,
+                message:
+                    "Failed to start mihomo: \(error)"
+            )
         }
 
-        self.stdoutPipe = stdout
-        self.stderrPipe = stderr
+        process = newProcess
 
-        process.terminationHandler = { [weak self] p in
-            guard let self else { return }
-            print("mihomo terminated: \(p.terminationStatus), pid=\(p.processIdentifier)")
+        // ---------------------------------------------------------
+        // 12. 保存 PID
+        // ---------------------------------------------------------
 
-            if self.process === p {
-                self.process = nil
-                self.cleanupPipes()
-                self.pidStore.clear()
-            }
-        }
-
-        try process.run()
-        self.process = process
-
-        // 📝 记录 PID，供下次启动清理
         pidStore.write(
-            pid: process.processIdentifier,
-            executablePath: clashURL.path
+            pid: newProcess.processIdentifier,
+            executablePath: executablePath(of: newProcess.processIdentifier) ?? clashURL.path,
         )
 
-        print("mihomo started, pid=\(process.processIdentifier)")
+        print(
+            "mihomo started, " + "pid=\(newProcess.processIdentifier), "
+                + "configDir=\(resolvedConfigDir)"
+        )
 
         return [
             "status": 0,
-            "pid": process.processIdentifier,
+            "pid": newProcess.processIdentifier,
             "msg": "start success",
             "error": "",
         ]
@@ -142,113 +423,227 @@ final class MihomoProcessManager {
     // MARK: - Stop
 
     func stop(completion: @escaping () -> Void) {
-        guard let process = process else {
-            pidStore.clear()
-            cleanupPipes()
+
+        // 防止同时执行多个 stop
+        guard !isStopping else {
+            completion()
+            return
+        }
+
+        guard let process else {
+            cleanupLog()
             completion()
             return
         }
 
         guard process.isRunning else {
+            pidStore.clear(pid: process.processIdentifier)
             self.process = nil
-            pidStore.clear()
-            cleanupPipes()
+            cleanupLog()
             completion()
             return
         }
 
+        isStopping = true
+
         let pid = process.processIdentifier
-        print("mihomo stopping, pid=\(pid)")
+
+        print(
+            "mihomo stopping, pid=\(pid)"
+        )
 
         process.terminate()
 
-        let deadline = Date().addingTimeInterval(5)
-
-        func finish() {
-            if self.process === process {
-                self.process = nil
-            }
-            self.cleanupPipes()
-            self.pidStore.clear()
-            completion()
-        }
+        let deadline = Date().addingTimeInterval(
+            Constants.stopTimeout
+        )
 
         func poll() {
+
+            // -----------------------------------------------------
+            // 已经退出
+            // -----------------------------------------------------
+
             if !process.isRunning {
-                print("mihomo stopped, pid=\(pid)")
-                finish()
+
+                print(
+                    "mihomo stopped, pid=\(pid)"
+                )
+
+                DispatchQueue.main.async {
+
+                    self.isStopping = false
+
+                    if self.process === process {
+                        self.pidStore.clear(pid: process.processIdentifier)
+                        self.process = nil
+                    }
+                    self.cleanupLog()
+                    completion()
+                }
+
                 return
             }
+
+            // -----------------------------------------------------
+            // 超时
+            // -----------------------------------------------------
+
             if Date() >= deadline {
-                print("mihomo did not terminate in time, killing, pid=\(pid)")
+
+                print(
+                    "mihomo did not terminate in time, " + "killing, pid=\(pid)"
+                )
+
                 kill(pid, SIGKILL)
-                finish()
+
+                DispatchQueue.main.async {
+
+                    self.isStopping = false
+
+                    if self.process === process {
+                        self.pidStore.clear(pid: process.processIdentifier)
+                        self.process = nil
+                    }
+
+                    self.cleanupLog()
+
+                    completion()
+                }
+
                 return
             }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+
+            // -----------------------------------------------------
+            // 继续等待
+            // -----------------------------------------------------
+
+            DispatchQueue.global().asyncAfter(
+                deadline: .now() + Constants.pollInterval
+            ) {
                 poll()
             }
         }
 
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+        DispatchQueue.global().asyncAfter(
+            deadline: .now() + Constants.pollInterval
+        ) {
             poll()
         }
     }
 
     // MARK: - Stale Cleanup
 
-    /// 读取 PID 文件，校验可执行路径一致后 SIGKILL，最后清掉文件。
-    /// 覆盖 helper 崩溃、被 kill -9、系统断电后残留的 mihomo。
-    private func cleanupStaleProcess(expectedPath: String) {
-        guard let record = pidStore.load() else { return }
+    /// Helper 崩溃、kill -9、系统重启等情况下，
+    /// 根据 PID 文件尝试清理之前遗留的 Mihomo。
+    private func cleanupStaleProcess(
+        path: String
+    ) {
 
-        // 无论结果如何，先清掉记录，避免下次再读到同一份
-        defer { pidStore.clear() }
+        guard let record = pidStore.load() else {
+            return
+        }
+
+        defer {
+            pidStore.clear(pid: record.pid)
+        }
 
         let pid = record.pid
 
-        // 1. 进程是否还存在
-        if kill(pid, 0) != 0 {
-            let err = errno
-            if err == ESRCH {
-                print("[cleanup] pid \(pid) not running, nothing to do")
-            } else if err == EPERM {
-                print("[cleanup] pid \(pid) exists but EPERM (unexpected as root)")
-            } else {
-                print("[cleanup] kill(pid,0) failed: errno=\(err)")
-            }
+        guard let actualPath = executablePath(of: pid) else {
+
+            print(
+                "[cleanup] cannot resolve path for pid \(pid)"
+            )
+
             return
         }
 
-        // 2. 校验可执行路径，防 PID 复用误杀
-        guard let path = executablePath(of: pid) else {
-            print("[cleanup] cannot resolve path for pid \(pid), skip")
-            return
-        }
-        guard path == expectedPath else {
-            print("[cleanup] pid \(pid) is '\(path)', not our mihomo, skip")
+        guard actualPath.hasSuffix(clashPath) || actualPath == path else {
+
+            print(
+                "[cleanup] pid \(pid) is not our mihomo: " + "\(actualPath)"
+            )
+
             return
         }
 
-        // 3. 确认是我们的进程 → 杀
-        print("[cleanup] killing stale mihomo, pid=\(pid)")
-        kill(pid, SIGKILL)
+        print(
+            "[cleanup] killing stale mihomo, pid=\(pid)"
+        )
+
+        if kill(pid, SIGKILL) != 0 {
+
+            print(
+                "[cleanup] failed to kill pid \(pid), " + "errno=\(errno)"
+            )
+        }
     }
 
-    /// 通过 proc_pidpath 获取指定 pid 的可执行文件绝对路径
-    private func executablePath(of pid: Int32) -> String? {
-        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-        let ret = proc_pidpath(pid, &buffer, UInt32(buffer.count))
-        guard ret > 0 else { return nil }
+    // MARK: - Process Path
+
+    private func executablePath(
+        of pid: Int32
+    ) -> String? {
+
+        var buffer = [CChar](
+            repeating: 0,
+            count: Int(MAXPATHLEN)
+        )
+
+        let result = proc_pidpath(
+            pid,
+            &buffer,
+            UInt32(buffer.count)
+        )
+
+        guard result > 0 else {
+            return nil
+        }
+
         return String(cString: buffer)
     }
 
-    // MARK: - Cleanup
+    // MARK: - Log
 
-    private func cleanupPipes() {
-        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
-        stderrPipe?.fileHandleForReading.readabilityHandler = nil
-        stdoutPipe = nil
-        stderrPipe = nil
+    /// 关闭当前 mihomo 日志文件
+    private func cleanupLog() {
+
+        guard let handle = logHandle else {
+            return
+        }
+
+        do {
+            try handle.synchronize()
+        } catch {
+            print(
+                "[mihomo] failed to synchronize log: \(error)"
+            )
+        }
+
+        do {
+            try handle.close()
+        } catch {
+            print(
+                "[mihomo] failed to close log: \(error)"
+            )
+        }
+
+        logHandle = nil
+    }
+
+    // MARK: - Error
+
+    private func mihomoError(
+        code: Int,
+        message: String
+    ) -> NSError {
+        NSError(
+            domain: "mihomo",
+            code: code,
+            userInfo: [
+                NSLocalizedDescriptionKey: message
+            ]
+        )
     }
 }

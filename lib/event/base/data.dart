@@ -15,10 +15,9 @@ class ConfigName {
 }
 
 class ConfigsCurrent {
-  const ConfigsCurrent(this.current, this.tables);
-  static const none = ConfigsCurrent('', []);
+  const ConfigsCurrent(this.tables);
+  static const none = ConfigsCurrent([]);
   final List<ConfigTable> tables;
-  final String current;
 }
 
 class ProxiesData {

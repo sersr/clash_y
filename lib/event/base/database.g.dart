@@ -25,6 +25,10 @@ Map<String, dynamic> _ConfigTable_toJson(ConfigTable table) {
     'name': table.name,
     'updateInterval': table.updateInterval,
     'updateTime': table.updateTime,
+    'upload': table.upload,
+    'download': table.download,
+    'total': table.total,
+    'expire': table.expire,
   };
 }
 
@@ -38,6 +42,10 @@ class GenConfigTable extends DatabaseTable<ConfigTable, GenConfigTable> {
   final name = 'name';
   final updateInterval = 'updateInterval';
   final updateTime = 'updateTime';
+  final upload = 'upload';
+  final download = 'download';
+  final total = 'total';
+  final expire = 'expire';
 
   void updateConfigTable(
     UpdateStatement<ConfigTable, GenConfigTable> update,
@@ -54,12 +62,21 @@ class GenConfigTable extends DatabaseTable<ConfigTable, GenConfigTable> {
 
     if (configTable.updateTime != null)
       update.updateTime.set(configTable.updateTime);
+
+    if (configTable.upload != null) update.upload.set(configTable.upload);
+
+    if (configTable.download != null) update.download.set(configTable.download);
+
+    if (configTable.total != null) update.total.set(configTable.total);
+
+    if (configTable.expire != null) update.expire.set(configTable.expire);
   }
 
   @override
   String createTable() {
     return 'CREATE TABLE IF NOT EXISTS $table ($id TEXT PRIMARY KEY, $url TEXT, '
-        '$name TEXT, $updateInterval INTEGER, $updateTime TEXT)';
+        '$name TEXT, $updateInterval INTEGER, $updateTime TEXT, $upload INTEGER, '
+        '$download INTEGER, $total INTEGER, $expire INTEGER)';
   }
 
   static ConfigTable mapToTable(Map<String, dynamic> map) => ConfigTable(
@@ -68,6 +85,10 @@ class GenConfigTable extends DatabaseTable<ConfigTable, GenConfigTable> {
     name: map['name'] as String?,
     updateInterval: map['updateInterval'] as int?,
     updateTime: DateTime.tryParse(map['updateTime'] as String? ?? ''),
+    upload: map['upload'] as int?,
+    download: map['download'] as int?,
+    total: map['total'] as int?,
+    expire: map['expire'] as int?,
   );
 
   @override
@@ -87,6 +108,14 @@ extension ItemExtensionConfigTable<T extends ItemExtension<GenConfigTable>>
 
   T get updateTime => item(table.updateTime) as T;
 
+  T get upload => item(table.upload) as T;
+
+  T get download => item(table.download) as T;
+
+  T get total => item(table.total) as T;
+
+  T get expire => item(table.expire) as T;
+
   T get configTable_id => id;
 
   T get configTable_url => url;
@@ -96,6 +125,14 @@ extension ItemExtensionConfigTable<T extends ItemExtension<GenConfigTable>>
   T get configTable_updateInterval => updateInterval;
 
   T get configTable_updateTime => updateTime;
+
+  T get configTable_upload => upload;
+
+  T get configTable_download => download;
+
+  T get configTable_total => total;
+
+  T get configTable_expire => expire;
 }
 
 extension JoinItemConfigTable<J extends JoinItem<GenConfigTable>> on J {
@@ -108,4 +145,12 @@ extension JoinItemConfigTable<J extends JoinItem<GenConfigTable>> on J {
   J get configTable_updateInterval => joinItem(joinTable.updateInterval) as J;
 
   J get configTable_updateTime => joinItem(joinTable.updateTime) as J;
+
+  J get configTable_upload => joinItem(joinTable.upload) as J;
+
+  J get configTable_download => joinItem(joinTable.download) as J;
+
+  J get configTable_total => joinItem(joinTable.total) as J;
+
+  J get configTable_expire => joinItem(joinTable.expire) as J;
 }

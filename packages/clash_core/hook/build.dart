@@ -54,6 +54,14 @@ void main(List<String> args) async {
       }
     }
 
+    // `cmfa` selects the VpnService friendly TUN implementation: sing-tun then
+    // adopts the file descriptor handed over by the Android app instead of
+    // creating and routing a tun device of its own, which needs root.
+    final tags = <String>[
+      'with_gvisor',
+      if (targetOs == OS.android) 'cmfa',
+    ];
+
     final arguments = <String>[
       'build',
       if (targetOs == OS.android) '-buildmode=c-shared',
@@ -61,7 +69,7 @@ void main(List<String> args) async {
       '-o',
       outputPath.toFilePath(),
       '-tags',
-      'with_gvisor',
+      tags.join(','),
       '.',
     ];
 

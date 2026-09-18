@@ -62,7 +62,7 @@ class _ClashConnectionsState extends State<ClashConnections> {
               children: [
                 Expanded(
                   child: Text(
-                    '${item?.metadata?.host}',
+                    '${item?.metadata?.ipName}',
                     style: const TextStyle(fontSize: 18),
                   ),
                 ),

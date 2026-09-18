@@ -5,8 +5,10 @@
 import FlutterMacOS
 import Foundation
 
-import macos_daemon
+import tray_manager
+import vpn_service
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
-  MacosDaemonPlugin.register(with: registry.registrar(forPlugin: "MacosDaemonPlugin"))
+  TrayManagerPlugin.register(with: registry.registrar(forPlugin: "TrayManagerPlugin"))
+  VpnServicePlugin.register(with: registry.registrar(forPlugin: "VpnServicePlugin"))
 }

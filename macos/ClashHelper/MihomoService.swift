@@ -14,13 +14,13 @@ final class MihomoService: NSObject, MihomoServiceProtocol {
     private let processManager = MihomoProcessManager()
 
     func start(
-        configPath: String,
+        configDir: String? = nil,
         reply: @escaping ([String: Any]) -> Void
     ) {
         queue.async { [weak self] in
             guard let self else { return }
             do {
-                let res = try self.processManager.start(configPath: configPath)
+                let res = try self.processManager.start(configDir: configDir)
                 reply(res)
             } catch {
                 reply(["status": -1, "error": error.localizedDescription])
@@ -40,7 +40,7 @@ final class MihomoService: NSObject, MihomoServiceProtocol {
     }
 
     func restart(
-        configPath: String,
+        configDir: String,
         reply: @escaping ([String: Any]) -> Void
     ) {
         queue.async { [weak self] in
@@ -50,7 +50,7 @@ final class MihomoService: NSObject, MihomoServiceProtocol {
                 // 给内核一点时间释放监听端口
                 self.queue.asyncAfter(deadline: .now() + 0.3) {
                     do {
-                        let res = try self.processManager.start(configPath: configPath)
+                        let res = try self.processManager.start(configDir: configDir)
                         reply(res)
                     } catch {
                         reply(["status": -1, "error": error.localizedDescription])

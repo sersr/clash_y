@@ -11,22 +11,25 @@ export 'database.dart';
 part 'events.g.dart';
 
 @NopServerEvent()
-abstract class Event with ClashEvent, ConfigsEvent {
-  ClashEvent get clashEvent => this;
-}
+@NopServerEventItem()
+abstract class Event with ConfigsEvent {}
 
 abstract mixin class ClashEvent {
   FutureOr<ProxiesData?> getProxies();
   FutureOr<void> selectProxy(String selector, String proxy);
   FutureOr<void> resetConfigs(ConfigsData data);
-  FutureOr<void> reloadConfigs(bool force, String path);
   FutureOr<void> getRules();
   FutureOr<void> getConfigs();
   FutureOr<Delay?> getDelay(String proxy, int timeout, String testUrl);
 
   Stream<TrafficModel> watchTraffic();
+
   Stream<LogModel> watchLogs(String level);
-  // Stream<Connections> watchConnections();
+  @NopServerMethod(unique: true)
+  Stream<Connections> watchConnections(Duration interval);
+
+  FutureOr<void> updateCurrentConfig(String url);
+  Future<String?> getCurrentConfig();
 }
 
 abstract mixin class ConfigsEvent {
@@ -34,6 +37,7 @@ abstract mixin class ConfigsEvent {
   FutureOr<void> addNewConfigUrl(String url, int updateInterval, String? name);
   FutureOr<void> removeConfigUrl(String url);
   FutureOr<void> updateConfigsUrl(String url, ConfigTable config);
-  FutureOr<String?> getCurrentConfig();
-  FutureOr<void> updateCurrentConfig(String url);
+  FutureOr<ConfigTable?> getConfig(String url);
+
+  FutureOr<void> setConfigDateTime(String url, String info);
 }
