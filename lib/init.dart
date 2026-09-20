@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:clash_y/event/repository.dart';
 import 'package:clash_y/pages/home/controller/clash_main_provider.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nop/nop.dart';
+import 'package:yaml/yaml.dart';
 
 import '_route/routes.dart';
 import 'pages/home/controller/clash_conections.dart';
@@ -22,7 +24,7 @@ Future<void> initMain() async {
 
 void initLog() {
   Log.defaultLogger
-    ..lines = 20
+    // ..lines = 20
     ..logPathFn = (path) => path;
 }
 
@@ -41,12 +43,29 @@ Future<String> initConfigPath(String unixSocketPath) async {
   final file = configDir.childFile('config.yaml');
   Log.w(file.path);
 
+  // mihomo binds the Unix controller socket itself. Make sure the socket's
+  // parent directory exists, especially when the socket lives under the
+  // application cache directory.
+  if (unixSocketPath.isNotEmpty) {
+    await fs.currentDirectory
+        .childFile(unixSocketPath)
+        .parent
+        .create(recursive: true);
+  }
+
   if (await file.exists()) {
     await compute((p) async {
       final file = fs.currentDirectory.childFile(p);
-      final editor = YamlUtils.edit(await file.readAsString());
-      editor.update(['external-controller-unix'], unixSocketPath);
-      await file.writeAsString(editor.toString());
+      final data = jsonDecode(jsonEncode(loadYaml(await file.readAsString())));
+
+      data['external-controller-unix'] = unixSocketPath;
+      data['mode'] = 'rule';
+      data.putIfAbsent('tun', () => {})
+      ..['enable'] = true
+      ..['stack'] = 'mixed';
+      data['dns'] = defaultDnsConfig();
+      await file.writeAsString(YamlUtils.edit(jsonEncode(data)).toString());
+      Log.w(await file.readAsString());
     }, file.path);
 
     return configDir.path;

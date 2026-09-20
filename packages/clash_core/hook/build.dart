@@ -13,12 +13,18 @@ void main(List<String> args) async {
     final code = input.config.code;
     final targetOs = code.targetOS;
     final targetArchitecture = _goArchitecture(code.targetArchitecture);
-    final goDirectory = Platform.isAndroid ?  input.packageRoot.resolve('core/'): input.packageRoot.resolve('../mihomo/');
+    final goDirectory = targetOs == OS.android
+        ? input.packageRoot.resolve('core/')
+        : input.packageRoot.resolve('../mihomo/');
     final outputName = targetOs == OS.android ? 'libclash.so' : 'clash';
     final outputPath = input.outputDirectory.resolve(outputName);
 
     output.dependencies.add(goDirectory);
     output.dependencies.add(goDirectory.resolve('go.mod'));
+    if (targetOs == OS.android) {
+      output.dependencies.add(goDirectory.resolve('jni_android.go'));
+      output.dependencies.add(goDirectory.resolve('jni_android.c'));
+    }
 
     final path = Platform.environment['PATH'] != null
         ? ':${Platform.environment['PATH']}'

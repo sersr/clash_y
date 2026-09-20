@@ -238,19 +238,27 @@ final class ClashRequest implements ClashEvent {
 
   FutureOr<void> updateConfig(bool force, String path) async {
     try {
-      // final bytes = await fs.currentDirectory.childFile(path).readAsBytes();
-      final file = fs.currentDirectory.childFile(
-        join(appConfigPath, 'configt.yaml'),
-      );
-      // await file.create(recursive: true);
-      // await file.writeAsBytes(bytes);
-      final response = await _dio.put<String>(
-        'configs?force=$force',
+      final bytes = await fs.currentDirectory.childFile(path).readAsString();
+      // final file = fs.currentDirectory
+      //     .childDirectory(G.appCachePath)
+      //     .childFile('configt.yaml');
+      final file = configYaml;
+      final text = await configYaml.readAsString();
+
+      await file.create(recursive: true);
+      await file.writeAsString(bytes);
+      await _mergeAndroidTunConfig(file);
+      final text2 = await configYaml.readAsString();
+      final response = await _dio.put(
+        'configs',
         data: {'path': file.path},
+        queryParameters: {'force': true},
       );
+      Log.w(text);
+      Log.w(text2);
       Log.i(response.data);
-    } on DioException catch (e) {
-      Log.i(e.response);
+    } catch (e) {
+      Log.i(e);
     }
   }
 
@@ -279,6 +287,41 @@ final class ClashRequest implements ClashEvent {
       Log.w('$e\n$s');
     }
     return null;
+  }
+
+  /// mihomo disables runtime config update on Android by default. The core
+  /// enables PUT /configs again, but the new config must keep the current TUN
+  /// file descriptor. Otherwise ReCreateTun would close the VpnService fd and
+  /// try to create a new TUN device without root.
+  Future<void> _mergeAndroidTunConfig(File file) async {
+    if (io.Platform.isAndroid == false) {
+      return;
+    }
+
+    final current = await gets('configs');
+    if (current.isEmpty) {
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(current);
+      if (decoded is Map) {
+        final tun = decoded['tun'];
+        if (tun is Map) {
+          final fd = tun['file-descriptor'];
+          if (fd is int && fd > 0) {
+            final normalized = Map<String, Object?>.from(tun);
+            normalized.remove('inet4-address');
+            normalized['enable'] = true;
+            final editor = YamlUtils.edit(await file.readAsString());
+            editor.update(['tun'], normalized);
+            await file.writeAsString(editor.toString());
+          }
+        }
+      }
+    } catch (e) {
+      Log.w('merge Android TUN config failed: $e');
+    }
   }
 
   String get appCachePath => join(paths.appPath, 'caches');
@@ -314,8 +357,8 @@ final class ClashRequest implements ClashEvent {
   }
 
   @override
-  Future<String?> getCurrentConfig() async {
-    final current = await _box.get(_BoxKey.current);
+  String? getCurrentConfig() {
+    final current = _box.get(_BoxKey.current);
     if (current is String) {
       return current;
     }
@@ -345,7 +388,7 @@ final class ClashRequest implements ClashEvent {
             url,
             options: .new(
               responseType: ResponseType.plain,
-              headers: {'User-Agent': 'clash'},
+              headers: {'User-Agent': 'clash/mihomo'},
             ),
           );
           final fileData = responseFile.data;
@@ -353,10 +396,13 @@ final class ClashRequest implements ClashEvent {
               responseFile.headers['subscription-userinfo']?.firstOrNull ?? '';
           Log.w("header: $info");
           if (fileData != null) {
-            final editor = YamlUtils.edit(json.encode(fileData));
+            final editor = YamlUtils.edit(fileData);
 
             updateDelegateConfig(editor);
             final fileTemp = file.parent.childFile('$baseName.temp');
+            if (!await fileTemp.exists()) {
+              await fileTemp.create(recursive: true);
+            }
             fileTemp.writeAsStringSync(editor.toString());
             if (!fileExists) {
               file.createSync(recursive: true);
@@ -382,23 +428,24 @@ final class ClashRequest implements ClashEvent {
   }
 
   void updateDelegateConfig(YamlEditor editor) {
-    editor.update([], {
-      // 'external-controller-unix': paths.unixSocketPath,
-      'log-level': 'info',
-      'mode': 'rule',
-      'mixed-port': 7890,
-      'allown-lan': false,
-      // ipv6:
-      // ntp:
-      // geodata-mode:
-      // geox-url:
-      // geo-auto-update:
-      // geo-update-interval: 24
-      // rule-providers:
-      //
-      //
-      // 'dns':
-      // 'rules':
-    });
+    // 'external-controller-unix': paths.unixSocketPath,
+    Log.w(editor.toString());
+    editor
+      ..update(['log-level'], 'info')
+      ..update(['mode'], 'rule')
+      ..update(['mixed-port'], 7890)
+      ..update(['alown-lan'], false)
+      ..update(['dns'], defaultDnsConfig());
+    // ipv6:
+    // ntp:
+    // geodata-mode:
+    // geox-url:
+    // geo-auto-update:
+    // geo-update-interval: 24
+    // rule-providers:
+    //
+    //
+    // 'dns':
+    // 'rules':
   }
 }

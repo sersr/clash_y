@@ -37,7 +37,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.example.vpn_service
+        package: io.aote.vpnService
         pluginClass: VpnServicePlugin
       ios:
         pluginClass: VpnServicePlugin

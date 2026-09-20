@@ -28,7 +28,14 @@ abstract final class G {
 }
 
 abstract final class HiveConfig {
-  static String get unixSockPath => Hives.config.get('unixSockPath') ?? join(G.appCachePath, 'clash_config', 'socket_clash.sock');
+  static String get unixSockPath {
+    final value = Hives.config.get('unixSockPath');
+    if (value is String && value.trim().isNotEmpty) {
+      return value;
+    }
+    return join(G.appCachePath, 'clash_config', 'socket_clash.sock');
+  }
+
   static set unixSocketPath(String n) {
     Hives.config.put('unixSockPath', n);
   }

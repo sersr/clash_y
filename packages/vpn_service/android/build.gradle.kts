@@ -1,4 +1,4 @@
-group = "com.example.vpn_service"
+group = "io.aote.vpnService"
 version = "1.0-SNAPSHOT"
 
 buildscript {
@@ -25,8 +25,12 @@ plugins {
     id("com.android.library")
 }
 
+// Flutter 插件子工程不方便在 plugins {} 里解析 KGP，这里继续使用
+// buildscript 中已声明 classpath 的 Kotlin 插件来编译 Kotlin 源码。
+apply(plugin = "org.jetbrains.kotlin.android")
+
 android {
-    namespace = "com.example.vpn_service"
+    namespace = "io.aote.vpnService"
 
     compileSdk = 36
 
@@ -46,6 +50,7 @@ android {
 
     defaultConfig {
         minSdk = 24
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     testOptions {

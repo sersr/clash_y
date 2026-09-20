@@ -163,7 +163,7 @@ class _HomeState extends State<Home> {
         btn1(
           padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           onTap: () {
-            VPNService.unregister();
+            VPNService.close();
           },
           child: Text('unregister'),
         ),
@@ -182,6 +182,14 @@ class _HomeState extends State<Home> {
           },
           child: Text("stop listen"),
         ),
+
+        btn1(
+          padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          onTap: () {
+            clashMainNotifier.logConfig();
+          },
+          child: Text("configs"),
+        ),
         btn1(
           padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           onTap: () {
@@ -196,42 +204,44 @@ class _HomeState extends State<Home> {
   Widget clashPage() {
     return ColoredBox(
       color: Colors.grey.shade300,
-      child: Cs(() {
-        final data = clashMainNotifier.data;
-        final proxies = data?.proxies;
-        final hasData =
-            proxies != null && proxies.any((element) => proxyHasData(element));
-        if (data == null) {
-          return loadingIndicator();
-        } else if (!hasData) {
-          final child = reloadBotton(clashMainNotifier.getData);
+      child: SafeArea(
+        child: Cs(() {
+          final data = clashMainNotifier.data;
+          final proxies = data?.proxies;
+          final hasData =
+              proxies != null && proxies.any((element) => proxyHasData(element));
+          if (data == null) {
+            return loadingIndicator();
+          } else if (!hasData) {
+            final child = reloadBotton(clashMainNotifier.getData);
+            return Column(
+              children: [
+                actions(),
+                GestureDetector(
+                  onTap: () async {
+                    final res = await VPNService.close();
+                    Log.w('...unregister: $res');
+                  },
+                  child: Text("unregister"),
+                ),
+                child,
+              ],
+            );
+          }
           return Column(
             children: [
               actions(),
-              GestureDetector(
-                onTap: () async {
-                  final res = await VPNService.unregister();
-                  Log.w('...unregister: $res');
-                },
-                child: Text("unregister"),
+              Expanded(
+                child: CustomScrollView(
+                  slivers: [
+                    for (var item in proxies) ClashListItem(proxyItem: item),
+                  ],
+                ),
               ),
-              child,
             ],
           );
-        }
-        return Column(
-          children: [
-            actions(),
-            Expanded(
-              child: CustomScrollView(
-                slivers: [
-                  for (var item in proxies) ClashListItem(proxyItem: item),
-                ],
-              ),
-            ),
-          ],
-        );
-      }),
+        }),
+      ),
     );
   }
 }

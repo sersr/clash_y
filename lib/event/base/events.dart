@@ -25,7 +25,7 @@ abstract mixin class ClashEvent {
   Stream<Connections> watchConnections(Duration interval);
 
   FutureOr<void> updateCurrentConfig(String url);
-  Future<String?> getCurrentConfig();
+  FutureOr<String?> getCurrentConfig();
 }
 
 @NopServerEvent()

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io' as io;
 import 'dart:math';
 
 import 'package:clash_y/event/base/data.dart';
@@ -44,7 +46,7 @@ class ClashMainNotifier with NopLifecycle {
     super.nopInit();
 
     getData();
-    await start();
+    // await start();
     if (data?.proxies.isNotEmpty != true) {
       getData();
     }
@@ -58,17 +60,30 @@ class ClashMainNotifier with NopLifecycle {
   }
 
   Future<void> start() async {
-    final initPathAsync = initConfigPath(HiveConfig.unixSockPath);
-    final r = await VPNService.installHelper();
-    Log.w('register: $r');
-    final path = await initPathAsync;
+    final unixSocketPath = HiveConfig.unixSockPath;
+    final path = await initConfigPath(unixSocketPath);
+    Log.w('vpn configDir: $path, unixSocket: $unixSocketPath');
 
-    await VPNService.start(path);
-    await Future.delayed(const Duration(seconds: 1));
+    final success = await VPNService.start(path);
+    if (success == false) {
+      Log.e('start vpn failed');
+      return;
+    }
 
-    final rv = await VPNService.start(path);
-    Log.w('start: $rv');
-    SystemProxyManager().disable();
+    await _waitForUnixSocket(unixSocketPath);
+    repository.clashEvent.update();
+  }
+
+  Future<void> _waitForUnixSocket(String socketPath) async {
+    final file = io.File(socketPath);
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (DateTime.now().isBefore(deadline)) {
+      if (await file.exists()) {
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+    Log.w('unix socket not ready: $socketPath');
   }
 
   Future<void> getData() async {
@@ -77,6 +92,11 @@ class ClashMainNotifier with NopLifecycle {
         const ProxiesData(history: [], proxies: []);
     _data.value = remoteData;
     removeProxyDelay();
+  }
+
+  void logConfig() async {
+    final data = await repository.clashEvent.gets('configs');
+    Log.w((json.decode(data) as Map).logPretter );
   }
 
   Iterable<String> get proxyKeys sync* {
@@ -91,9 +111,9 @@ class ClashMainNotifier with NopLifecycle {
     }
   }
 
-  void stop() {
-    VPNService.stop();
-
+  Future<void> stop() async {
+    final success = await VPNService.close();
+    Log.w('close vpn: $success');
     HiveConfig.unixSocketPath = join(
       Repository.paths.appSupportPath,
       'socket_${Random().nextInt(65556)}.sock',

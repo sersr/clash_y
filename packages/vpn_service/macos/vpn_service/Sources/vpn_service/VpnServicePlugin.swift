@@ -26,7 +26,7 @@ public class VpnServicePlugin: NSObject, FlutterPlugin {
       stop(call, result)
     case "unregister":
       unregister(result)
-    case "satus":
+    case "status":
       getStatus(result)
     default:
       result(FlutterMethodNotImplemented)

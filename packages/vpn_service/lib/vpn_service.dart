@@ -1,1 +1,1 @@
-export 'src/vpn_service_macos.dart';
+export 'src/vpn_service.dart';

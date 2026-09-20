@@ -20,6 +20,7 @@ dependencies:
   yaml: ^3.1.4
   yaml_edit: ^2.2.4
   hive_ce:
+  flutter_local_notifications: ^22.3.1
 
 dev_dependencies:
   flutter_test:

@@ -34,6 +34,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"path/filepath"
 	"sync"
 	"unsafe"
@@ -42,8 +43,8 @@ import (
 	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/hub/executor"
+	"github.com/metacubex/mihomo/hub/route"
 	"github.com/metacubex/mihomo/listener"
-	"github.com/metacubex/mihomo/tunnel"
 )
 
 // configFileName is the file mihomo reads from the -d home directory.
@@ -64,6 +65,8 @@ func main() {}
 func start(configDir *C.char) *C.char {
 	mu.Lock()
 	defer mu.Unlock()
+
+	enableEmbeddedConfigUpdates()
 
 	if err := setHomeDir(C.GoString(configDir)); err != nil {
 		return cError(err)
@@ -86,14 +89,16 @@ func start(configDir *C.char) *C.char {
 // (or a negative value) when the core may create the device itself, in which
 // case the file-descriptor from the config file is kept.
 //
-// When the core is already running only the TUN listener is (re)created, so it
-// can be used as a cheap runtime toggle. Note that mihomo reports TUN creation
-// failures through its own log rather than through an error value.
+// Every call re-reads configDir/config.yaml and applies the full mihomo
+// configuration, so ports, proxies, rules, controller and TUN are always
+// up-to-date. The supplied fd is owned by mihomo after a successful call.
 //
 //export startTun
 func startTun(configDir *C.char, fd C.int) *C.char {
 	mu.Lock()
 	defer mu.Unlock()
+
+	enableEmbeddedConfigUpdates()
 
 	if err := setHomeDir(C.GoString(configDir)); err != nil {
 		return cError(err)
@@ -104,15 +109,14 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 		return cError(fmt.Errorf("parse config: %w", err))
 	}
 
-	applyTunOptions(cfg, int(fd))
-
-	if !started {
-		hub.ApplyConfig(cfg)
-		started = true
-		return nil
+	if fd > 0 && (cfg.Controller == nil || cfg.Controller.ExternalControllerUnix == "") {
+		return cError(errors.New("external-controller-unix is not configured in config.yaml; configDir may not have been loaded"))
 	}
 
-	listener.ReCreateTun(cfg.General.Tun, tunnel.Tunnel)
+	applyTunOptions(cfg, int(fd))
+
+	hub.ApplyConfig(cfg)
+	started = true
 	return nil
 }
 
@@ -121,6 +125,20 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 // then leaves addresses, routes and rules to the system that created it.
 func applyTunOptions(cfg *config.Config, fd int) {
 	cfg.General.Tun.Enable = true
+	cfg.General.Tun.Stack = constant.TunGvisor
+
+	// Keep mihomo's TUN model in sync with the Android VpnService builder.
+	// Do not disable AutoRoute/AutoDetectInterface here: that previously broke
+	// startup on Android. Only sync the values that affect DNS/data plane.
+	cfg.General.Tun.MTU = 1500
+	cfg.General.Tun.Inet4Address = []netip.Prefix{
+		netip.MustParsePrefix("172.19.0.1/30"),
+	}
+	cfg.General.Tun.Inet6Address = []netip.Prefix{
+		netip.MustParsePrefix("fdfe:dcba:9876::1/126"),
+	}
+	cfg.General.Tun.DNSHijack = []string{"0.0.0.0:53"}
+
 	if fd > 0 {
 		cfg.General.Tun.FileDescriptor = fd
 	}
@@ -133,11 +151,13 @@ func stop() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if !started {
-		return nil
+	if started {
+		executor.Shutdown()
 	}
 
-	executor.Shutdown()
+	// Also close any TUN listener that may have been created by a partially
+	// failed start but was not tracked by executor.Shutdown.
+	listener.Cleanup()
 	started = false
 	return nil
 }
@@ -150,6 +170,14 @@ func freeString(s *C.char) {
 		return
 	}
 	C.free(unsafe.Pointer(s))
+}
+
+// enableEmbeddedConfigUpdates re-enables the REST config update endpoints that
+// mihomo disables by default on Android (cmfa). The Android client keeps the
+// current TUN file descriptor in the config it sends to PUT /configs, so the
+// listener sees an unchanged TUN configuration and does not recreate/close it.
+func enableEmbeddedConfigUpdates() {
+	route.SetEmbedMode(false)
 }
 
 // setHomeDir points mihomo at configDir and prepares config.yaml, the same way
