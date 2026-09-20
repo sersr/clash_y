@@ -6,7 +6,7 @@ import 'package:path/path.dart';
 import '../../base/events.dart';
 import 'db_hive_base.dart';
 
-mixin ConfigDatabaseMixin on HiveDbMixin implements ConfigsEvent {
+mixin ConfigDatabaseMixin on DatabaseMixin implements ConfigsEvent {
   String getConfigBaseName(String url) {
     final baseName = withoutExtension(basename(url));
     return baseName;

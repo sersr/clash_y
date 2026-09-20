@@ -1,6 +1,5 @@
 import 'package:clash_y/init.dart';
 import 'package:common/common.dart';
-import 'package:file/local.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart';
@@ -44,15 +43,23 @@ class Repository with NopLifecycle {
   static Paths? _paths;
   static Paths get paths => _paths ??= .g();
 
-  late final IsolateManager isolateMain = .new()..addRunner(event);
+  late IsolateManager isolateMain;
 
   void init() {
+    isolateMain = .new()
+      ..addRunner(clashMessager)
+      ..addRunner(event);
+
     isolateMain.start();
   }
 
   ConfigsEvent get configsEvent => event.messageItem;
   late final event = ConfigsEventMessage.getMessage(
-    IsolateRemoteServer(entryPoint: _eventEntryPoint, args: paths),
+    .isolate(entry: _eventEntryPoint, args: paths),
+  );
+
+  late final clashMessager = ClashEventMessage.getMessage(
+    .local(entry: _clashLocal, args: clashEvent),
   );
 
   late final ClashRequest clashEvent = .new(paths: paths, repo: this);
@@ -74,25 +81,29 @@ class Repository with NopLifecycle {
   }
 }
 
-Runner _eventEntryPoint(Paths args) {
-  initLog();
-  final resolve = IsolateResolve();
-
-  final isolate = EventIsolate(paths: args);
-  resolve.addResolveItem(
-    ConfigsEventMessage.getResolve(
-      configsEvent: isolate,
-      onInit: isolate.init,
-      onClose: isolate.onClose,
-    ),
-  );
-
-  return Runner(runner: resolve);
+ResolveRecord _clashLocal(ClashRequest clash) {
+  return .new(resolves: [ClashEventMessage.getResolve(clashEvent: clash)]);
 }
 
-const fs = LocalFileSystem();
+ResolveRecord _eventEntryPoint(Paths args) {
+  initLog();
 
-class EventIsolate with HiveDbMixin, ConfigDatabaseMixin, DioOnDatabaseMixin {
+  final clash = ClashEventMessage.getResolveMessage();
+  clash.getCurrentConfig().then((v) {
+    Log.w('isolate receive clash current config: $v');
+  });
+
+  final configsEvent = EventIsolate(paths: args);
+
+  return .new(
+    resolves: [ConfigsEventMessage.getResolve(configsEvent: configsEvent)],
+    messagers: [clash],
+    resolveEvents: [configsEvent],
+  );
+}
+
+class EventIsolate
+    with ResolveEvent, DatabaseMixin, ConfigDatabaseMixin, DioOnDatabaseMixin {
   EventIsolate({required this.paths});
 
   @override

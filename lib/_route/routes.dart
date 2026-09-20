@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_nop/router.dart';
-import 'package:nop_annotations/nop_annotations.dart';
+import 'package:nop/nop.dart';
 
 import '../pages/home/home.dart';
 

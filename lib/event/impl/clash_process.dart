@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:nop/nop.dart';
 import 'package:path/path.dart';
 
-mixin ClashProcessMixin on ListenMixin, Resolve {
+mixin ClashProcessMixin {
   Process? _process;
   String get appPath;
   String get clashDir => join(appPath, 'config');
@@ -37,11 +36,8 @@ mixin ClashProcessMixin on ListenMixin, Resolve {
   //   free(serverName);
   // }
 
-  @override
   FutureOr<void> onClose() {
-    // regSetKeyValue(false);
     _process?.kill();
     _process = null;
-    return super.onClose();
   }
 }

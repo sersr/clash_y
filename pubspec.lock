@@ -550,13 +550,6 @@ packages:
       relative: true
     source: path
     version: "0.3.1"
-  nop_annotations:
-    dependency: "direct main"
-    description:
-      path: "../packages/nop_annotations"
-      relative: true
-    source: path
-    version: "0.4.0"
   nop_db:
     dependency: "direct main"
     description:

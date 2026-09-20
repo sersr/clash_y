@@ -1,6 +1,5 @@
 import 'package:file/local.dart';
 import 'package:nop/nop.dart';
-import 'package:nop_annotations/nop_annotations.dart';
 import 'package:nop_db/nop_db.dart';
 import 'package:nop_db_sqlite/nop_db_sqlite.dart';
 

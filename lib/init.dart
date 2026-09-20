@@ -1,11 +1,10 @@
-import 'dart:ui';
+import 'dart:async';
 
 import 'package:clash_y/event/repository.dart';
 import 'package:clash_y/pages/home/controller/clash_main_provider.dart';
 import 'package:common/common.dart';
-import 'package:file/local.dart';
+import 'package:flutter/foundation.dart';
 import 'package:nop/nop.dart';
-import 'package:path/path.dart';
 
 import '_route/routes.dart';
 import 'pages/home/controller/clash_conections.dart';
@@ -35,8 +34,6 @@ void initController() {
   router.put(() => ClashConfigNotifier());
 }
 
-const fs = LocalFileSystem();
-
 Future<String> initConfigPath(String unixSocketPath) async {
   final configDir = fs.currentDirectory
       .childDirectory(G.appSubPath)
@@ -45,9 +42,13 @@ Future<String> initConfigPath(String unixSocketPath) async {
   Log.w(file.path);
 
   if (await file.exists()) {
-    final editor = YamlUtils.edit(await file.readAsString());
-    editor.update(['external-controller-unix'], unixSocketPath);
-    await file.writeAsString(editor.toString());
+    await compute((p) async {
+      final file = fs.currentDirectory.childFile(p);
+      final editor = YamlUtils.edit(await file.readAsString());
+      editor.update(['external-controller-unix'], unixSocketPath);
+      await file.writeAsString(editor.toString());
+    }, file.path);
+
     return configDir.path;
   }
 
