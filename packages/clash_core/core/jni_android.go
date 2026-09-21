@@ -9,10 +9,49 @@ package main
 const char *clash_jni_get_string(JNIEnv *env, jstring value);
 void clash_jni_release_string(JNIEnv *env, jstring value, const char *chars);
 jstring clash_jni_new_string(JNIEnv *env, const char *value);
+void clash_jni_set_protector(JNIEnv *env, jobject protector);
+void clash_jni_clear_protector(JNIEnv *env);
+int clash_jni_protect(int fd);
 */
 import "C"
 
-import "unsafe"
+import (
+	"errors"
+	"strings"
+	"sync"
+	"syscall"
+	"unsafe"
+
+	"github.com/metacubex/mihomo/component/dialer"
+)
+
+var (
+	androidProtectorEnabled bool
+	androidProtectorOnce    sync.Once
+)
+
+func enableAndroidSocketProtect() {
+	androidProtectorOnce.Do(func() {
+		dialer.DefaultSocketHook = func(network, address string, conn syscall.RawConn) error {
+			if !androidProtectorEnabled {
+				return nil
+			}
+			if !strings.HasPrefix(network, "tcp") && !strings.HasPrefix(network, "udp") {
+				return nil
+			}
+
+			var protectErr error
+			if err := conn.Control(func(fd uintptr) {
+				if C.clash_jni_protect(C.int(fd)) == 0 {
+					protectErr = errors.New("VpnService.protect failed")
+				}
+			}); err != nil {
+				return err
+			}
+			return protectErr
+		}
+	})
+}
 
 // jniStringResult copies a native error string into a Java string and releases
 // the C allocation. A nil C string means success and is returned as Java null.
@@ -45,7 +84,7 @@ func Java_io_aote_vpnService_ClashCore_start(env *C.JNIEnv, thiz C.jobject, conf
 }
 
 //export Java_io_aote_vpnService_ClashCore_startTun
-func Java_io_aote_vpnService_ClashCore_startTun(env *C.JNIEnv, thiz C.jobject, configDir C.jstring, tunFd C.jint) C.jstring {
+func Java_io_aote_vpnService_ClashCore_startTun(env *C.JNIEnv, thiz C.jobject, configDir C.jstring, tunFd C.jint, protector C.jobject) C.jstring {
 	if configDir == C.jstring(0) {
 		return jniError(env, "configDir is empty")
 	}
@@ -59,10 +98,21 @@ func Java_io_aote_vpnService_ClashCore_startTun(env *C.JNIEnv, thiz C.jobject, c
 	}
 	defer C.clash_jni_release_string(env, configDir, cConfigDir)
 
-	return jniStringResult(env, startTun(cConfigDir, tunFd))
+	enableAndroidSocketProtect()
+	C.clash_jni_set_protector(env, protector)
+	androidProtectorEnabled = true
+
+	message := startTun(cConfigDir, tunFd)
+	if message != nil {
+		androidProtectorEnabled = false
+		C.clash_jni_clear_protector(env)
+	}
+	return jniStringResult(env, message)
 }
 
 //export Java_io_aote_vpnService_ClashCore_stop
 func Java_io_aote_vpnService_ClashCore_stop(env *C.JNIEnv, thiz C.jobject) C.jstring {
+	androidProtectorEnabled = false
+	C.clash_jni_clear_protector(env)
 	return jniStringResult(env, stop())
 }

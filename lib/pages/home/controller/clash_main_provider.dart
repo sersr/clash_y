@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
-import 'dart:math';
 
 import 'package:clash_y/event/base/data.dart';
 import 'package:clash_y/event/repository.dart';
@@ -11,7 +10,6 @@ import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
-import 'package:path/path.dart';
 import 'package:vpn_service/vpn_service.dart';
 
 class ClashMainNotifier with NopLifecycle {
@@ -69,21 +67,6 @@ class ClashMainNotifier with NopLifecycle {
       Log.e('start vpn failed');
       return;
     }
-
-    await _waitForUnixSocket(unixSocketPath);
-    repository.clashEvent.update();
-  }
-
-  Future<void> _waitForUnixSocket(String socketPath) async {
-    final file = io.File(socketPath);
-    final deadline = DateTime.now().add(const Duration(seconds: 5));
-    while (DateTime.now().isBefore(deadline)) {
-      if (await file.exists()) {
-        return;
-      }
-      await Future.delayed(const Duration(milliseconds: 50));
-    }
-    Log.w('unix socket not ready: $socketPath');
   }
 
   Future<void> getData() async {
@@ -96,7 +79,7 @@ class ClashMainNotifier with NopLifecycle {
 
   void logConfig() async {
     final data = await repository.clashEvent.gets('configs');
-    Log.w((json.decode(data) as Map).logPretter );
+    Log.w((json.decode(data) as Map).logPretter);
   }
 
   Iterable<String> get proxyKeys sync* {
@@ -114,11 +97,6 @@ class ClashMainNotifier with NopLifecycle {
   Future<void> stop() async {
     final success = await VPNService.close();
     Log.w('close vpn: $success');
-    HiveConfig.unixSocketPath = join(
-      Repository.paths.appSupportPath,
-      'socket_${Random().nextInt(65556)}.sock',
-    );
-    repository.clashEvent.update();
   }
 
   void removeProxyDelay() {
@@ -148,11 +126,11 @@ class ClashMainNotifier with NopLifecycle {
   StreamSubscription? _traffic;
 
   void _logListen(LogModel log) {
-    Log.w('${log.type} | ${log.payload}');
+    Log.w('l.xl: ${log.type} | ${log.payload}');
   }
 
   void _trafficListen(TrafficModel traffic) {
-    Log.w('${traffic.up} | ${traffic.down}');
+    // Log.w('${traffic.up} | ${traffic.down}');
   }
 
   void stopListen() {

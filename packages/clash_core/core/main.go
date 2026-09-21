@@ -45,14 +45,18 @@ import (
 	"github.com/metacubex/mihomo/hub/executor"
 	"github.com/metacubex/mihomo/hub/route"
 	"github.com/metacubex/mihomo/listener"
+	LC "github.com/metacubex/mihomo/listener/config"
+	"github.com/metacubex/mihomo/listener/sing_tun"
+	"github.com/metacubex/mihomo/tunnel"
 )
 
 // configFileName is the file mihomo reads from the -d home directory.
 const configFileName = "config.yaml"
 
 var (
-	mu      sync.Mutex
-	started bool
+	mu          sync.Mutex
+	started     bool
+	tunListener *sing_tun.Listener
 )
 
 // main is required by -buildmode=c-shared and never runs.
@@ -113,11 +117,66 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 		return cError(errors.New("external-controller-unix is not configured in config.yaml; configDir may not have been loaded"))
 	}
 
-	applyTunOptions(cfg, int(fd))
+	// Recreate the whole runtime on every startTun call.
+	if tunListener != nil {
+		_ = tunListener.Close()
+		tunListener = nil
+	}
+	if started {
+		executor.Shutdown()
+		started = false
+	}
 
+	// Let mihomo apply the complete config except TUN. TUN is created below
+	// directly through sing_tun.New, exactly like FlClash does, so mixed/system
+	// stacks can bind to the VpnService address and are not limited by hub's
+	// route/listener bookkeeping.
+	cfg.General.Tun.Enable = false
 	hub.ApplyConfig(cfg)
+
+	if fd <= 0 {
+		started = true
+		return nil
+	}
+
+	options := buildAndroidTunOptions(cfg, int(fd))
+	listener, err := sing_tun.New(options, tunnel.Tunnel)
+	if err != nil {
+		executor.Shutdown()
+		return cError(fmt.Errorf("start tun: %w", err))
+	}
+
+	tunListener = listener
 	started = true
 	return nil
+}
+
+func buildAndroidTunOptions(cfg *config.Config, fd int) LC.Tun {
+	stack := cfg.General.Tun.Stack
+	if stack.String() == "unknown" {
+		stack = constant.TunGvisor
+	}
+
+	dnsHijack := []string{"172.19.0.2:53"}
+
+	device := cfg.General.Tun.Device
+	if device == "" {
+		device = "clash_y"
+	}
+
+	return LC.Tun{
+		Enable:              true,
+		Device:              device,
+		Stack:               stack,
+		DNSHijack:           dnsHijack,
+		AutoRoute:           false,
+		AutoDetectInterface: false,
+		Inet4Address: []netip.Prefix{
+			netip.MustParsePrefix("172.19.0.1/30"),
+		},
+		MTU:            9000,
+		FileDescriptor: fd,
+	}
 }
 
 // applyTunOptions forces TUN on. A positive fd makes sing-tun adopt that
@@ -125,11 +184,12 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 // then leaves addresses, routes and rules to the system that created it.
 func applyTunOptions(cfg *config.Config, fd int) {
 	cfg.General.Tun.Enable = true
-	cfg.General.Tun.Stack = constant.TunGvisor
 
-	// Keep mihomo's TUN model in sync with the Android VpnService builder.
-	// Do not disable AutoRoute/AutoDetectInterface here: that previously broke
-	// startup on Android. Only sync the values that affect DNS/data plane.
+	// Android VpnService owns routing and interface selection. Disabling these
+	// avoids sing-tun's Android netlink monitor, which is unavailable to normal
+	// Android apps and otherwise makes TUN creation fail.
+	cfg.General.Tun.AutoRoute = false
+	cfg.General.Tun.AutoDetectInterface = false
 	cfg.General.Tun.MTU = 1500
 	cfg.General.Tun.Inet4Address = []netip.Prefix{
 		netip.MustParsePrefix("172.19.0.1/30"),
@@ -151,12 +211,16 @@ func stop() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if started {
-		executor.Shutdown()
+	if tunListener != nil {
+		_ = tunListener.Close()
+		tunListener = nil
 	}
 
-	// Also close any TUN listener that may have been created by a partially
-	// failed start but was not tracked by executor.Shutdown.
+	if started {
+		executor.Shutdown()
+		started = false
+	}
+
 	listener.Cleanup()
 	started = false
 	return nil

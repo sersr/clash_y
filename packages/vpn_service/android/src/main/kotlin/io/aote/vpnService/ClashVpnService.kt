@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -24,11 +23,6 @@ import java.util.concurrent.Executors
 class ClashVpnService : VpnService() {
 
     companion object {
-        const val ACTION_START = "io.aote.vpnService.action.START"
-        const val ACTION_STOP = "io.aote.vpnService.action.STOP"
-        const val EXTRA_CONFIG_DIR = "configDir"
-        const val EXTRA_RESULT_RECEIVER = "resultReceiver"
-
         private const val TAG = "ClashVpnService"
         private const val CHANNEL_ID = "clash_vpn_service"
         private const val NOTIFICATION_ID = 0x434C4153 // "CLAS"
@@ -38,16 +32,7 @@ class ClashVpnService : VpnService() {
         private const val TUN_ADDRESS = "172.19.0.1"
         private const val TUN_ADDRESS_PREFIX = 30
         private const val TUN_DNS = "172.19.0.2"
-        private const val TUN_MTU = 1500
-
-        private const val IPV4_ADDRESS = "172.19.0.1/30"
-        private const val IPV6_ADDRESS = "fdfe:dcba:9876::1/126"
-        private const val DNS = "172.19.0.2"
-        private const val DNS6 = "fdfe:dcba:9876::2"
-        private const val NET_ANY = "0.0.0.0"
-        private const val NET_ANY6 = "::"
-        private const val LOCAL_HOST = "127.0.0.1"
-        private const val MTU = 9000
+        private const val TUN_MTU = 9000
     }
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -75,12 +60,12 @@ class ClashVpnService : VpnService() {
         }
 
         return when (intent?.action) {
-            ACTION_START, null -> {
+            VpnServiceContract.ACTION_START, null -> {
                 handleStart(intent)
                 START_STICKY
             }
 
-            ACTION_STOP -> {
+            VpnServiceContract.ACTION_STOP -> {
                 handleStop(intent)
                 START_NOT_STICKY
             }
@@ -112,7 +97,7 @@ class ClashVpnService : VpnService() {
 
     private fun handleStart(intent: Intent?) {
         val receiver = intent?.getResultReceiver()
-        val configDir = intent?.getStringExtra(EXTRA_CONFIG_DIR)?.trim()
+        val configDir = intent?.getStringExtra(VpnServiceContract.EXTRA_CONFIG_DIR)?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: defaultConfigDir()
 
@@ -146,7 +131,9 @@ class ClashVpnService : VpnService() {
             detachedNativeFd = nativeDescriptor.detachFd()
             nativeTunFd = detachedNativeFd
 
-            val error = ClashCore().startTun(configDir, detachedNativeFd)
+            val error = ClashCore().startTun(configDir, detachedNativeFd) { protectFd ->
+                protect(protectFd)
+            }
             if (error != null) {
                 throw IllegalStateException(error)
             }
@@ -202,20 +189,7 @@ class ClashVpnService : VpnService() {
             .addAddress(TUN_ADDRESS, TUN_ADDRESS_PREFIX)
             .addDnsServer(TUN_DNS)
             .addRoute("0.0.0.0", 0)
-            .setBlocking(true)
-
-        try {
-            builder.addDisallowedApplication(packageName)
-        } catch (e: PackageManager.NameNotFoundException) {
-            Log.w(TAG, "Cannot exclude package from VPN", e)
-        }
-
-        try {
-            builder.addAddress("fdfe:dcba:9876::1", 126)
-            builder.addRoute("::", 0)
-        } catch (t: Throwable) {
-            Log.w(TAG, "IPv6 TUN setup skipped", t)
-        }
+            .setBlocking(false)
 
         return builder.establish()
     }
@@ -305,7 +279,7 @@ class ClashVpnService : VpnService() {
 
     @Suppress("DEPRECATION")
     private fun Intent.getResultReceiver(): ResultReceiver? {
-        return getParcelableExtra(EXTRA_RESULT_RECEIVER)
+        return getParcelableExtra(VpnServiceContract.EXTRA_RESULT_RECEIVER)
     }
 
     private fun sendResult(receiver: ResultReceiver?, success: Boolean, error: String = "") {

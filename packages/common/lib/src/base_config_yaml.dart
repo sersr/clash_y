@@ -15,19 +15,6 @@ log-level: info
 # external-controller: 0.0.0.0:9090
 external-controller-unix: $unixSocket
 
-dns:
-  enable: true
-  ipv6: false
-  enhanced-mode: fake-ip
-  fake-ip-range: 198.18.0.1/16
-  default-nameserver:
-    - 223.5.5.5
-    - 1.1.1.1
-  nameserver:
-    - 223.5.5.5
-    - 1.1.1.1
-    - 119.29.29.29
-
 experimental:
   ignore-resolve-fail: true # ignore dns resolve fail, default value is true
 

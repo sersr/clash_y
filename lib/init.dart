@@ -56,16 +56,22 @@ Future<String> initConfigPath(String unixSocketPath) async {
   if (await file.exists()) {
     await compute((p) async {
       final file = fs.currentDirectory.childFile(p);
-      final data = jsonDecode(jsonEncode(loadYaml(await file.readAsString())));
+      final data =
+          jsonDecode(jsonEncode(loadYaml(await file.readAsString()))) as Map;
 
       data['external-controller-unix'] = unixSocketPath;
+      data['log-level'] = 'debug';
       data['mode'] = 'rule';
-      data.putIfAbsent('tun', () => {})
-      ..['enable'] = true
-      ..['stack'] = 'mixed';
+      data['ipv6'] = true;
+      (data.putIfAbsent('tun', () => {}) as Map)
+        ..['enable'] = true
+        // ..['stack'] = 'gvisor'
+        ..['stack'] = 'mixed'
+        ..['device'] = 'clashy';
       data['dns'] = defaultDnsConfig();
       await file.writeAsString(YamlUtils.edit(jsonEncode(data)).toString());
-      Log.w(await file.readAsString());
+      initLog();
+      Log.w((jsonDecode(await file.readAsString()) as Object).logPretter);
     }, file.path);
 
     return configDir.path;

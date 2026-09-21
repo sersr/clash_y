@@ -68,7 +68,7 @@ class VpnServicePlugin : FlutterPlugin,
 
         val prepareIntent = VpnService.prepare(appContext)
         if (prepareIntent == null) {
-            startVpnService(ClashVpnService.ACTION_START, configDir, result)
+            startVpnService(VpnServiceContract.ACTION_START, configDir, result)
             return
         }
 
@@ -95,7 +95,7 @@ class VpnServicePlugin : FlutterPlugin,
             return
         }
 
-        startVpnService(ClashVpnService.ACTION_STOP, null, result, closeServiceAfter = true)
+        startVpnService(VpnServiceContract.ACTION_STOP, null, result, closeServiceAfter = true)
     }
 
     private fun startVpnService(
@@ -124,9 +124,9 @@ class VpnServicePlugin : FlutterPlugin,
         val intent = Intent(appContext, ClashVpnService::class.java).apply {
             this.action = action
             if (configDir != null) {
-                putExtra(ClashVpnService.EXTRA_CONFIG_DIR, configDir)
+                putExtra(VpnServiceContract.EXTRA_CONFIG_DIR, configDir)
             }
-            putExtra(ClashVpnService.EXTRA_RESULT_RECEIVER, receiver)
+            putExtra(VpnServiceContract.EXTRA_RESULT_RECEIVER, receiver)
         }
 
         try {
@@ -158,7 +158,7 @@ class VpnServicePlugin : FlutterPlugin,
         pendingConfigDir = null
 
         if (resultCode == Activity.RESULT_OK && configDir != null && configDir.isNotEmpty()) {
-            startVpnService(ClashVpnService.ACTION_START, configDir, result)
+            startVpnService(VpnServiceContract.ACTION_START, configDir, result)
         } else {
             result.success(false)
         }

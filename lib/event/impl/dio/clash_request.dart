@@ -42,12 +42,6 @@ final class ClashRequest implements ClashEvent {
     _dio.httpClientAdapter = UnixSocketAdapter(unixSocketPath);
   }
 
-  void update() {
-    // _dio.close();
-    _dio.httpClientAdapter = UnixSocketAdapter(unixSocketPath);
-    // init();
-  }
-
   @override
   FutureOr<ProxiesData?> getProxies() async {
     final data = await gets('proxies');
@@ -222,6 +216,14 @@ final class ClashRequest implements ClashEvent {
     } on DioException catch (e) {
       Log.e('${e.response}');
     }
+  }
+
+  void updateUnixSocket() {
+    HiveConfig.unixSocketPath = join(
+      paths.appSupportPath,
+      'socket_${Random().nextInt(65556)}.sock',
+    );
+    _dio.httpClientAdapter = UnixSocketAdapter(unixSocketPath);
   }
 
   @override

@@ -3,6 +3,7 @@ module mihomo-so
 go 1.21
 
 require github.com/metacubex/mihomo v1.19.31
+replace github.com/metacubex/mihomo => "../../mihomo"
 
 require (
 	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
