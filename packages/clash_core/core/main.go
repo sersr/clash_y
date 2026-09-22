@@ -161,7 +161,7 @@ func buildAndroidTunOptions(cfg *config.Config, fd int) LC.Tun {
 
 	device := cfg.General.Tun.Device
 	if device == "" {
-		device = "clash_y"
+		device = "clashy"
 	}
 
 	return LC.Tun{

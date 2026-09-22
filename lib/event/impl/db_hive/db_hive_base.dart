@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:clash_y/event/repository.dart';
+import 'package:clashy/event/repository.dart';
 import 'package:nop/isolate_event.dart';
 import 'package:path/path.dart';
 

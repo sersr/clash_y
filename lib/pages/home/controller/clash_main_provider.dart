@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' as io;
 
-import 'package:clash_y/event/base/data.dart';
-import 'package:clash_y/event/repository.dart';
-import 'package:clash_y/init.dart';
-import 'package:clash_y/model/log_model.dart';
+import 'package:clashy/event/base/data.dart';
+import 'package:clashy/event/repository.dart';
+import 'package:clashy/init.dart';
+import 'package:clashy/model/log_model.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';

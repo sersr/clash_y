@@ -26,7 +26,7 @@ class ClashConfigNotifier with NopLifecycle {
     await repository.clashEvent.reloadConfigs(true, path);
     await release(const Duration(milliseconds: 300));
     clashMainNotifier.getData();
-    final c = await repository.clashEvent.getCurrentConfig() ?? '';
+    final c = repository.clashEvent.getCurrentConfig() ?? '';
     _current.value = c;
   }
 
@@ -54,7 +54,7 @@ class ClashConfigNotifier with NopLifecycle {
         Log.w('error: $e.');
       },
     );
-    final c = await repository.clashEvent.getCurrentConfig() ?? '';
+    final c = repository.clashEvent.getCurrentConfig() ?? '';
     _current.value = c;
   }
 
@@ -79,7 +79,7 @@ class ClashConfigNotifier with NopLifecycle {
 
   Future<void> updateConfigData(String url) async {
     await repository.clashEvent.updateCurrentConfig(url);
-    final c = await repository.clashEvent.getCurrentConfig() ?? '';
+    final c = repository.clashEvent.getCurrentConfig() ?? '';
     _current.value = c;
   }
 

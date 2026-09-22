@@ -15,7 +15,7 @@ final class MihomoProcessManager {
     private enum Constants {
 
         static let configDirFile =
-            "/Library/Application Support/clash_y/config_dir"
+            "/Library/Application Support/clashy/config_dir"
 
         static let stopTimeout: TimeInterval = 5
         static let pollInterval: TimeInterval = 0.1
@@ -156,7 +156,7 @@ final class MihomoProcessManager {
 
     /// 第一次启动：
     ///
-    ///     start(configDir: "/Library/Application Support/clash_y")
+    ///     start(configDir: "/Library/Application Support/clashy")
     ///
     /// 后续 Helper 重启：
     ///

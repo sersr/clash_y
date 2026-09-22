@@ -1,4 +1,4 @@
-import 'package:clash_y/_route/routes.dart';
+import 'package:clashy/_route/routes.dart';
 import 'package:flutter/material.dart';
 
 class ClashApp extends StatefulWidget {

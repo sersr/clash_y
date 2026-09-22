@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:clash_y/event/repository.dart';
-import 'package:clash_y/pages/home/controller/clash_main_provider.dart';
+import 'package:clashy/event/repository.dart';
+import 'package:clashy/pages/home/controller/clash_main_provider.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nop/nop.dart';
@@ -24,7 +24,7 @@ Future<void> initMain() async {
 
 void initLog() {
   Log.defaultLogger
-    // ..lines = 20
+    ..lines = 20
     ..logPathFn = (path) => path;
 }
 

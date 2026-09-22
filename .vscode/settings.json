@@ -6,5 +6,6 @@
   // The real build (hook/build.dart) passes SDKROOT and is unaffected.
   "go.toolsEnvVars": {
     "CGO_CFLAGS": "-Wno-nullability-completeness"
-  }
+  },
+  "java.compile.nullAnalysis.mode": "automatic"
 }

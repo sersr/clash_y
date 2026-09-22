@@ -27,7 +27,7 @@ class ClashVpnService : VpnService() {
         private const val CHANNEL_ID = "clash_vpn_service"
         private const val NOTIFICATION_ID = 0x434C4153 // "CLAS"
 
-        private const val DEFAULT_CONFIG_DIR = "clash_y/clash_config"
+        private const val DEFAULT_CONFIG_DIR = "clashy/clash_config"
 
         private const val TUN_ADDRESS = "172.19.0.1"
         private const val TUN_ADDRESS_PREFIX = 30
@@ -107,12 +107,24 @@ class ClashVpnService : VpnService() {
             return
         }
 
+        val allowedApplications = intent?.getStringArrayListExtra(
+            VpnServiceContract.EXTRA_ALLOWED_APPLICATIONS
+        ).orEmpty()
+        val disallowedApplications = intent?.getStringArrayListExtra(
+            VpnServiceContract.EXTRA_DISALLOWED_APPLICATIONS
+        ).orEmpty()
+
         executor.execute {
-            startCore(configDir, receiver)
+            startCore(configDir, receiver, allowedApplications, disallowedApplications)
         }
     }
 
-    private fun startCore(configDir: String, receiver: ResultReceiver?) {
+    private fun startCore(
+        configDir: String,
+        receiver: ResultReceiver?,
+        allowedApplications: List<String>,
+        disallowedApplications: List<String>,
+    ) {
         Log.i(TAG, "startCore configDir=$configDir")
         var detachedNativeFd = -1
         try {
@@ -122,7 +134,7 @@ class ClashVpnService : VpnService() {
             releaseNativeTunFd()
             closeTunDescriptor()
 
-            val descriptor = establishTun()
+            val descriptor = establishTun(allowedApplications, disallowedApplications)
                 ?: throw IllegalStateException("VpnService.establish() returned null")
             tunDescriptor = descriptor
 
@@ -182,17 +194,41 @@ class ClashVpnService : VpnService() {
         }
     }
 
-    private fun establishTun(): ParcelFileDescriptor? {
+    private fun establishTun(
+        allowedApplications: List<String>,
+        disallowedApplications: List<String>,
+    ): ParcelFileDescriptor? {
         val builder = Builder()
-            .setSession("clash_y")
+            .setSession("clashy")
             .setMtu(TUN_MTU)
             .addAddress(TUN_ADDRESS, TUN_ADDRESS_PREFIX)
             .addDnsServer(TUN_DNS)
             .addRoute("0.0.0.0", 0)
             .setBlocking(false)
 
+        val effectiveAllowed = if (disallowedApplications.isEmpty()) {
+            allowedApplications
+        } else {
+            emptyList()
+        }
+        effectiveAllowed.forEach { packageName ->
+            try {
+                builder.addAllowedApplication(packageName)
+            } catch (t: Throwable) {
+                Log.w(TAG, "addAllowedApplication failed: $packageName", t)
+            }
+        }
+        disallowedApplications.forEach { packageName ->
+            try {
+                builder.addDisallowedApplication(packageName)
+            } catch (t: Throwable) {
+                Log.w(TAG, "addDisallowedApplication failed: $packageName", t)
+            }
+        }
+
         return builder.establish()
     }
+
 
     private fun releaseNativeTunFd(fd: Int = nativeTunFd) {
         if (fd <= 0) {
@@ -254,11 +290,11 @@ class ClashVpnService : VpnService() {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         val contentIntent = launchIntent?.let {
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    PendingIntent.FLAG_IMMUTABLE
-                } else {
-                    0
-                }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        PendingIntent.FLAG_IMMUTABLE
+                    } else {
+                        0
+                    }
             PendingIntent.getActivity(this, 0, it, flags)
         }
 

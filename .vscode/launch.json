@@ -5,20 +5,20 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "clash_y",
+      "name": "clashy",
       "request": "launch",
       "program": "lib/main.dart",
       "type": "dart"
     },
     {
-      "name": "clash_y (profile mode)",
+      "name": "clashy (profile mode)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
       "flutterMode": "profile"
     },
     {
-      "name": "clash_y (release mode)",
+      "name": "clashy (release mode)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",

@@ -1,4 +1,4 @@
-import 'package:clash_y/init.dart';
+import 'package:clashy/init.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';

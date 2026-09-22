@@ -1,3 +1,3 @@
-# clash_y
+# clashy
 
 clash windows UIE

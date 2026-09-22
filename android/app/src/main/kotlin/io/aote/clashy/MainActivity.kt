@@ -1,4 +1,4 @@
-package com.example.clash_y
+package io.aote.clashy
 
 import io.flutter.embedding.android.FlutterActivity
 

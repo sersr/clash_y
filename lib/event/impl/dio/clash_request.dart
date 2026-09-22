@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'dart:io' as io;
 import 'dart:math';
 
-import 'package:clash_y/event/impl/dio/unix_socket_http.dart';
-import 'package:clash_y/event/repository.dart';
+import 'package:clashy/event/impl/dio/unix_socket_http.dart';
+import 'package:clashy/event/repository.dart';
 import 'package:common/common.dart';
 import 'package:dio/dio.dart';
 import 'package:file/file.dart';

@@ -10,7 +10,6 @@
   <application>
     <service
       android:name="io.aote.vpnService.ClashVpnService"
-      android:process=":vpn"
       android:exported="false"
       android:foregroundServiceType="specialUse"
       android:permission="android.permission.BIND_VPN_SERVICE">

@@ -91,12 +91,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "clash_y" "\0"
+            VALUE "FileDescription", "clashy" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "clash_y" "\0"
+            VALUE "InternalName", "clashy" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2021 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "clash_y.exe" "\0"
-            VALUE "ProductName", "clash_y" "\0"
+            VALUE "OriginalFilename", "clashy.exe" "\0"
+            VALUE "ProductName", "clashy" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

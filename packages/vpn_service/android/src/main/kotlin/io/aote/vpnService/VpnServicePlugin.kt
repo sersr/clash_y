@@ -33,6 +33,8 @@ class VpnServicePlugin : FlutterPlugin,
 
     private var pendingResult: MethodChannel.Result? = null
     private var pendingConfigDir: String? = null
+    private var pendingAllowedApplications: List<String> = emptyList()
+    private var pendingDisallowedApplications: List<String> = emptyList()
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
@@ -66,9 +68,23 @@ class VpnServicePlugin : FlutterPlugin,
             return
         }
 
+        val allowedApplications = call.argument<List<String>>("allowedApplications").orEmpty()
+        val disallowedApplications = call.argument<List<String>>("disallowedApplications").orEmpty()
+        val effectiveAllowedApplications = if (disallowedApplications.isNotEmpty()) {
+            emptyList()
+        } else {
+            allowedApplications
+        }
+
         val prepareIntent = VpnService.prepare(appContext)
         if (prepareIntent == null) {
-            startVpnService(VpnServiceContract.ACTION_START, configDir, result)
+            startVpnService(
+                action = VpnServiceContract.ACTION_START,
+                configDir = configDir,
+                allowedApplications = effectiveAllowedApplications,
+                disallowedApplications = disallowedApplications,
+                result = result,
+            )
             return
         }
 
@@ -85,6 +101,8 @@ class VpnServicePlugin : FlutterPlugin,
 
         pendingResult = result
         pendingConfigDir = configDir
+        pendingAllowedApplications = effectiveAllowedApplications
+        pendingDisallowedApplications = disallowedApplications
         currentActivity.startActivityForResult(prepareIntent, REQUEST_VPN)
     }
 
@@ -95,12 +113,21 @@ class VpnServicePlugin : FlutterPlugin,
             return
         }
 
-        startVpnService(VpnServiceContract.ACTION_STOP, null, result, closeServiceAfter = true)
+        startVpnService(
+            action = VpnServiceContract.ACTION_STOP,
+            configDir = null,
+            allowedApplications = emptyList(),
+            disallowedApplications = emptyList(),
+            result = result,
+            closeServiceAfter = true,
+        )
     }
 
     private fun startVpnService(
         action: String,
         configDir: String?,
+        allowedApplications: List<String>,
+        disallowedApplications: List<String>,
         result: MethodChannel.Result,
         closeServiceAfter: Boolean = false,
     ) {
@@ -126,6 +153,14 @@ class VpnServicePlugin : FlutterPlugin,
             if (configDir != null) {
                 putExtra(VpnServiceContract.EXTRA_CONFIG_DIR, configDir)
             }
+            putStringArrayListExtra(
+                VpnServiceContract.EXTRA_ALLOWED_APPLICATIONS,
+                ArrayList(allowedApplications),
+            )
+            putStringArrayListExtra(
+                VpnServiceContract.EXTRA_DISALLOWED_APPLICATIONS,
+                ArrayList(disallowedApplications),
+            )
             putExtra(VpnServiceContract.EXTRA_RESULT_RECEIVER, receiver)
         }
 
@@ -154,11 +189,21 @@ class VpnServicePlugin : FlutterPlugin,
 
         val result = pendingResult ?: return true
         val configDir = pendingConfigDir
+        val allowedApplications = pendingAllowedApplications
+        val disallowedApplications = pendingDisallowedApplications
         pendingResult = null
         pendingConfigDir = null
+        pendingAllowedApplications = emptyList()
+        pendingDisallowedApplications = emptyList()
 
         if (resultCode == Activity.RESULT_OK && configDir != null && configDir.isNotEmpty()) {
-            startVpnService(VpnServiceContract.ACTION_START, configDir, result)
+            startVpnService(
+                action = VpnServiceContract.ACTION_START,
+                configDir = configDir,
+                allowedApplications = allowedApplications,
+                disallowedApplications = disallowedApplications,
+                result = result,
+            )
         } else {
             result.success(false)
         }

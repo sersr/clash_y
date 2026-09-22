@@ -13,13 +13,13 @@ abstract final class G {
   static Future<void> init() async {
     await [
       getApplicationDocumentsDirectory().then((docDir) {
-        _appPath = join(docDir.path, 'clash_y');
+        _appPath = join(docDir.path, 'clashy');
       }),
       getApplicationSupportDirectory().then((dir) {
-        _appSubPath = join(dir.path, 'clash_y');
+        _appSubPath = join(dir.path, 'clashy');
       }),
       getApplicationCacheDirectory().then((cache) {
-        _appCachePath = join(cache.path, 'clash_y');
+        _appCachePath = join(cache.path, 'clashy');
       }),
     ].wait;
 

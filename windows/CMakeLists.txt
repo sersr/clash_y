@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
-project(clash_y LANGUAGES CXX)
+project(clashy LANGUAGES CXX)
 
-set(BINARY_NAME "clash_y")
+set(BINARY_NAME "clashy")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
 
 cmake_policy(SET CMP0063 NEW)
