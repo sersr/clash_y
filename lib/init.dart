@@ -2,15 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:clashy/event/repository.dart';
-import 'package:clashy/pages/home/controller/clash_main_provider.dart';
+import 'package:clashy/pages/home/controller/clash_controller.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nop/nop.dart';
 import 'package:yaml/yaml.dart';
 
 import '_route/routes.dart';
-import 'pages/home/controller/clash_conections.dart';
-import 'pages/home/controller/clash_configs.dart';
+import 'pages/home/controller/clash_connection_controller.dart';
+import 'pages/home/controller/configs_controller.dart';
 
 Future<void> initMain() async {
   try {
@@ -31,9 +31,9 @@ void initLog() {
 void initController() {
   Routes.init();
   router.put(() => Repository());
-  router.put(() => ClashMainNotifier());
-  router.put(() => ClashConnectionsNotifier());
-  router.put(() => ClashConfigNotifier());
+  router.put(() => ClashController());
+  router.put(() => ClashConnectionController());
+  router.put(() => ConfigsController());
 }
 
 Future<String> initConfigPath(String unixSocketPath) async {
@@ -71,7 +71,7 @@ Future<String> initConfigPath(String unixSocketPath) async {
       data['dns'] = defaultDnsConfig();
       await file.writeAsString(YamlUtils.edit(jsonEncode(data)).toString());
       initLog();
-      Log.w((jsonDecode(await file.readAsString()) as Object).logPretter);
+      // Log.w((jsonDecode(await file.readAsString()) as Object).logPretter);
     }, file.path);
 
     return configDir.path;

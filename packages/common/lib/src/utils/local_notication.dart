@@ -5,13 +5,25 @@ void requestNotification() async {
     '@mipmap/ic_launcher',
   );
 
+  final DarwinInitializationSettings initializationSettingsDarwin =
+      DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      );
+
   final initializationSettings = InitializationSettings(
     android: initializationSettingsAndroid,
+    macOS: initializationSettingsDarwin,
   );
 
- await  FlutterLocalNotificationsPlugin().initialize(
+  await FlutterLocalNotificationsPlugin().initialize(
     settings: initializationSettings,
   );
 
-  FlutterLocalNotificationsPlugin().resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
+  FlutterLocalNotificationsPlugin()
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >()
+      ?.requestNotificationsPermission();
 }

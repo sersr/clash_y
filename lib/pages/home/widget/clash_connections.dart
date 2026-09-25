@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
-import '../controller/clash_conections.dart';
+import '../controller/clash_connection_controller.dart';
 import 'package:useful_tools/useful_tools.dart';
 
 class ClashConnections extends StatefulWidget {
@@ -12,7 +12,7 @@ class ClashConnections extends StatefulWidget {
 }
 
 class _ClashConnectionsState extends State<ClashConnections> {
-  late ClashConnectionsNotifier clashConnectionsNotifier;
+  late ClashConnectionController clashConnectionsNotifier;
   late ScrollController controller;
 
   @override

@@ -7,8 +7,9 @@ class UnixSocketAdapter implements HttpClientAdapter {
   String socketPath;
   late final HttpClient _client;
   var _closed = false;
+  final int port;
 
-  UnixSocketAdapter(this.socketPath) {
+  UnixSocketAdapter(this.socketPath, {this.port = 0}) {
     _client = createUnixSocketClient();
   }
 
@@ -20,7 +21,7 @@ class UnixSocketAdapter implements HttpClientAdapter {
         socketPath,
         type: InternetAddressType.unix,
       );
-      return Socket.startConnect(address, 0);
+      return Socket.startConnect(address, port);
     };
     client.findProxy = (uri) => 'DIRECT';
 

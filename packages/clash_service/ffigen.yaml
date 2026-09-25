@@ -1,0 +1,16 @@
+# Run with `dart run ffigen --config ffigen.yaml`.
+name: ClashServiceBindings
+description: |
+  Bindings for `src/clash_service.h`.
+
+  Regenerate bindings with `dart run ffigen --config ffigen.yaml`.
+output: 'lib/clash_service_bindings_generated.dart'
+headers:
+  entry-points:
+    - 'src/clash_service.h'
+  include-directives:
+    - 'src/clash_service.h'
+ffi-native:
+comments:
+  style: any
+  length: full

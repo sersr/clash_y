@@ -1,0 +1,36 @@
+name: clash_service_android
+description: "Android VPN backend for clash_service, implemented with jni_flutter."
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.14.0-200.0.dev
+  flutter: '>=3.3.0'
+
+dependencies:
+  # Supplies `libclash.so` (and the `ClashCore` native methods it registers) to
+  # the application through a native-assets build hook.
+  clash_core:
+    path: ../../../clash_core
+  flutter:
+    sdk: flutter
+  jni: ^1.0.0
+  jni_flutter: ^1.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  # The plugin has no Java/Kotlin plugin entry point: Dart drives the VPN
+  # service through package:jni, and `jni_flutter` supplies the Android
+  # application context and activity.
+  #
+  # `ffiPlugin: true` is what keeps the Android library module (Kotlin sources
+  # plus the manifest that declares ClashVpnService) in the application's Gradle
+  # build; without it the module would be skipped as a Dart-only plugin.
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true

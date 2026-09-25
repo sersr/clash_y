@@ -4,7 +4,7 @@ import 'package:flutter_nop/router.dart';
 import 'package:useful_tools/useful_tools.dart';
 
 import '../../../data/data.dart';
-import '../controller/clash_main_provider.dart';
+import '../controller/clash_controller.dart';
 
 class ClashListItem extends StatefulWidget {
   const ClashListItem({super.key, required this.proxyItem});
@@ -14,7 +14,7 @@ class ClashListItem extends StatefulWidget {
 }
 
 class _ClashListItemState extends State<ClashListItem> {
-  late final ClashMainNotifier clashMainNotifier = context.getType();
+  late final ClashController clashMainNotifier = context.getType();
 
   final _showBody = ValueNotifier(false);
   @override
@@ -88,7 +88,7 @@ class ProxyCard extends StatelessWidget {
   final bool? left;
   @override
   Widget build(BuildContext context) {
-    final clashMainNotifier = context.getType<ClashMainNotifier>();
+    final clashMainNotifier = context.getType<ClashController>();
     final select = clashMainNotifier.getSelector(itemName);
 
     return ListItem(

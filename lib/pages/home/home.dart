@@ -1,18 +1,16 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
-import 'package:flutter/material.dart';
-import 'package:nop/nop.dart';
 import 'package:useful_tools/useful_tools.dart';
-import 'package:vpn_service/vpn_service.dart';
 
 import '../../event/event.dart';
 import '../../event/repository.dart';
-import 'controller/clash_conections.dart';
-import 'controller/clash_configs.dart';
+import 'controller/clash_connection_controller.dart';
+import 'controller/clash_controller.dart';
+import 'controller/configs_controller.dart';
 import 'widget/clash_config_url.dart';
 import 'widget/clash_connections.dart';
 import 'widget/clash_list_item.dart';
-import 'controller/clash_main_provider.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -23,9 +21,9 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   late Repository repository = getType();
-  late ClashMainNotifier clashMainNotifier = getType();
-  late ClashConfigNotifier clashConfigNotifier = getType();
-  late ClashConnectionsNotifier clashConnectionsNotifier = getType();
+  late ClashController clashMainNotifier = getType();
+  late ConfigsController clashConfigNotifier = getType();
+  late ClashConnectionController clashConnectionsNotifier = getType();
 
   final open = ValueNotifier(true);
   final _notifier = ValueNotifier(0);
@@ -163,7 +161,7 @@ class _HomeState extends State<Home> {
         btn1(
           padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           onTap: () {
-            VPNService.close();
+            clashMainNotifier.stop();
           },
           child: Text('unregister'),
         ),
@@ -209,7 +207,8 @@ class _HomeState extends State<Home> {
           final data = clashMainNotifier.data;
           final proxies = data?.proxies;
           final hasData =
-              proxies != null && proxies.any((element) => proxyHasData(element));
+              proxies != null &&
+              proxies.any((element) => proxyHasData(element));
           if (data == null) {
             return loadingIndicator();
           } else if (!hasData) {
@@ -219,8 +218,7 @@ class _HomeState extends State<Home> {
                 actions(),
                 GestureDetector(
                   onTap: () async {
-                    final res = await VPNService.close();
-                    Log.w('...unregister: $res');
+                    clashMainNotifier.stop();
                   },
                   child: Text("unregister"),
                 ),

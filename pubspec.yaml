@@ -5,8 +5,6 @@ version: 1.0.0+1
 
 workspace:
   - packages/common
-  - packages/clash_core
-  - packages/vpn_service
 
 environment:
   sdk: ">=3.13.0 <4.0.0"
@@ -37,12 +35,13 @@ dependencies:
 
   clash_core: any
   common: ^0.0.1
-  vpn_service: ^0.0.1
   flutter_nop: ^4.0.0
   material_ui: ^1.2.0
   web_socket_channel: ^3.0.3
   crypto: ^3.0.7
   tray_manager: ^0.5.3
+  clash_service:
+    path: packages/clash_service
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +63,8 @@ dependency_overrides:
     path: ../packages/useful_tools
   nop:
     path: ../packages/nop
+  clash_core:
+    path: packages/clash_core
 
 flutter:
   uses-material-design: true

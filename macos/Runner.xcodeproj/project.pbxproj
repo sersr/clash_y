@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 70;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXAggregateTarget section */
@@ -28,8 +28,9 @@
 		33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F42044A3C60003C045 /* MainMenu.xib */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
-		8FC079A3305BE8F600ABF179 /* com.aote.clashy.helper.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8FC079A2305BE8F600ABF179 /* com.aote.clashy.helper.plist */; };
-		8FC079A4305BE8FC00ABF179 /* ClashHelper in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8FC07998305BE82C00ABF179 /* ClashHelper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		8F61B3363063FE7C00AF2569 /* clash in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8F61B3353063FE7C00AF2569 /* clash */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		8F6F1FC63066EB1700C3C3CF /* clashyService in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8F6F1FC53066EB1700C3C3CF /* clashyService */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		8F7A0A0C30655DC500F849FA /* com.aote.clashy.helper.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8F7A0A0B30655DC500F849FA /* com.aote.clashy.helper.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,13 +48,6 @@
 			remoteGlobalIDString = 33CC111A2044C6BA0003C045;
 			remoteInfo = FLX;
 		};
-		8FC079A0305BE8AB00ABF179 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 33CC10E52044A3C60003C045 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 8FC07997305BE82C00ABF179;
-			remoteInfo = ClashHelper;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -67,13 +61,24 @@
 			name = "Bundle Framework";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		8F4E8E0A3063CEC30011BEB5 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library;
+			dstSubfolderSpec = 1;
+			files = (
+				8F6F1FC63066EB1700C3C3CF /* clashyService in CopyFiles */,
+				8F61B3363063FE7C00AF2569 /* clash in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8F7CF80C30545CE700850131 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 12;
 			dstPath = Contents/Library/LaunchDaemons;
 			dstSubfolderSpec = 1;
 			files = (
-				8FC079A3305BE8F600ABF179 /* com.aote.clashy.helper.plist in CopyFiles */,
+				8F7A0A0C30655DC500F849FA /* com.aote.clashy.helper.plist in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,18 +88,8 @@
 			dstPath = Contents/Library/ClashHelper;
 			dstSubfolderSpec = 1;
 			files = (
-				8FC079A4305BE8FC00ABF179 /* ClashHelper in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
-		};
-		8FC07996305BE82C00ABF179 /* CopyFiles */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = /usr/share/man/man1/;
-			dstSubfolderSpec = 0;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 1;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
@@ -117,14 +112,11 @@
 		33E5194F232828860026EE4D /* AppInfo.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppInfo.xcconfig; sourceTree = "<group>"; };
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
-		8FC07998305BE82C00ABF179 /* ClashHelper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = ClashHelper; sourceTree = BUILT_PRODUCTS_DIR; };
-		8FC079A2305BE8F600ABF179 /* com.aote.clashy.helper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = com.aote.clashy.helper.plist; path = ClashHelper/com.aote.clashy.helper.plist; sourceTree = "<group>"; };
+		8F61B3353063FE7C00AF2569 /* clash */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; name = clash; path = ../packages/clash_core/build/macos/clash; sourceTree = "<group>"; };
+		8F6F1FC53066EB1700C3C3CF /* clashyService */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; name = clashyService; path = ../packages/clash_service/plugins/server/build/clashyService; sourceTree = "<group>"; };
+		8F7A0A0B30655DC500F849FA /* com.aote.clashy.helper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = com.aote.clashy.helper.plist; path = ../packages/clash_service/bin/com.aote.clashy.helper.plist; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		8FC07999305BE82C00ABF179 /* ClashHelper */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = ClashHelper; sourceTree = "<group>"; };
-/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		331C80D2294CF70F00263BE5 /* Frameworks */ = {
@@ -139,13 +131,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		8FC07995305BE82C00ABF179 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -174,13 +159,13 @@
 		33CC10E42044A3C60003C045 = {
 			isa = PBXGroup;
 			children = (
-				8FC079A2305BE8F600ABF179 /* com.aote.clashy.helper.plist */,
+				8F6F1FC53066EB1700C3C3CF /* clashyService */,
+				8F7A0A0B30655DC500F849FA /* com.aote.clashy.helper.plist */,
+				8F61B3353063FE7C00AF2569 /* clash */,
 				33FAB671232836740065AC1E /* Runner */,
 				33CEB47122A05771004F2AC0 /* Flutter */,
 				331C80D6294CF71000263BE5 /* RunnerTests */,
-				8FC07999305BE82C00ABF179 /* ClashHelper */,
 				33CC10EE2044A3C60003C045 /* Products */,
-				D73912EC22F37F3D000D13A0 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -189,7 +174,6 @@
 			children = (
 				33CC10ED2044A3C60003C045 /* clashy.app */,
 				331C80D5294CF71000263BE5 /* RunnerTests.xctest */,
-				8FC07998305BE82C00ABF179 /* ClashHelper */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -230,13 +214,6 @@
 			path = Runner;
 			sourceTree = "<group>";
 		};
-		D73912EC22F37F3D000D13A0 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -269,11 +246,11 @@
 				3399D490228B24CF009A79C7 /* Run Script */,
 				8F7CF80C30545CE700850131 /* CopyFiles */,
 				8F7CF81030545D5400850131 /* CopyFiles */,
+				8F4E8E0A3063CEC30011BEB5 /* CopyFiles */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				8FC079A1305BE8AB00ABF179 /* PBXTargetDependency */,
 				33CC11202044C79F0003C045 /* PBXTargetDependency */,
 			);
 			name = Runner;
@@ -283,28 +260,6 @@
 			productName = Runner;
 			productReference = 33CC10ED2044A3C60003C045 /* clashy.app */;
 			productType = "com.apple.product-type.application";
-		};
-		8FC07997305BE82C00ABF179 /* ClashHelper */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 8FC0799C305BE82C00ABF179 /* Build configuration list for PBXNativeTarget "ClashHelper" */;
-			buildPhases = (
-				8FC07994305BE82C00ABF179 /* Sources */,
-				8FC07995305BE82C00ABF179 /* Frameworks */,
-				8FC07996305BE82C00ABF179 /* CopyFiles */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				8FC07999305BE82C00ABF179 /* ClashHelper */,
-			);
-			name = ClashHelper;
-			packageProductDependencies = (
-			);
-			productName = ClashHelper;
-			productReference = 8FC07998305BE82C00ABF179 /* ClashHelper */;
-			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
 
@@ -335,9 +290,6 @@
 						CreatedOnToolsVersion = 9.2;
 						ProvisioningStyle = Manual;
 					};
-					8FC07997305BE82C00ABF179 = {
-						CreatedOnToolsVersion = 27.0;
-					};
 				};
 			};
 			buildConfigurationList = 33CC10E82044A3C60003C045 /* Build configuration list for PBXProject "Runner" */;
@@ -359,7 +311,6 @@
 				33CC10EC2044A3C60003C045 /* Runner */,
 				331C80D4294CF70F00263BE5 /* RunnerTests */,
 				33CC111A2044C6BA0003C045 /* Flutter Assemble */,
-				8FC07997305BE82C00ABF179 /* ClashHelper */,
 			);
 		};
 /* End PBXProject section */
@@ -444,13 +395,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		8FC07994305BE82C00ABF179 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -463,11 +407,6 @@
 			isa = PBXTargetDependency;
 			target = 33CC111A2044C6BA0003C045 /* Flutter Assemble */;
 			targetProxy = 33CC111F2044C79F0003C045 /* PBXContainerItemProxy */;
-		};
-		8FC079A1305BE8AB00ABF179 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 8FC07997305BE82C00ABF179 /* ClashHelper */;
-			targetProxy = 8FC079A0305BE8AB00ABF179 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -791,92 +730,6 @@
 			};
 			name = Release;
 		};
-		8FC0799D305BE82C00ABF179 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 2GAZNWVGR5;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 27.0;
-				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
-				MTL_FAST_MATH = YES;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		8FC0799E305BE82C00ABF179 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 2GAZNWVGR5;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 27.0;
-				MTL_FAST_MATH = YES;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
-		8FC0799F305BE82C00ABF179 /* Profile */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 2GAZNWVGR5;
-				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 27.0;
-				MTL_FAST_MATH = YES;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Profile;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -916,16 +769,6 @@
 				33CC111C2044C6BA0003C045 /* Debug */,
 				33CC111D2044C6BA0003C045 /* Release */,
 				338D0CEB231458BD00FA5F75 /* Profile */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		8FC0799C305BE82C00ABF179 /* Build configuration list for PBXNativeTarget "ClashHelper" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				8FC0799D305BE82C00ABF179 /* Debug */,
-				8FC0799E305BE82C00ABF179 /* Release */,
-				8FC0799F305BE82C00ABF179 /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

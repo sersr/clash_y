@@ -3,7 +3,7 @@ import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
 import 'package:useful_tools/useful_tools.dart';
 
-import '../controller/clash_configs.dart';
+import '../controller/configs_controller.dart';
 
 class ClashConfigUrl extends StatefulWidget {
   const ClashConfigUrl({super.key});
@@ -13,7 +13,7 @@ class ClashConfigUrl extends StatefulWidget {
 }
 
 class _ClashConfigUrlState extends State<ClashConfigUrl> {
-  late ClashConfigNotifier clashConfigNotifier = getType();
+  late ConfigsController clashConfigNotifier = getType();
 
   late TextEditingController textEditingController;
   late FocusNode focusNode;
