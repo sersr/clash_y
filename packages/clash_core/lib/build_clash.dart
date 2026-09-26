@@ -7,12 +7,20 @@ import 'package:path/path.dart';
 Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
   final code = input.config.code;
   final targetOs = code.targetOS;
+  final isFlutter = input.userDefines['isFlutter'] == true;
+
+  // 桌面端使用 clash_service 不直接使用， ffi
+  if (isFlutter) {
+    switch (targetOs) {
+      case .macOS || .windows || .linux:
+        return;
+    }
+  }
 
   final targetArchitecture = _goArchitecture(code.targetArchitecture);
-  final goDirectory = targetOs == OS.android
-      ? input.packageRoot.resolve('core/')
-      : input.packageRoot.resolve('../mihomo/');
-  final outputName = targetOs == OS.android ? 'libclash.so' : 'clash';
+  final goDirectory = input.packageRoot.resolve('core/');
+
+  final outputName = targetOs.dylibFileName('clash');
   var outputPath = input.outputDirectory.resolve(outputName).path;
 
   if (targetOs != .android) {
@@ -73,7 +81,7 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
 
   final arguments = <String>[
     'build',
-    if (targetOs == OS.android) '-buildmode=c-shared',
+    '-buildmode=c-shared',
     '-trimpath',
     '-o',
     outputPath,
@@ -98,16 +106,16 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
     );
   }
 
-  if (targetOs == OS.android) {
-    output.assets.code.add(
-      CodeAsset(
-        package: input.packageName,
-        name: outputName,
-        file: .parse(outputPath),
-        linkMode: DynamicLoadingBundled(),
-      ),
-    );
-  }
+  // if (targetOs == OS.android) {
+  output.assets.code.add(
+    CodeAsset(
+      package: input.packageName,
+      name: 'clash_core.dart',
+      file: .parse(outputPath),
+      linkMode: DynamicLoadingBundled(),
+    ),
+  );
+  // }
 }
 
 String _goArchitecture(Architecture architecture) => switch (architecture) {

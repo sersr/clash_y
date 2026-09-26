@@ -1,9 +1,8 @@
 import 'dart:async';
 
+import 'package:common/common.dart';
 import 'package:nop/nop.dart';
 
-import '../../data/data.dart';
-import '../../model/log_model.dart';
 import 'data.dart';
 import 'database.dart';
 export 'database.dart';
@@ -25,7 +24,6 @@ abstract mixin class ClashEvent {
   Stream<Connections> watchConnections(Duration interval);
 
   FutureOr<void> updateCurrentConfig(String url);
-  FutureOr<String?> getCurrentConfig();
 }
 
 @NopServerEvent()

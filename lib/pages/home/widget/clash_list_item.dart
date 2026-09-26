@@ -1,9 +1,9 @@
+import 'package:common/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
 import 'package:useful_tools/useful_tools.dart';
 
-import '../../../data/data.dart';
 import '../controller/clash_controller.dart';
 
 class ClashListItem extends StatefulWidget {
@@ -110,18 +110,17 @@ class ProxyCard extends StatelessWidget {
         children: [
           Expanded(
             child: Cs(() {
-                return Text(
-                  clashMainNotifier.getName(itemName),
-                  maxLines: 2,
-                  style: const TextStyle(
-                    overflow: TextOverflow.ellipsis,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    fontFamily: '微软雅黑',
-                  ),
-                );
-              }
-            ),
+              return Text(
+                clashMainNotifier.getName(itemName),
+                maxLines: 2,
+                style: const TextStyle(
+                  overflow: TextOverflow.ellipsis,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: '微软雅黑',
+                ),
+              );
+            }),
           ),
           RepaintBoundary(
             child: Padding(

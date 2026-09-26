@@ -1,16 +1,27 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:shelf/shelf.dart';
 
 Map<String, String> get jsonHeader => {'content-type': 'application/json'};
+typedef RespHandler = FutureOr<Resp> Function(Request request);
 
-final class Resp extends Response {
-  new res(
-    ApiResp resp, {
-    super.headers = const {'content-type': 'application/json'},
-    super.encoding,
-    super.context,
-  }) : super.ok(resp.toString());
+extension type Resp(Response _) implements Response {
+  new ok([dynamic data])
+    : this(
+        .ok(
+          ApiResp.ok(data).toString(),
+          headers: const {'content-type': 'application/json'},
+        ),
+      );
+
+  new error({dynamic data, int code = 1001, String msg = ''})
+    : this(
+        .ok(
+          ApiResp.error(data: data, code: code, msg: msg).toString(),
+          headers: const {'content-type': 'application/json'},
+        ),
+      );
 }
 
 class ApiResp<D> {
@@ -31,18 +42,17 @@ class ApiResp<D> {
     return null;
   }
 
-  static ApiResp<T> transform<T>(
+  factory transform(
     Map<String, dynamic> map, [
-
-    T Function(dynamic data)? fromJson,
+    D Function(dynamic data)? fromJson,
   ]) {
     final code = map["code"] ?? -1;
     final msg = map["msg"] ?? '';
     final data = map["data"];
-    final res = ApiResp<T>._(code: code, msg: msg, data: data);
+    final res = ApiResp<D>._(code: code, msg: msg, data: data);
     if (res.success) {
       if (fromJson == null) {
-        if (data is T || T == dynamic) {
+        if (data is D || D == dynamic) {
           res._data = data;
         }
       } else {

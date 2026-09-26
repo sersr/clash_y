@@ -18,8 +18,7 @@ enum ClashEventMessage {
   watchTraffic,
   watchLogs,
   watchConnections,
-  updateCurrentConfig,
-  getCurrentConfig;
+  updateCurrentConfig;
 
   static ResolveItem getResolve({required ClashEvent clashEvent}) {
     return ResolveItem(
@@ -35,7 +34,6 @@ enum ClashEventMessage {
         clashEvent.watchLogs,
         clashEvent.watchConnections,
         clashEvent.updateCurrentConfig,
-        (args) => clashEvent.getCurrentConfig(),
       ],
     );
   }
@@ -137,14 +135,6 @@ mixin ClashEventMessagerMixin implements ClashEvent {
     return messager.sendMessage(
       ClashEventMessage.updateCurrentConfig,
       url,
-      protocol: ClashEventMessage,
-    );
-  }
-
-  Future<String?> getCurrentConfig() {
-    return messager.sendMessage(
-      ClashEventMessage.getCurrentConfig,
-      null,
       protocol: ClashEventMessage,
     );
   }

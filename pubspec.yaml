@@ -33,7 +33,6 @@ dependencies:
   json_annotation: ^4.3.0
   hive_ce:
 
-  clash_core: any
   common: ^0.0.1
   flutter_nop: ^4.0.0
   material_ui: ^1.2.0
@@ -71,3 +70,9 @@ flutter:
 
   # assets:
   #   - assets/
+
+
+hooks:
+  user_defines:
+    clash_core:
+      isFlutter: true

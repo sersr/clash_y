@@ -106,7 +106,7 @@ packages:
     source: hosted
     version: "2.0.4"
   clash_core:
-    dependency: "direct main"
+    dependency: "direct overridden"
     description:
       path: "packages/clash_core"
       relative: true
@@ -123,13 +123,6 @@ packages:
     dependency: transitive
     description:
       path: "packages/clash_service/plugins/clash_service_android"
-      relative: true
-    source: path
-    version: "0.0.1"
-  clash_service_drawin:
-    dependency: transitive
-    description:
-      path: "packages/clash_service/plugins/clash_service_drawin"
       relative: true
     source: path
     version: "0.0.1"
@@ -221,6 +214,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.0.5"
+  data_assets:
+    dependency: transitive
+    description:
+      name: data_assets
+      sha256: "8bfdbf25ec8a0f4b5a3c993042c4ab9996ba354f0b03d40f4e360f3730d71cae"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.20.0"
   dbus:
     dependency: transitive
     description:

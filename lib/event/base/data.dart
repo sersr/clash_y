@@ -1,4 +1,5 @@
-import '../../data/data.dart';
+import 'package:common/common.dart';
+
 import 'database.dart';
 
 class ConfigName {

@@ -26,17 +26,3 @@ abstract final class G {
     return Hives.init(join(appSubPath, 'hives'));
   }
 }
-
-abstract final class HiveConfig {
-  static String get unixSockPath {
-    final value = Hives.config.get('unixSockPath');
-    if (value is String && value.trim().isNotEmpty) {
-      return value;
-    }
-    return join(G.appCachePath, 'clash_config', 'socket_clash.sock');
-  }
-
-  static set unixSocketPath(String n) {
-    Hives.config.put('unixSockPath', n);
-  }
-}

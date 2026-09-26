@@ -8,7 +8,6 @@ import 'package:clashy/event/impl/clash_service.dart';
 import 'package:clashy/event/impl/dio/unix_socket_http.dart';
 import 'package:clashy/event/repository.dart';
 import 'package:clashy/init.dart';
-import 'package:clashy/model/log_model.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
@@ -61,7 +60,7 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> start() async {
-    final unixSocketPath = HiveConfig.unixSockPath;
+    final unixSocketPath = BaseConfig.unixSockPath.value;
     final path = await initConfigPath(unixSocketPath);
 
     final success = await ClashService.start(path);
@@ -77,9 +76,7 @@ class ClashController with NopLifecycle {
     if (!Platform.isMacOS) return;
 
     try {
-      final s = await ClashServiceApi.startClash(
-        .new(args: ['-d', configPath]),
-      );
+      final s = await ClashServiceApi.startClash(configPath);
       Log.w(s);
     } catch (e) {
       Log.e(e);

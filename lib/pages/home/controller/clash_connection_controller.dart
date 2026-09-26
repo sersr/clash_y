@@ -1,9 +1,9 @@
 import 'dart:async';
 
+import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
 
-import '../../../data/data.dart';
 import '../../../event/repository.dart';
 
 class ClashConnectionController with NopLifecycle {

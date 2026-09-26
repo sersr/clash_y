@@ -1,12 +1,12 @@
 import 'dart:io';
 
-import 'package:clash_service/src/service/vpn_service_macos_ffi.dart';
+import 'package:clash_service/src/service/clash_service_macos.dart';
 import 'package:clash_service_android/clash_service_android.dart' as android;
 import 'package:file/local.dart' as f;
 
-export 'src/windows/service.dart';
-
 export 'package:server/server.dart';
+
+export 'src/service/clash_service_windows.dart';
 
 const fs = f.LocalFileSystem();
 
@@ -30,7 +30,9 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS) {
-      return vpnServiceRegisterHelper() == 0;
+      final res = DaemonStatusMacOS.daemonStatus(vpnServiceRegisterHelper());
+
+      return res == .enabled;
     }
 
     // iOS, Linux and Windows have no VPN backend wired up here. The macOS
@@ -45,7 +47,8 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS) {
-      return vpnServiceUnregisterHelper() == 0;
+      final DaemonStatusMacOS res = .daemonStatus(vpnServiceUnregisterHelper());
+      return res == .notRegistered;
     }
 
     return false;

@@ -23,6 +23,46 @@
       "type": "dart",
       "program": "lib/main.dart",
       "flutterMode": "release"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:clash_y}/play",
+      "name": "Debug play (play)",
+      "target": "play",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug play (play)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:clash_y}/play",
+      "name": "Release play (play)",
+      "target": "play",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release play (play)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:clash_y}/packages/clash_service/plugins/clash_service_drawin",
+      "name": "Debug clash-service-exe (packages/clash_service/plugins/clash_service_drawin)",
+      "target": "clash-service-exe",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug clash-service-exe (packages/clash_service/plugins/clash_service_drawin)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:clash_y}/packages/clash_service/plugins/clash_service_drawin",
+      "name": "Release clash-service-exe (packages/clash_service/plugins/clash_service_drawin)",
+      "target": "clash-service-exe",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release clash-service-exe (packages/clash_service/plugins/clash_service_drawin)"
     }
   ]
 }

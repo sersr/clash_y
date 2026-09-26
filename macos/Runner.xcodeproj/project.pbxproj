@@ -28,9 +28,7 @@
 		33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F42044A3C60003C045 /* MainMenu.xib */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
-		8F61B3363063FE7C00AF2569 /* clash in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8F61B3353063FE7C00AF2569 /* clash */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		8F6F1FC63066EB1700C3C3CF /* clashyService in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8F6F1FC53066EB1700C3C3CF /* clashyService */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		8F7A0A0C30655DC500F849FA /* com.aote.clashy.helper.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8F7A0A0B30655DC500F849FA /* com.aote.clashy.helper.plist */; };
+		8F49AAA93067D6750070F25D /* com.aote.clashy.helper.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = 8F49AAA83067D6750070F25D /* com.aote.clashy.helper.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,8 +65,6 @@
 			dstPath = Contents/Library;
 			dstSubfolderSpec = 1;
 			files = (
-				8F6F1FC63066EB1700C3C3CF /* clashyService in CopyFiles */,
-				8F61B3363063FE7C00AF2569 /* clash in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,7 +74,7 @@
 			dstPath = Contents/Library/LaunchDaemons;
 			dstSubfolderSpec = 1;
 			files = (
-				8F7A0A0C30655DC500F849FA /* com.aote.clashy.helper.plist in CopyFiles */,
+				8F49AAA93067D6750070F25D /* com.aote.clashy.helper.plist in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,9 +108,7 @@
 		33E5194F232828860026EE4D /* AppInfo.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppInfo.xcconfig; sourceTree = "<group>"; };
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
-		8F61B3353063FE7C00AF2569 /* clash */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; name = clash; path = ../packages/clash_core/build/macos/clash; sourceTree = "<group>"; };
-		8F6F1FC53066EB1700C3C3CF /* clashyService */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; name = clashyService; path = ../packages/clash_service/plugins/server/build/clashyService; sourceTree = "<group>"; };
-		8F7A0A0B30655DC500F849FA /* com.aote.clashy.helper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = com.aote.clashy.helper.plist; path = ../packages/clash_service/bin/com.aote.clashy.helper.plist; sourceTree = "<group>"; };
+		8F49AAA83067D6750070F25D /* com.aote.clashy.helper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = com.aote.clashy.helper.plist; path = ../packages/clash_service/plugins/clash_service_drawin/Library/LaunchDaemons/com.aote.clashy.helper.plist; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -159,9 +153,7 @@
 		33CC10E42044A3C60003C045 = {
 			isa = PBXGroup;
 			children = (
-				8F6F1FC53066EB1700C3C3CF /* clashyService */,
-				8F7A0A0B30655DC500F849FA /* com.aote.clashy.helper.plist */,
-				8F61B3353063FE7C00AF2569 /* clash */,
+				8F49AAA83067D6750070F25D /* com.aote.clashy.helper.plist */,
 				33FAB671232836740065AC1E /* Runner */,
 				33CEB47122A05771004F2AC0 /* Flutter */,
 				331C80D6294CF71000263BE5 /* RunnerTests */,

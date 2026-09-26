@@ -27,7 +27,7 @@ Middleware loggingMiddleware() =>
       return res;
     };
 
-Future<void> main() async {
+Future<void> clashServer() async {
   Log.defaultLogger.logPathFn = (path) => path;
 
   final handler = const Pipeline()

@@ -8,6 +8,7 @@ void main(List<String> args) async {
       return;
     }
 
+
     await buildClash(input, output);
   });
 }

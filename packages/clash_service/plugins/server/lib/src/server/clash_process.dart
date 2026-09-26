@@ -1,45 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:collection/collection.dart';
+import 'package:clash_core/clash_core.dart';
+import 'package:ffi/ffi.dart';
 import 'package:nop/nop.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 import 'package:shelf_web_socket/shelf_web_socket.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import 'base_info.dart';
-import 'models/models.dart';
 import 'response.dart';
-
-Process? _process;
 
 final _clashQueue = TaskQueue();
 
-final class _ClashKey {
-  _ClashKey({required this.args});
-  final List<String> args;
-
-  @override
-  int get hashCode => const ListEquality().hash(args);
-
-  @override
-  bool operator ==(Object other) {
-    if (other is! _ClashKey) return false;
-    return other.runtimeType == runtimeType &&
-        const ListEquality().equals(args, other.args);
-  }
-}
-
 extension on Request {
-  Map<String, dynamic> get data {
-    final p = context['clashy_data'];
-    if (p is Map<String, dynamic>) {
-      return p;
-    }
-    return {};
+  dynamic get data {
+    return context['clashy_data'];
   }
 }
 
@@ -53,38 +32,33 @@ abstract final class ClashProcess {
       ..get('/', ClashProcess.getClash)
       ..post('/', ClashProcess.startClash);
 
-    return Pipeline().addMiddleware(_checkJsonContent).addHandler(router.call);
+    return Pipeline().addMiddleware(_decodeData).addHandler(router.call);
   }
 
-  static Handler _checkJsonContent(Handler handler) {
+  static RespHandler _decodeData(Handler handler) {
     return (Request request) async {
       if (request.headers case {'content-type': var type}
           when type != 'application/json') {
-        return Resp.res(.error(msg: "content-type != application/json"));
+        return .error(msg: "content-type != application/json");
       }
 
       if (request.method == 'POST') {
+        String? data;
         try {
-          final data = await request.readAsString();
+          data = await request.readAsString();
 
           final jsonData = jsonDecode(data);
-          if (jsonData is! Map) {
-            return Resp.res(.error(msg: "data is not Map."));
-          }
-
-          request = request.change(
-            context: {
-              'clashy_data': UnmodifiableMapView(
-                jsonData as Map<String, dynamic>,
-              ),
-            },
-          );
+          request = request.change(context: {'clashy_data': jsonData});
         } catch (e) {
-          return Resp.res(.error(msg: '$e'));
+          if (data != null) {
+            request = request.change(context: {'clashy_data': data});
+          } else {
+            return .error(msg: '$e');
+          }
         }
       }
 
-      return handler(request);
+      return .new(await handler(request));
     };
   }
 
@@ -102,7 +76,7 @@ abstract final class ClashProcess {
       onError: (_) => _sockets.remove(webSocket),
     );
     _start();
-    return .res(.ok());
+    return .ok();
   }
 
   static Timer? _timer;
@@ -121,57 +95,58 @@ abstract final class ClashProcess {
   }
 
   static Future<Resp> getClash(Request request) async {
-    return .res(
-      .ok(
-        jsonEncode({
-          "dir": Platform.resolvedExecutable,
-          'work': Directory.current.path,
-        }),
-      ),
-      headers: jsonHeader,
+    return .ok(
+      jsonEncode({
+        "dir": Platform.resolvedExecutable,
+        'work': Directory.current.path,
+      }),
     );
   }
 
   static Future<Resp> startClash(Request request) async {
-    final req = ClashStartReq.fromJson(request.data);
+    final configDir = request.data as String;
 
-    await _run(req.args);
-    return .res(.ok());
+    final res = await _run(configDir);
+
+    return .ok(res);
   }
 
-  static Future<void> _run(List<String> args) async {
-    return _clashQueue.run(() => _runSingle(_ClashKey(args: args)));
+  static Future<String?> _run(String configDir) async {
+    return _clashQueue.run(() => _runSingle(configDir));
   }
 
-  static _ClashKey? _clashKey;
-  static Future<void> _runSingle(_ClashKey data) async {
-    if (_clashKey == data) {
-      if (_process case var _?) {
-        return;
+  static String? _clashKey;
+  static var _started = false;
+  static Future<String?> _runSingle(String configDir) async {
+    if (_clashKey == configDir) {
+      if (_started) {
+        return null;
       }
     }
 
-    final process = await Process.start(
-      currentExeDir.childFile('clash').path,
-      data.args,
-      workingDirectory: currentExeDir.path,
-    );
-    _process?.kill();
-    _process = process;
-    _clashKey = data;
-
-    // process.stderr.forEach(stderr.add);
-    // process.stdout.forEach(stdout.add);
-    process.exitCode.whenComplete(() {
-      if (_process == process) {
-        _clashKey = null;
-        _process?.kill();
-        _process = null;
+    String? err;
+    _started = false;
+    using((arena) {
+      try {
+        final res = start(configDir.toNativeUtf8(allocator: arena).cast());
+        if (res != nullptr) {
+          final error = res.cast<Utf8>().toDartString();
+          if (error.isNotEmpty) {
+            err = error;
+            Log.e('start Error: $e');
+          }
+          freeString(res);
+          _started = false;
+        } else {
+          _started = true;
+        }
+      } catch (e) {
+        Log.e('start error: $e');
       }
     });
+
+    _clashKey = configDir;
+
+    return err;
   }
 }
-
-final currentExeDir = fs.currentDirectory
-    .childFile(Platform.resolvedExecutable)
-    .parent;

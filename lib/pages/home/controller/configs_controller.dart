@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
 
@@ -26,15 +27,13 @@ class ConfigsController with NopLifecycle {
     await repository.clashEvent.reloadConfigs(true, path);
     await release(const Duration(milliseconds: 300));
     clash.getData();
-    final c = repository.clashEvent.getCurrentConfig() ?? '';
-    _current.value = c;
   }
 
   final AV<ConfigsCurrent?> _data = .new(null);
   ConfigsCurrent? get data => _data.value;
   List<ConfigTable>? get tables => data?.tables;
-  final _current = ''.al;
-  String get current => _current.value;
+  final _current = BaseConfig.currentProfile;
+  String get current => _current.value ?? '';
 
   bool get listening => _sub != null;
   StreamSubscription<ConfigsCurrent>? _sub;
@@ -54,8 +53,6 @@ class ConfigsController with NopLifecycle {
         Log.w('error: $e.');
       },
     );
-    final c = repository.clashEvent.getCurrentConfig() ?? '';
-    _current.value = c;
   }
 
   Future<void> addNewConfigUrl(
@@ -79,8 +76,6 @@ class ConfigsController with NopLifecycle {
 
   Future<void> updateConfigData(String url) async {
     await repository.clashEvent.updateCurrentConfig(url);
-    final c = repository.clashEvent.getCurrentConfig() ?? '';
-    _current.value = c;
   }
 
   @override

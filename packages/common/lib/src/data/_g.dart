@@ -1,0 +1,11 @@
+import 'package:json_annotation/json_annotation.dart';
+import 'package:collection/collection.dart';
+part '_g.g.dart';
+part 'all_configs.dart';
+part 'all_rules.dart';
+part 'connections.dart';
+part 'delay.dart';
+part 'history.dart';
+part 'proxy_item.dart';
+part 'traffic.dart';
+part 'owner_config.dart';

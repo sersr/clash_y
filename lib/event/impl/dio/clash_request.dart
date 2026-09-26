@@ -8,25 +8,18 @@ import 'package:clashy/event/repository.dart';
 import 'package:common/common.dart';
 import 'package:dio/dio.dart';
 import 'package:file/file.dart';
-import 'package:hive_ce/hive.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart';
 
-import '../../../data/data.dart';
-import '../../../model/log_model.dart';
 import '../../event.dart';
 import 'unix_socket_dio.dart';
-
-abstract final class _BoxKey {
-  static const current = 'current';
-}
 
 final class ClashRequest implements ClashEvent {
   ClashRequest({required this.paths, required this.repo}) {
     init();
   }
   String get appConfigPath => paths.appConfigPath;
-  String get unixSocketPath => HiveConfig.unixSockPath;
+  String get unixSocketPath => BaseConfig.unixSockPath.value;
   final Repository repo;
   final Paths paths;
   late Dio _dio;
@@ -219,7 +212,7 @@ final class ClashRequest implements ClashEvent {
   }
 
   void updateUnixSocket() {
-    HiveConfig.unixSocketPath = join(
+    BaseConfig.unixSockPath.value = join(
       paths.appSupportPath,
       'socket_${Random().nextInt(65556)}.sock',
     );
@@ -340,12 +333,10 @@ final class ClashRequest implements ClashEvent {
 
   final dlConfigDio = Dio();
 
-  Box get _box => Hives.config;
-
   Future<void> onClashInit() async {
-    final current = await _box.get(_BoxKey.current);
-    if (current != null) {
-      final file = getFile('$current');
+    final current = BaseConfig.currentProfile;
+    if (current.value != null) {
+      final file = getFile('${current.value}');
       if (file.existsSync()) {
         return reloadConfigs(true, file.path);
       }
@@ -354,17 +345,8 @@ final class ClashRequest implements ClashEvent {
 
   @override
   FutureOr<void> updateCurrentConfig(String url) async {
-    final current = _box.get(_BoxKey.current);
+    final current = BaseConfig.currentProfile.value;
     await reloadConfigs(true, url, update: true, reload: url == current);
-  }
-
-  @override
-  String? getCurrentConfig() {
-    final current = _box.get(_BoxKey.current);
-    if (current is String) {
-      return current;
-    }
-    return null;
   }
 
   /// clashEvent
@@ -417,13 +399,13 @@ final class ClashRequest implements ClashEvent {
         if (exists) {
           Log.w('$exists $file');
           if (reload) {
-            await _box.put(_BoxKey.current, url);
+            BaseConfig.currentProfile.value = url;
             await updateConfig(force, file.path);
           }
         }
       } catch (e) {
         Log.i(e);
-        await _box.put(_BoxKey.current, url);
+        BaseConfig.currentProfile.value = url;
         await updateConfig(force, file.path);
       }
     });

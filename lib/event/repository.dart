@@ -89,9 +89,6 @@ ResolveRecord _eventEntryPoint(Paths args) {
   initLog();
 
   final clash = ClashEventMessage.getResolveMessage();
-  clash.getCurrentConfig().then((v) {
-    Log.w('isolate receive clash current config: $v');
-  });
 
   final configsEvent = EventIsolate(paths: args);
 

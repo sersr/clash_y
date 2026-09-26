@@ -20,10 +20,10 @@ abstract final class BaseInfo {
   }
 
   static Resp _getEnv(Request request) {
-    return .res(.ok(Platform.environment));
+    return .ok(Platform.environment);
   }
 
   static Resp _getPath(Request request) {
-    return .res(.ok(Platform.resolvedExecutable));
+    return .ok(Platform.resolvedExecutable);
   }
 }

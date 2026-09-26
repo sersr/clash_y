@@ -1,4 +1,4 @@
-[submodule "packages/mihomo"]
-	path = packages/mihomo
+[submodule "packages/clash_core/core/mihomo"]
+	path = packages/clash_core/core/mihomo
 	url = https://github.com/MetaCubeX/mihomo
 	branch = Alpha

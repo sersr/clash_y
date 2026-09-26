@@ -24,8 +24,8 @@ abstract final class ClashServiceApi {
     return .transform(res.data);
   }
 
-  static Future<ApiResp> startClash(ClashStartReq req) async {
-    final res = await _dio.post(_Apis.clashStart, data: req.toJson());
+  static Future<ApiResp> startClash(String configDir) async {
+    final res = await _dio.post(_Apis.clashStart, data: configDir);
 
     return .transform(res.data);
   }
