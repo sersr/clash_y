@@ -1,10 +1,10 @@
-import 'dart:io';
+import 'dart:io' as io;
 
 import 'package:code_assets/code_assets.dart';
 import 'package:data_assets/data_assets.dart';
-import 'package:hooks/hooks.dart';
-
+import 'package:file/file.dart';
 import 'package:file/local.dart' as f;
+import 'package:hooks/hooks.dart';
 import 'package:path/path.dart';
 
 const fs = f.LocalFileSystem();
@@ -17,10 +17,13 @@ Future<void> buildMacOSDaemon(
   if (!input.config.buildCodeAssets) return;
 
   if (input.config.code.targetOS != .macOS) return;
+  final ignore = input.userDefines['ignore'] == true;
+  if (ignore) return;
+
   final packageName = input.packageName;
 
   // 使用 swift build 编译 SPM 包
-  final result = await Process.run('swift', [
+  final result = await io.Process.run('swift', [
     'build',
     '--package-path',
     'plugins/clash_service_drawin',
@@ -63,7 +66,7 @@ Future<void> buildClashServer(
       .childDirectory('plugins')
       .childDirectory('server');
 
-  final result = await Process.run('dart', [
+  final result = await io.Process.run('dart', [
     'build',
     'cli',
   ], workingDirectory: serverDir.path);
@@ -74,6 +77,9 @@ Future<void> buildClashServer(
 
   final name = targetOs.executableFileName('clashyService');
   final clashName = targetOs.dylibFileName('clash');
+  // final bundle = fs.currentDirectory.childDirectory(
+  //   join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle'),
+  // );
 
   final exePath = join(
     serverDir.path,
@@ -95,6 +101,12 @@ Future<void> buildClashServer(
     clashName,
   );
 
+  // if (bundle.existsSync()) {
+  //   final clashService = bundle.parent.childDirectory('ClashService');
+  //   clashService.createSync(recursive: true);
+  //   copy(bundle, clashService);
+  // }
+
   output.assets.data.add(
     DataAsset(
       package: packageName,
@@ -110,4 +122,20 @@ Future<void> buildClashServer(
       file: Uri.file(clashPath, windows: targetOs == .windows),
     ),
   );
+}
+
+Future<void> copy(Directory from, Directory to) async {
+  final list = from.listSync();
+  for (var item in list) {
+    if (item is Directory) {
+      final toDir = to.childDirectory(item.basename);
+      toDir.createSync(recursive: true);
+      await copy(item, toDir);
+      continue;
+    }
+    if (item is File) {
+      final toFile = to.childFile(item.basename);
+      item.copySync(toFile.path);
+    }
+  }
 }
