@@ -12,13 +12,15 @@ import '_route/routes.dart';
 import 'pages/home/controller/clash_connection_controller.dart';
 import 'pages/home/controller/configs_controller.dart';
 
-Future<void> initMain() async {
+Future<bool> initMain() async {
   try {
     initLog();
     initController();
     await [G.init()].wait;
+    return true;
   } catch (e) {
     Log.e("init error: $e");
+    return false;
   }
 }
 

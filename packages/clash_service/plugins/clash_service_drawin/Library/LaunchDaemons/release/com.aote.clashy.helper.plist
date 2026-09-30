@@ -6,11 +6,6 @@
 		<string>com.aote.clashy.helper</string>
 		<key>BundleProgram</key>
 		<string>Contents/Frameworks/App.framework/Versions/A/Resources/flutter_assets/packages/clash_service/bin/clashyService</string>
-		<key>MachServices</key>
-		<dict>
-			<key>com.aote.clashy.helper</key>
-			<true />
-		</dict>
 		<key>RunAtLoad</key>
 		<true />
 		<key>KeepAlive</key>

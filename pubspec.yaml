@@ -41,6 +41,8 @@ dependencies:
   tray_manager: ^0.5.3
   clash_service:
     path: packages/clash_service
+  native_assets_cli: ^0.18.0
+  native_toolchain_c: ^0.19.5
 
 dev_dependencies:
   flutter_test:

@@ -18,7 +18,10 @@ Future<void> buildMacOSDaemon(
 
   if (input.config.code.targetOS != .macOS) return;
   final ignore = input.userDefines['ignore'] == true;
-  if (ignore) return;
+  if (ignore) {
+    print("ignore");
+    return;
+  }
 
   final packageName = input.packageName;
 

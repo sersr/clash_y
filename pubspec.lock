@@ -596,8 +596,16 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  native_assets_cli:
+    dependency: "direct main"
+    description:
+      name: native_assets_cli
+      sha256: "224d3d7eb3fd05ed631a2a19986a2189c009ccda7747f5192096998200d45bfe"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.18.0"
   native_toolchain_c:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: native_toolchain_c
       sha256: "90eaad8059ebc2004a63810a4696ea9acdb02473e47ed3b6b3bafb100ac77e31"
@@ -888,10 +896,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "475610b2aa23c19687cce2961e44b0cc57cafe220f67c2b80201231b2a07fbe7"
+      sha256: "0a10344e901e5b2e63819567951cb6a06673ed6b84f40462188ff5a0c41f371f"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.13"
+    version: "0.7.14"
   timezone:
     dependency: transitive
     description:
@@ -927,10 +935,10 @@ packages:
     dependency: transitive
     description:
       name: vector_math
-      sha256: f36f9f3be64c6198714492bb455c11056e33e2f85d9a0b676a48301e44fdcf47
+      sha256: "92b9910f66ed1057fd4da7b040ae7c74cafacf885bdc81be496928d5049b032d"
       url: "https://pub.dev"
     source: hosted
-    version: "2.4.2"
+    version: "2.4.3"
   vm_service:
     dependency: transitive
     description:
