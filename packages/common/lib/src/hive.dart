@@ -5,14 +5,19 @@ import 'package:path/path.dart';
 
 abstract final class HiveBoxKey {
   static const config = 'config';
+  static const window = 'window';
 }
 
 abstract final class Hives {
   static Box get config => Hive.box(HiveBoxKey.config);
+  static Box get window => Hive.box(HiveBoxKey.window);
 
   static Future<void> init(String path) {
     Hive.init(path);
-    return [Hive.openBox(HiveBoxKey.config)].wait;
+    return [
+      Hive.openBox(HiveBoxKey.config),
+      Hive.openBox(HiveBoxKey.window),
+    ].wait;
   }
 }
 
@@ -33,5 +38,12 @@ abstract final class BaseConfig {
   static final AV<MihomoRootConfig> baseConfig = Hives.config.readDefault(
     _BoxKey.baseConfig,
     MihomoRootConfig(externalController: unixSockPath.value),
+  );
+}
+
+abstract final class WindowHive {
+  static final AV<WindowRect> windowRect = Hives.window.readDefault(
+    'windowRect',
+    .zero,
   );
 }

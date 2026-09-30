@@ -617,3 +617,18 @@ Map<String, dynamic> _$MihomoRootConfigToJson(MihomoRootConfig instance) =>
       'proxy-providers': ?instance.proxyProviders,
       'rule-providers': ?instance.ruleProviders,
     };
+
+WindowRect _$WindowRectFromJson(Map<String, dynamic> json) => WindowRect(
+  top: (json['top'] as num?)?.toDouble() ?? 0,
+  left: (json['left'] as num?)?.toDouble() ?? 0,
+  right: (json['right'] as num?)?.toDouble() ?? 0,
+  bottom: (json['bottom'] as num?)?.toDouble() ?? 0,
+);
+
+Map<String, dynamic> _$WindowRectToJson(WindowRect instance) =>
+    <String, dynamic>{
+      'top': instance.top,
+      'left': instance.left,
+      'right': instance.right,
+      'bottom': instance.bottom,
+    };
