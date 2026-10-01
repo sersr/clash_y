@@ -6,6 +6,7 @@ void main(List<String> args) async {
     await [
       buildMacOSDaemon(input, output),
       buildClashServer(input, output),
+      buildWindowsDll(input, output),
     ].wait;
   });
 }

@@ -1,40 +1,100 @@
-import 'dart:ffi';
+import 'dart:ffi' as ffi;
+import 'dart:io';
 
-import 'package:dart_windows_service_support/dart_windows_service_support.dart';
 import 'package:ffi/ffi.dart';
-
-final DartConnectServiceDLL serviceDLL = .new('WindowsServiceDLL64.dll');
 
 const windowService = 'clashy_service';
 
-void connectWindowScm(String service) {
-  serviceDLL.dartConnectService(service.toNativeUtf16().cast<Uint16>());
+void connectWindowScm() {
+  dartConnectService(windowService.toNativeUtf16());
 }
 
-void installService(String service, String servicePath, String desc) {
+void installService() {
+  final current = Platform.resolvedExecutable;
   using((arena) {
-    serviceDLL.dartInstallService(
-      service.toNativeUtf16(allocator: arena).cast(),
-      service.toNativeUtf16(allocator: arena).cast(),
-      desc.toNativeUtf16(allocator: arena).cast(),
-      "".toNativeUtf16(allocator: arena).cast<Uint16>(),
+    dartInstallService(
+      windowService.toNativeUtf16(allocator: arena),
+      windowService.toNativeUtf16(allocator: arena),
+      'clashy service'.toNativeUtf16(allocator: arena),
+      "".toNativeUtf16(allocator: arena),
       0x2,
-      "".toNativeUtf16(allocator: arena).cast<Uint16>(),
-      Pointer.fromAddress(0),
-      Pointer.fromAddress(0),
-      servicePath.toNativeUtf16(allocator: arena).cast<Uint16>(),
+      "".toNativeUtf16(allocator: arena),
+      ffi.Pointer.fromAddress(0),
+      ffi.Pointer.fromAddress(0),
+      current.toNativeUtf16(allocator: arena),
       1,
       1,
-      Pointer.fromAddress(0),
+      ffi.Pointer.fromAddress(0),
       1,
     );
   });
 }
 
-void uninstallService(String service) {
+void uninstallService() {
   using((arena) {
-    serviceDLL.dartUninstallService(
-      service.toNativeUtf16(allocator: arena).cast<Uint16>(),
-    );
+    dartUninstallService(windowService.toNativeUtf16(allocator: arena));
   });
 }
+
+typedef PCWSTR = ffi.Pointer<Utf16>;
+typedef DWORD = ffi.UnsignedLong;
+
+typedef CDartInstallService = ffi.Void Function(
+  PCWSTR pszServiceName,
+  PCWSTR pszDisplayName,
+  PCWSTR pszDescription,
+  PCWSTR pszParams,
+  DWORD dwStartType,
+  PCWSTR pszDependencies,
+  PCWSTR pszAccount,
+  PCWSTR pszPassword,
+  PCWSTR serviceCallPath,
+  ffi.Int bRegisterWithEventLog,
+  DWORD dwNumMessageCategories,
+  PCWSTR pszMessageResourceFilePath,
+  ffi.Int delayedStart,
+);
+
+typedef DartInstallService = void Function(
+  PCWSTR pszServiceName,
+  PCWSTR pszDisplayName,
+  PCWSTR pszDescription,
+  PCWSTR pszParams,
+  int dwStartType,
+  PCWSTR pszDependencies,
+  PCWSTR pszAccount,
+  PCWSTR pszPassword,
+  PCWSTR serviceCallPath,
+  int bRegisterWithEventLog,
+  int dwNumMessageCategories,
+  PCWSTR pszMessageResourceFilePath,
+  int delayedStart,
+);
+
+typedef CDartConnectService = ffi.Void Function(PCWSTR);
+typedef DartConnectService = void Function(PCWSTR);
+
+typedef CDartUninstallService = ffi.Void Function(PCWSTR);
+typedef DartUninstallService = void Function(PCWSTR);
+
+@ffi.Native<CDartInstallService>(symbol: 'DartInstallService')
+external void dartInstallService(
+  PCWSTR pszServiceName,
+  PCWSTR pszDisplayName,
+  PCWSTR pszDescription,
+  PCWSTR pszParams,
+  int dwStartType,
+  PCWSTR pszDependencies,
+  PCWSTR pszAccount,
+  PCWSTR pszPassword,
+  PCWSTR serviceCallPath,
+  int bRegisterWithEventLog,
+  int dwNumMessageCategories,
+  PCWSTR pszMessageResourceFilePath,
+  int delayedStart,
+);
+
+@ffi.Native<CDartConnectService>(symbol: 'DartConnectService')
+external void dartConnectService(PCWSTR name);
+@ffi.Native<CDartUninstallService>(symbol: 'DartUninstallService')
+external void dartUninstallService(PCWSTR name);

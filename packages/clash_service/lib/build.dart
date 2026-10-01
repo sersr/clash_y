@@ -9,6 +9,12 @@ import 'package:path/path.dart';
 
 const fs = f.LocalFileSystem();
 
+extension on HookInputUserDefines {
+  bool get isCli {
+    return this['isCli'] == true;
+  }
+}
+
 /// 注册守护进程 ffi
 Future<void> buildMacOSDaemon(
   BuildInput input,
@@ -17,8 +23,8 @@ Future<void> buildMacOSDaemon(
   if (!input.config.buildCodeAssets) return;
 
   if (input.config.code.targetOS != .macOS) return;
-  final ignore = input.userDefines['ignore'] == true;
-  if (ignore) {
+  final isCli = input.userDefines.isCli;
+  if (isCli) {
     print("ignore");
     return;
   }
@@ -58,6 +64,8 @@ Future<void> buildClashServer(
   BuildOutputBuilder output,
 ) async {
   if (!input.config.buildDataAssets) return;
+
+  if (input.userDefines.isCli) return;
 
   final targetOs = input.config.code.targetOS;
   final arc = input.config.code.targetArchitecture;
@@ -141,4 +149,30 @@ Future<void> copy(Directory from, Directory to) async {
       item.copySync(toFile.path);
     }
   }
+}
+
+/// 在守护进程中运行的服务
+Future<void> buildWindowsDll(
+  BuildInput input,
+  BuildOutputBuilder output,
+) async {
+  if (!input.config.buildDataAssets) return;
+  if (!input.userDefines.isCli) {
+    return;
+  }
+
+  final targetOs = input.config.code.targetOS;
+
+  if (targetOs != .windows) return;
+
+  output.assets.code.add(
+    .new(
+      package: input.packageName,
+      name: 'src/service/clash_service_windows.dart',
+      linkMode: DynamicLoadingBundled(),
+      file: Uri.file(
+        join(input.packageRoot.path, 'bin', 'WindowsServiceDLL64.dll'),
+      ),
+    ),
+  );
 }

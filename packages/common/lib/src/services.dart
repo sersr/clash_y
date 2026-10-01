@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:common/common.dart';
-import 'package:common/src/windows/runas.dart';
 import 'package:dart_service_manager/dart_service_manager.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart';
@@ -24,21 +23,21 @@ abstract final class Services {
     final suf = Platform.isWindows ? '.exe' : '';
     final exe = join(currentDir.path, 'clashHelper$suf');
 
-    final status = await manager.status(serviceName, serviceName);
+    final currentStatus = await status();
 
-    switch (status) {
+    switch (currentStatus) {
       case ServiceStatus.installed:
       case ServiceStatus.running:
       case ServiceStatus.paused:
       case ServiceStatus.stopped:
-        Log.w('service: $status');
+        Log.w('service: $currentStatus');
         manager.start(servicePackageName, serviceName);
         break;
       case ServiceStatus.failed:
         manager.start(servicePackageName, serviceName);
 
       case ServiceStatus.unknown:
-        final _ = shellExecute(operation: 'runas', file: exe);
+        // final _ = shellExecute(operation: 'runas', file: exe);
         await manager.installDescriptor(
           .new(
             packageName: servicePackageName,
@@ -53,11 +52,20 @@ abstract final class Services {
         );
     }
 
-    return manager.status(serviceName, serviceName);
+    return status();
+  }
+
+  static Future<ServiceStatus> status() async {
+    try {
+      final status = await manager.status(serviceName, serviceName);
+      return status;
+    } catch (e) {
+      return .unknown;
+    }
   }
 
   static Future<ServiceStatus> stop() async {
     await manager.uninstall(servicePackageName, serviceName: serviceName);
-    return manager.status(serviceName, serviceName);
+    return status();
   }
 }
