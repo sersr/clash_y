@@ -29,7 +29,7 @@ class ConfigsController with NopLifecycle {
     clash.getData();
   }
 
-  final AV<ConfigsCurrent?> _data = .new(null);
+  final AV<ConfigsCurrent?> _data = .val(null);
   ConfigsCurrent? get data => _data.value;
   List<ConfigTable>? get tables => data?.tables;
   final _current = BaseConfig.currentProfile;

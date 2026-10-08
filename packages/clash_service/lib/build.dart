@@ -83,7 +83,7 @@ Future<void> buildClashServer(
   ], workingDirectory: serverDir.path);
 
   if (result.exitCode != 0) {
-    throw Exception('dart build cli failed: server.');
+    throw Exception('dart build cli failed: server.\n${result.stderr}');
   }
 
   final name = targetOs.executableFileName('clashyService');

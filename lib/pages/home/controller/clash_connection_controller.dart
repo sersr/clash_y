@@ -8,7 +8,7 @@ import '../../../event/repository.dart';
 
 class ClashConnectionController with NopLifecycle {
   late final Repository repository = getType();
-  final AV<Connections?> _connections = .new(null);
+  final AV<Connections?> _connections = .val(null);
   Connections? get connections => _connections.value;
 
   StreamSubscription<Connections>? _sub;

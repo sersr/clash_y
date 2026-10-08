@@ -90,14 +90,21 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
     '.',
   ];
 
+  await Process.run(
+    'go',
+    ['mod', 'tidy'],
+    workingDirectory: goDirectory.toFilePath(),
+    environment: environment,
+  );
+
   final result = await Process.run(
     'go',
     arguments,
     workingDirectory: goDirectory.toFilePath(),
     environment: environment,
   );
+
   if (result.exitCode != 0) {
-    // return;
     throw ProcessException(
       'go',
       arguments,

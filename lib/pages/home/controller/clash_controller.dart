@@ -27,9 +27,10 @@ class ClashController with NopLifecycle {
     });
   }
 
-  final AV<ProxiesData?> _data = .new(null);
+  final AV<ProxiesData?> _data = .val(null);
   ProxiesData? get data => _data.value;
-
+  final map = <String, int?>{};
+  late final ss = map.al;
   String getName(String proxyName) {
     if (data case var data?) {
       for (var item in data.proxies) {

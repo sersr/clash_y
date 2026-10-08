@@ -27,4 +27,27 @@ void main() {
     final y = YamlUtils.edit(jsonEncode(j));
     print(y.toString());
   });
+
+  test("extension value", () {
+    final v = Value().v.v.v.v;
+    final Value vs = v;
+    expect(v.value, '1ext');
+    expect(vs.value, '1');
+  });
+}
+
+final class Value {
+  String get value => '1';
+}
+
+extension on Value {
+  ValueExt get v {
+    return .new(this);
+  }
+}
+
+extension type ValueExt(Value target) implements Value {
+  String get value {
+    return '${target.value}ext';
+  }
 }

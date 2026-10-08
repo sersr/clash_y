@@ -36,8 +36,6 @@ void initController() {
   router.put(() => ClashController());
   router.put(() => ClashConnectionController());
   router.put(() => ConfigsController());
-
-  HiveRegister.register<WindowRect>(fromJson: WindowRect.fromJson);
 }
 
 Future<String> initConfigPath(String unixSocketPath) async {

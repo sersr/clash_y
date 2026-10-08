@@ -1,49 +1,47 @@
 import 'package:common/common.dart';
-import 'package:flutter_nop/flutter_nop.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart';
 
-abstract final class HiveBoxKey {
-  static const config = 'config';
-  static const window = 'window';
-}
+enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
+  config,
+  window;
 
-abstract final class Hives {
-  static Box get config => Hive.box(HiveBoxKey.config);
-  static Box get window => Hive.box(HiveBoxKey.window);
+  static Iterable<Future<Box>> _openAll() =>
+      values.map((e) => Hive.openBox(e.name));
 
   static Future<void> init(String path) {
     Hive.init(path);
-    return [
-      Hive.openBox(HiveBoxKey.config),
-      Hive.openBox(HiveBoxKey.window),
-    ].wait;
+    return _openAll().wait;
   }
 }
 
-abstract final class _BoxKey {
-  static const current = 'currentProfile';
-  static const baseConfig = 'baseConfig';
-  static const unixSockPath = 'unixSockPath';
-}
+enum ConfigKey { currentProfile, baseConfig, unixSockPath }
 
 abstract final class BaseConfig {
-  static final AV<String?> currentProfile = Hives.config.read(_BoxKey.current);
-
-  static final AV<String> unixSockPath = Hives.config.readDefault(
-    _BoxKey.unixSockPath,
-    join(G.appCachePath, 'clash_config', 'socket_clash.sock'),
+  static final currentProfile = Hives.config.read(
+    ConfigKey.currentProfile,
+    .string(),
   );
 
-  static final AV<MihomoRootConfig> baseConfig = Hives.config.readDefault(
-    _BoxKey.baseConfig,
-    MihomoRootConfig(externalController: unixSockPath.value),
+  static final unixSockPath = Hives.config.readDef(
+    ConfigKey.unixSockPath,
+    .string(join(G.appCachePath, 'clash_config', 'socket_clash.sock')),
+  );
+
+  static final baseConfig = Hives.config.readDef(
+    ConfigKey.baseConfig,
+    .fromJson(
+      MihomoRootConfig.fromJson,
+      MihomoRootConfig(externalController: unixSockPath.value),
+    ),
   );
 }
 
+enum _Window { windowRect }
+
 abstract final class WindowHive {
-  static final AV<WindowRect> windowRect = Hives.window.readDefault(
-    'windowRect',
-    .zero,
+  static final windowRect = Hives.window.readDef(
+    _Window.windowRect,
+    .fromJson(WindowRect.fromJson, WindowRect.zero),
   );
 }

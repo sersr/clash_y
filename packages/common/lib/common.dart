@@ -7,4 +7,4 @@ export 'src/macos/proxy.dart';
 export 'src/utils/local_notication.dart';
 export 'src/utils/yaml.dart';
 export 'src/data/_g.dart';
-export 'src/hive_register.dart';
+export 'src/storage.dart';
