@@ -11,12 +11,12 @@ import 'init.dart';
 import 'pages/app.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final binding = WidgetsFlutterBinding.ensureInitialized();
 
   requestNotification();
 
   if (!await initMain()) {
-    Log.e("init failed.");
+    binding.exitApplication(.required);
     return;
   }
 
