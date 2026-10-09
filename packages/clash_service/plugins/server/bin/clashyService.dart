@@ -6,6 +6,7 @@ import 'dart:isolate';
 import 'package:clash_service/src/service/clash_service_windows.dart';
 import 'package:clash_service/src/service/clash_service_linux.dart';
 import 'package:server/server.dart';
+import 'package:server/src/server/clash_process.dart';
 
 Future<void> _install() async {
   if (Platform.isLinux) {
@@ -41,4 +42,5 @@ Future<void> main(List<String> args) async {
     return;
   }
   await clashServer();
+  ClashProcess.run('./te');
 }

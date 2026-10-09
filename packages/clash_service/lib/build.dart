@@ -48,6 +48,7 @@ Future<void> buildMacOSDaemon(
   final dylibPath =
       '${input.packageRoot.path}/plugins/clash_service_drawin/.build/release/libclash-service.dylib';
 
+  input.config.code.linkModePreference;
   output.assets.code.add(
     CodeAsset(
       package: packageName,
@@ -111,12 +112,6 @@ Future<void> buildClashServer(
     'lib',
     clashName,
   );
-
-  // if (bundle.existsSync()) {
-  //   final clashService = bundle.parent.childDirectory('ClashService');
-  //   clashService.createSync(recursive: true);
-  //   copy(bundle, clashService);
-  // }
 
   output.assets.data.add(
     DataAsset(

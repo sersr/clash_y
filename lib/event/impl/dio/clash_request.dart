@@ -279,6 +279,10 @@ final class ClashRequest implements ClashEvent {
         return Delay.fromJson(jsonDecode(data));
       }
     } on DioException catch (e, s) {
+      if (e.response case var res?) {
+        Log.w(res.data);
+        return null;
+      }
       Log.w('${e.response?.data}\n$s');
     }
     return null;

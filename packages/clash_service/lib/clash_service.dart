@@ -1,8 +1,9 @@
 import 'dart:io';
 
-import 'package:clash_service/src/service/clash_service_macos.dart';
 import 'package:clash_service_android/clash_service_android.dart' as android;
 import 'package:file/local.dart' as f;
+
+import 'src/service/clash_service_macos_cmd.dart';
 
 export 'package:server/server.dart';
 
@@ -30,9 +31,10 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS) {
-      final res = DaemonStatusMacOS.daemonStatus(vpnServiceRegisterHelper());
+      if (await HelperInstaller.isInstalled()) return true;
 
-      return res == .enabled;
+      await HelperInstaller.install();
+      return HelperInstaller.isInstalled();
     }
 
     // iOS, Linux and Windows have no VPN backend wired up here. The macOS
@@ -47,8 +49,10 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS) {
-      final DaemonStatusMacOS res = .daemonStatus(vpnServiceUnregisterHelper());
-      return res == .notRegistered;
+      if (!await HelperInstaller.isInstalled()) return true;
+
+      await HelperInstaller.uninstall();
+      return !await HelperInstaller.isInstalled();
     }
 
     return false;

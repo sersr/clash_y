@@ -113,16 +113,14 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
     );
   }
 
-  // if (targetOs == OS.android) {
   output.assets.code.add(
     CodeAsset(
       package: input.packageName,
-      name: 'clash_core.dart',
+      name: 'src/clash_core.dart',
       file: .parse(outputPath),
       linkMode: DynamicLoadingBundled(),
     ),
   );
-  // }
 }
 
 String _goArchitecture(Architecture architecture) => switch (architecture) {

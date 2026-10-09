@@ -106,12 +106,12 @@ abstract final class ClashProcess {
   static Future<Resp> startClash(Request request) async {
     final configDir = request.data as String;
 
-    final res = await _run(configDir);
+    final res = await run(configDir);
 
     return .ok(res);
   }
 
-  static Future<String?> _run(String configDir) async {
+  static Future<String?> run(String configDir) async {
     return _clashQueue.run(() => _runSingle(configDir));
   }
 

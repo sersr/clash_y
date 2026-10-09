@@ -39,3 +39,11 @@ public func vpn_service_unregister_helper() -> Int32 {
   }
 }
 
+@_cdecl("open_settings_sm")
+public func open_settings_sm() {
+  guard #available(macOS 13.0, *) else {
+    return
+  }
+
+  SMAppService.openSystemSettingsLoginItems()
+}

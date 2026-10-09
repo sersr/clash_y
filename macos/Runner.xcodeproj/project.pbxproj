@@ -235,7 +235,6 @@
 				8F7CF80C30545CE700850131 /* CopyFiles */,
 				8F7CF81030545D5400850131 /* CopyFiles */,
 				8F4E8E0A3063CEC30011BEB5 /* CopyFiles */,
-				8F7B2ED5306D07730008E156 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -362,26 +361,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh && touch Flutter/ephemeral/tripwire\n";
-		};
-		8F7B2ED5306D07730008E156 /* ShellScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${SRCROOT}/../packages/clash_service/plugins/clash_service_drawin/Library/LaunchDaemons/debug/com.aote.clashy.helper.plist",
-				"${SRCROOT}/../packages/clash_service/plugins/clash_service_drawin/Library/LaunchDaemons/release/com.aote.clashy.helper.plist",
-			);
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons/com.aote.clashy.helper.plist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "if [ \"${CONFIGURATION}\" = \"Debug\" ]; then\n  SRC_DIR=\"${SRCROOT}/../packages/clash_service/plugins/clash_service_drawin/Library/LaunchDaemons/debug\"\nelse\n   SRC_DIR=\"${SRCROOT}/../packages/clash_service/plugins/clash_service_drawin/Library/LaunchDaemons/release\"\n   fi\n   \nDEST_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons\"\n\nmkdir -p \"${DEST_DIR}\"\n\nditto \"${SRC_DIR}\" \"${DEST_DIR}\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
