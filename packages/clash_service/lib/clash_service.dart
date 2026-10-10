@@ -31,10 +31,10 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS) {
-      if (await HelperInstaller.isInstalled()) return true;
+      if (await HelperInstaller.isRunning()) return true;
 
       await HelperInstaller.install();
-      return HelperInstaller.isInstalled();
+      return HelperInstaller.isRunning();
     }
 
     // iOS, Linux and Windows have no VPN backend wired up here. The macOS
@@ -44,6 +44,21 @@ abstract final class ClashService {
 
   /// Tears the VPN service down.
   static Future<bool> close() async {
+    if (Platform.isAndroid) {
+      return android.AndroidVpnService.close();
+    }
+
+    if (Platform.isMacOS) {
+      if (!await HelperInstaller.isRunning()) return true;
+
+      await HelperInstaller.stop();
+      return !await HelperInstaller.isRunning();
+    }
+
+    return false;
+  }
+
+  static Future<bool> uninstall() async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.close();
     }
