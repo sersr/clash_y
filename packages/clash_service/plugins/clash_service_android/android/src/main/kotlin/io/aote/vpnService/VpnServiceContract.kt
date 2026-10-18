@@ -7,4 +7,7 @@ internal object VpnServiceContract {
     const val EXTRA_RESULT_RECEIVER = "resultReceiver"
     const val EXTRA_ALLOWED_APPLICATIONS = "allowedApplications"
     const val EXTRA_DISALLOWED_APPLICATIONS = "disallowedApplications"
+
+    /** onTaskRemoved 自恢复重启：核心已在运行时跳过重建 TUN。 */
+    const val EXTRA_RESUME_ONLY = "resumeOnly"
 }

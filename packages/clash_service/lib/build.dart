@@ -67,6 +67,7 @@ Future<void> buildClashServer(
   if (!input.config.buildDataAssets) return;
 
   if (input.userDefines.isCli) return;
+  if (!input.config.code.targetOS.isDesktop) return;
 
   final targetOs = input.config.code.targetOS;
   final arc = input.config.code.targetArchitecture;
@@ -143,5 +144,15 @@ Future<void> copy(Directory from, Directory to) async {
       final toFile = to.childFile(item.basename);
       item.copySync(toFile.path);
     }
+  }
+}
+
+extension on OS {
+  bool get isDesktop {
+    switch (this) {
+      case .macOS || .windows || .linux:
+        return true;
+    }
+    return false;
   }
 }
