@@ -145,29 +145,3 @@ Future<void> copy(Directory from, Directory to) async {
     }
   }
 }
-
-/// 在守护进程中运行的服务
-Future<void> buildWindowsDll(
-  BuildInput input,
-  BuildOutputBuilder output,
-) async {
-  if (!input.config.buildDataAssets) return;
-  if (!input.userDefines.isCli) {
-    return;
-  }
-
-  final targetOs = input.config.code.targetOS;
-
-  if (targetOs != .windows) return;
-
-  output.assets.code.add(
-    .new(
-      package: input.packageName,
-      name: 'src/service/clash_service_windows.dart',
-      linkMode: DynamicLoadingBundled(),
-      file: Uri.file(
-        join(input.packageRoot.path, 'bin', 'WindowsServiceDLL64.dll'),
-      ),
-    ),
-  );
-}

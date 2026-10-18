@@ -28,9 +28,10 @@ abstract final class ClashProcess {
   static Handler get clash {
     final router = Router();
     router
-      ..get('/ws', web.webSocketHandler(ClashProcess.ws))
-      ..get('/', ClashProcess.getClash)
-      ..post('/', ClashProcess.startClash);
+      ..get('/ws', web.webSocketHandler(ws))
+      ..get('/', getClash)
+      ..post('/', startClash)
+      ..post('stop', stopClash);
 
     return Pipeline().addMiddleware(_decodeData).addHandler(router.call);
   }
@@ -115,6 +116,10 @@ abstract final class ClashProcess {
     return _clashQueue.run(() => _runSingle(configDir));
   }
 
+  static Future<String?> stopClash() async {
+    return _clashQueue.run(_stopSingle);
+  }
+
   static String? _clashKey;
   static var _started = false;
   static Future<String?> _runSingle(String configDir) async {
@@ -146,6 +151,33 @@ abstract final class ClashProcess {
     });
 
     _clashKey = configDir;
+
+    return err;
+  }
+
+  static Future<String?> _stopSingle() async {
+    String? err;
+    _started = false;
+    _clashKey = null;
+
+    using((arena) {
+      try {
+        final res = stop();
+        if (res != nullptr) {
+          final error = res.cast<Utf8>().toDartString();
+          if (error.isNotEmpty) {
+            err = error;
+            Log.e('start Error: $e');
+          }
+          freeString(res);
+          _started = false;
+        } else {
+          _started = true;
+        }
+      } catch (e) {
+        Log.e('start error: $e');
+      }
+    });
 
     return err;
   }
