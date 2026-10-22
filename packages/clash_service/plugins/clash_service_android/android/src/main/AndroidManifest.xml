@@ -8,11 +8,15 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
   <application>
+    <!-- 独立进程：VPN/内核只依赖 Kotlin + libclash.so，与 Flutter 主进程解耦。
+         用户划掉 App 时主进程（Flutter 引擎、Dart isolate）被回收，
+         :vpn 前台服务继续存活，省电且免于内核随主进程一起被杀。 -->
     <service
       android:name="io.aote.vpnService.ClashVpnService"
       android:exported="false"
       android:foregroundServiceType="specialUse"
-      android:permission="android.permission.BIND_VPN_SERVICE">
+      android:permission="android.permission.BIND_VPN_SERVICE"
+      android:process=":vpn">
       <intent-filter>
         <action android:name="android.net.VpnService" />
       </intent-filter>

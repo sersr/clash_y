@@ -9,12 +9,13 @@ import 'dio/unix_socket_dio.dart';
 abstract final class _Apis {
   static const clashEnv = 'baseInfo/env';
   static const clashStart = 'clash';
+  static const clashStop = 'clash/stop';
 }
 
 abstract final class ClashServiceApi {
   static final _dio = Dio(
     .new(
-      baseUrl: 'http://localhost:7887/',
+      baseUrl: 'http://localhost/',
       contentType: Headers.jsonContentType,
     ),
   )..interceptors.add(_RetryInterceptor());
@@ -29,12 +30,18 @@ abstract final class ClashServiceApi {
 
     return .transform(res.data);
   }
+
+  static Future<ApiResp> stopClash() async {
+    final res = await _dio.post(_Apis.clashStop);
+
+    return .transform(res.data);
+  }
 }
 
 class _RetryInterceptor extends Interceptor {
   static final _implDio = Dio(
     .new(
-      baseUrl: 'http://localhost:7887/',
+      baseUrl: 'http://localhost/',
       contentType: Headers.jsonContentType,
     ),
   )..httpClientAdapter = UnixSocketAdapter(clashSocket, port: 0);

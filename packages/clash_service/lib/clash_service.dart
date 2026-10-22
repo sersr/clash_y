@@ -83,6 +83,13 @@ abstract final class ClashService {
 
     return false;
   }
+  static Future<bool> stop() async {
+    if (Platform.isAndroid) {
+      return android.AndroidVpnService.close();
+    }
+
+    return false;
+  }
 
   /// Removes the VPN service entirely.
   ///

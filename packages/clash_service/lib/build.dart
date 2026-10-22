@@ -114,6 +114,18 @@ Future<void> buildClashServer(
     clashName,
   );
 
+  final libDir = serverDir.childDirectory('lib');
+  if (await libDir.exists()) {
+    final list = await libDir.list(recursive: true).toList();
+    for (var item in list) {
+      if (item case File f) {
+        if (f.basename.endsWith('.dart')) {
+          output.dependencies.add(Uri.file(f.absolute.path));
+        }
+      }
+    }
+  }
+
   output.assets.data.add(
     DataAsset(
       package: packageName,

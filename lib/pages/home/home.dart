@@ -19,7 +19,7 @@ class Home extends StatefulWidget {
   State<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> {
+class _HomeState extends State<Home> with WidgetsBindingObserver {
   late Repository repository = getType();
   late ClashController clashMainNotifier = getType();
   late ConfigsController clashConfigNotifier = getType();
@@ -27,6 +27,29 @@ class _HomeState extends State<Home> {
 
   final open = ValueNotifier(true);
   final _notifier = ValueNotifier(0);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 后台暂停 1s 连接轮询，回前台恢复。
+    if (state == AppLifecycleState.paused) {
+      clashConnectionsNotifier.toggle(false);
+      clashMainNotifier.stopListen();
+    } else if (state == AppLifecycleState.resumed) {
+      clashConnectionsNotifier.toggle(_notifier.value == 2);
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final children = [
@@ -161,7 +184,7 @@ class _HomeState extends State<Home> {
         btn1(
           padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           onTap: () {
-            clashMainNotifier.stop();
+            clashMainNotifier.uninstall();
           },
           child: Text('unregister'),
         ),

@@ -1,4 +1,4 @@
-String baseConfigYaml(String unixSocket) {
+String baseConfigYaml(String unixSocket, {String logLevel = 'info'}) {
   return '''
 # HTTP 端口
 mixed-port: 7890
@@ -9,7 +9,7 @@ redir-port: 7892
 allow-lan: true
 # Rule / Global/ Direct (默认为 Rule 模式)
 mode: Rule
-log-level: info
+log-level: $logLevel
 
 # RESTful API for clash
 # external-controller: 0.0.0.0:9090

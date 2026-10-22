@@ -1,19 +1,24 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_ipc/dart_ipc.dart';
 import 'package:nop/utils.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
-import 'package:shelf_router/shelf_router.dart';
 
+import 'server.dart';
+import 'src/my_router.dart';
 import 'src/server/base_info.dart';
 import 'src/server/clash_process.dart';
 
-export 'src/server/response.dart';
 export 'src/server/models/models.dart';
+export 'src/server/response.dart';
 
-final router = Router()
-  ..get('/', (Request req) => Response.ok('Clash VPN!'))
+const version = '0.0.1';
+
+final router = MyRouter()
+  ..get('/', (req) => .ok('Clash VPN!'))
+  ..get('/version', (req) => .ok(version))
   ..mount('/baseInfo', BaseInfo.router.call)
   ..mount('/clash', ClashProcess.clash);
 
@@ -27,10 +32,42 @@ Middleware loggingMiddleware() =>
       return res;
     };
 
+RespHandler jsonMiddleware(Handler handler) {
+  return (Request request) async {
+    if (request.headers case {'content-type': var type}
+        when type != 'application/json') {
+      return .error(msg: "content-type != application/json");
+    }
+
+    if (request.method == 'POST') {
+      String? data;
+      try {
+        data = await request.readAsString();
+
+        final jsonData = jsonDecode(data);
+        request = request.change(context: {'clashy_data': jsonData});
+      } catch (e) {
+        if (data != null) {
+          request = request.change(context: {'clashy_data': data});
+        } else {
+          return .error(msg: '$e');
+        }
+      }
+    }
+    try {
+      final res = await handler(request);
+      return .new(res);
+    } catch (e) {
+      return .error(data: '$e');
+    }
+  };
+}
+
 Future<void> clashServer() async {
   Log.defaultLogger.logPathFn = (path) => path;
 
   final handler = const Pipeline()
+      .addMiddleware(jsonMiddleware)
       .addMiddleware(loggingMiddleware())
       .addHandler(router.call);
 

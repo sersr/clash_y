@@ -92,16 +92,3 @@ void main() async {
 
   runApp(const ClashApp());
 }
-
-extension on TargetPlatform {
-  bool get isDesktop {
-    return switch (this) {
-      TargetPlatform.android ||
-      TargetPlatform.fuchsia ||
-      TargetPlatform.iOS => false,
-      TargetPlatform.linux ||
-      TargetPlatform.macOS ||
-      TargetPlatform.windows => true,
-    };
-  }
-}

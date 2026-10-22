@@ -156,7 +156,6 @@ final class ClashRequest implements ClashEvent {
           case List<int> bytes:
             try {
               final v = utf8.decode(bytes);
-              Log.w(v);
               final data = jsonDecode(v);
               if (data case Map data) {
                 final s = Connections.fromJson(data.cast());
@@ -419,10 +418,12 @@ final class ClashRequest implements ClashEvent {
     // 'external-controller-unix': paths.unixSocketPath,
     Log.w(editor.toString());
     editor
-      ..update(['log-level'], 'info')
+      ..update(['log-level'], const bool.fromEnvironment('dart.vm.product')
+          ? 'warning'
+          : 'debug')
       ..update(['mode'], 'rule')
       ..update(['mixed-port'], 7890)
-      ..update(['alown-lan'], false)
+      ..update(['allow-lan'], false)
       ..update(['dns'], defaultDnsConfig());
     // ipv6:
     // ntp:

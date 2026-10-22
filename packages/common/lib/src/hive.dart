@@ -2,7 +2,10 @@ import 'package:common/common.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart';
 
+part 'hive/settings.dart';
+
 enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
+  settings,
   config,
   window;
 

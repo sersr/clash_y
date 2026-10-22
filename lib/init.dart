@@ -62,7 +62,9 @@ Future<String> initConfigPath(String unixSocketPath) async {
           jsonDecode(jsonEncode(loadYaml(await file.readAsString()))) as Map;
 
       data['external-controller-unix'] = unixSocketPath;
-      data['log-level'] = 'debug';
+      // debug/info 会对每个连接/dns 打日志，后台持续耗电。
+      // release 用 warning，只保留告警。
+      data['log-level'] = kDebugMode ? 'debug' : 'warning';
       data['mode'] = 'rule';
       data['ipv6'] = true;
       (data.putIfAbsent('tun', () => {}) as Map)
@@ -79,7 +81,10 @@ Future<String> initConfigPath(String unixSocketPath) async {
     return configDir.path;
   }
 
-  final configYaml = baseConfigYaml(unixSocketPath);
+  final configYaml = baseConfigYaml(
+    unixSocketPath,
+    logLevel: kDebugMode ? 'debug' : 'warning',
+  );
 
   await file.create(recursive: true);
   await file.writeAsString(configYaml);

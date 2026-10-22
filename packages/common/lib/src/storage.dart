@@ -99,6 +99,17 @@ mixin StorageMixinHive on StorageMixin {
   }
 }
 
+mixin StorageEnum on Enum {
+  StorageMixin get target;
+  AV<T> readDef<T>(StorageTransformDef<T> transform) {
+    return target.read(this, transform) as AV<T>;
+  }
+
+  AV<T?> read<T>(StorageTransform<T> transform) {
+    return target.read(this, transform);
+  }
+}
+
 mixin StorageMixin {
   dynamic get(Object key);
   Future<void> delete(Object key);

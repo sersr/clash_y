@@ -8,6 +8,8 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.ResultReceiver
 import android.util.Log
@@ -17,11 +19,22 @@ import java.util.concurrent.Executors
 /**
  * Android-only VpnService.
  *
+ * Runs in its own `:vpn` process (see the plugin manifest): the TUN, mihomo
+ * and this service survive the Flutter main process being killed when the
+ * user swipes the app away.
+ *
  * Runtime state is only the live TUN descriptors owned by this service
  * instance. The last requested on/off switch and the configDir are
  * persisted in SharedPreferences so a sticky restart (intent == null, e.g.
  * after the process is killed) can restore the configuration — and refuse
- * to come back up when the user left the VPN off.
+ * to come back up when the user left the VPN off. The prefs file is touched
+ * only from this process, so no multi-process modes are needed.
+ *
+ * Automatic restarts (sticky restart after a kill, onTaskRemoved
+ * self-restart) also go through a restart-storm guard: if they arrive
+ * within [STORM_WINDOW_MS] of the previous actual core start, the full
+ * start is delayed with an exponential backoff so a kill loop cannot pin
+ * the CPU with back-to-back config loads.
  */
 class ClashVpnService : VpnService() {
 
@@ -38,6 +51,25 @@ class ClashVpnService : VpnService() {
         private const val KEY_ALLOWED_APPS = "allowedApplications"
         private const val KEY_DISALLOWED_APPS = "disallowedApplications"
 
+        /** 上一次真正执行 `startCore` 的时刻（`System.currentTimeMillis()`）。 */
+        private const val KEY_LAST_START_AT = "lastStartAt"
+
+        /** 连续快速自动重启的计数（风暴等级）。 */
+        private const val KEY_STORM_LEVEL = "stormLevel"
+
+        /**
+         * 重启风暴判定窗口与退避参数。
+         *
+         * 自动重启距上次真正启动不足 [STORM_WINDOW_MS] 即认定为风暴：
+         * 第 1 次仍立即执行，之后按 `BACKOFF_BASE_MS * 2^(level-2)`
+         * 推迟全量启动，上限 [BACKOFF_MAX_MS]。启动间隔恢复到窗口之上
+         * 说明风暴结束，计数清零。
+         */
+        private const val STORM_WINDOW_MS = 30_000L
+        private const val BACKOFF_BASE_MS = 5_000L
+        private const val BACKOFF_MAX_MS = 60_000L
+        private const val MAX_STORM_LEVEL = 16
+
         private const val TUN_ADDRESS = "172.19.0.1"
         private const val TUN_ADDRESS_PREFIX = 30
         private const val TUN_DNS = "172.19.0.2"
@@ -46,12 +78,22 @@ class ClashVpnService : VpnService() {
 
     private val executor = Executors.newSingleThreadExecutor()
 
+    /** 退避用的主线程调度器（`onStartCommand`/`onDestroy` 都在主线程）。 */
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** 排队等待退避到期的自动恢复任务，同一时刻至多一个。 */
+    private var pendingAutoStart: Runnable? = null
+
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
 
     private var tunDescriptor: ParcelFileDescriptor? = null
 
     @Volatile
     private var nativeTunFd = -1
+
+    /** Native mihomo runtime is stopped at most once per successful start. */
+    @Volatile
+    private var coreStarted = false
 
     override fun onCreate() {
         super.onCreate()
@@ -100,6 +142,7 @@ class ClashVpnService : VpnService() {
     override fun onRevoke() {
         Log.i(TAG, "VPN permission revoked")
         // 授权被撤销：持久化开关同步关闭，避免 sticky 重启再拉起
+        cancelPendingAutoStart()
         setEnabled(false)
         executor.execute {
             cleanup()
@@ -139,6 +182,9 @@ class ClashVpnService : VpnService() {
 
     override fun onDestroy() {
         Log.i(TAG, "onDestroy")
+        // 先撤掉退避任务：executor 随后 shutdownNow，迟到的任务会抛
+        // RejectedExecutionException 并在主线程崩溃
+        cancelPendingAutoStart()
         cleanup()
         executor.shutdownNow()
         super.onDestroy()
@@ -176,9 +222,94 @@ class ClashVpnService : VpnService() {
             VpnServiceContract.EXTRA_DISALLOWED_APPLICATIONS
         ) ?: prefs.getStringSet(KEY_DISALLOWED_APPS, null)?.toList().orEmpty()
 
+        if (!isAutoRestart(intent)) {
+            // 手动启动（Dart 侧显式指令）：风暴状态归零，立即执行
+            cancelPendingAutoStart()
+            prefs.edit().putInt(KEY_STORM_LEVEL, 0).apply()
+            executor.execute {
+                startCore(configDir, receiver, allowedApplications, disallowedApplications)
+            }
+            return
+        }
+
+        // 已有排队中的自动恢复：不重复计数，也不重排计时
+        if (pendingAutoStart != null) {
+            Log.i(TAG, "auto restart already scheduled, ignoring duplicate")
+            return
+        }
+
+        val delay = nextBackoffDelayMs()
+        if (delay > 0) {
+            Log.i(TAG, "restart storm backoff: delaying the full start by ${delay}ms")
+            val task = Runnable {
+                pendingAutoStart = null
+                if (!isVpnEnabled()) {
+                    // 等待期间用户把开关关掉了
+                    Log.i(TAG, "VPN switched off while waiting out the backoff")
+                    stopForegroundCompat()
+                    stopSelf()
+                    return@Runnable
+                }
+                executor.execute {
+                    startCore(configDir, receiver, allowedApplications, disallowedApplications)
+                }
+            }
+            pendingAutoStart = task
+            mainHandler.postDelayed(task, delay)
+            return
+        }
+
         executor.execute {
             startCore(configDir, receiver, allowedApplications, disallowedApplications)
         }
+    }
+
+    /**
+     * 是否为系统/自恢复触发的自动重启：sticky 重启（intent == null）或
+     * `onTaskRemoved` 自拉起（EXTRA_RESUME_ONLY）。手动启动永远不带该标记。
+     */
+    private fun isAutoRestart(intent: Intent?): Boolean =
+        intent == null ||
+                intent.getBooleanExtra(VpnServiceContract.EXTRA_RESUME_ONLY, false)
+
+    /**
+     * 重启风暴退避：返回本次自动重启应推迟全量启动的毫秒数（0 = 立即）。
+     *
+     * 以上一次真正执行 `startCore` 的时间（由 [startCore] 落盘）为基准，
+     * 落在 [STORM_WINDOW_MS] 之内的自动重启计为风暴并升一级；首次快速
+     * 重启（level 1）不推迟，之后按 `5s * 2^(level-2)` 指数增长、封顶
+     * [BACKOFF_MAX_MS]。超过窗口说明进程活过了风暴期，计数清零。
+     *
+     * 这里不写 lastStartAt——时间戳只由真正的启动写入，否则退避本身
+     * 拉开的间隔会被误判成"活了很久"，反而让风暴检测失效。
+     */
+    private fun nextBackoffDelayMs(): Long {
+        val now = System.currentTimeMillis()
+        val lastStartAt = prefs.getLong(KEY_LAST_START_AT, 0L)
+        val level: Int
+        if (lastStartAt == 0L || now - lastStartAt >= STORM_WINDOW_MS) {
+            level = 0
+        } else {
+            level = (prefs.getInt(KEY_STORM_LEVEL, 0) + 1).coerceAtMost(MAX_STORM_LEVEL)
+        }
+        if (level != prefs.getInt(KEY_STORM_LEVEL, 0)) {
+            prefs.edit().putInt(KEY_STORM_LEVEL, level).apply()
+        }
+        if (level <= 1) {
+            return 0
+        }
+        var delay = BACKOFF_BASE_MS
+        repeat(level - 2) {
+            delay = (delay * 2).coerceAtMost(BACKOFF_MAX_MS)
+        }
+        return delay.coerceAtMost(BACKOFF_MAX_MS)
+    }
+
+    private fun cancelPendingAutoStart() {
+        val task = pendingAutoStart ?: return
+        pendingAutoStart = null
+        mainHandler.removeCallbacks(task)
+        Log.i(TAG, "cancelled the pending backoff start")
     }
 
     private fun startCore(
@@ -188,6 +319,8 @@ class ClashVpnService : VpnService() {
         disallowedApplications: List<String>,
     ) {
         Log.i(TAG, "startCore configDir=$configDir")
+        // 真正的启动时刻是风暴检测的基准，必须在这里落盘
+        prefs.edit().putLong(KEY_LAST_START_AT, System.currentTimeMillis()).apply()
         var detachedNativeFd = -1
         try {
             // Replace any previous instance cleanly. This is a no-op on the
@@ -211,6 +344,7 @@ class ClashVpnService : VpnService() {
             if (error != null) {
                 throw IllegalStateException(error)
             }
+            coreStarted = true
 
             persistState(configDir, allowedApplications, disallowedApplications, enabled = true)
             sendResult(receiver, true)
@@ -228,6 +362,9 @@ class ClashVpnService : VpnService() {
 
     private fun handleStop(intent: Intent?) {
         val receiver = intent?.getResultReceiver()
+        // 手动停止是一次干净的收场：撤掉排队中的退避启动并清风暴计数
+        cancelPendingAutoStart()
+        prefs.edit().putInt(KEY_STORM_LEVEL, 0).apply()
         executor.execute {
             // 先关持久化开关：即使随后进程被杀，sticky 重启也不会再拉起
             setEnabled(false)
@@ -247,7 +384,15 @@ class ClashVpnService : VpnService() {
         closeTunDescriptor()
     }
 
+    @Synchronized
     private fun stopCore(): String? {
+        if (!coreStarted) {
+            Log.i(TAG, "stopCore skipped: mihomo is not running")
+            return null
+        }
+        // Clear before calling native code so onDestroy or another teardown
+        // path cannot issue a duplicate stop while this call is in progress.
+        coreStarted = false
         Log.i(TAG, "stopCore")
         return try {
             val error = ClashCore().stop()

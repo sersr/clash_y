@@ -9,6 +9,7 @@ import 'package:clashy/event/impl/dio/unix_socket_http.dart';
 import 'package:clashy/event/repository.dart';
 import 'package:clashy/init.dart';
 import 'package:common/common.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
@@ -74,7 +75,7 @@ class ClashController with NopLifecycle {
   }
 
   void _run(String configPath) async {
-    if (!Platform.isMacOS) return;
+    if (!defaultTargetPlatform.isDesktop) return;
 
     try {
       final s = await ClashServiceApi.startClash(configPath);
@@ -110,7 +111,24 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> stop() async {
-    final success = await ClashService.close();
+    if (defaultTargetPlatform == .android) {
+      final success = await ClashService.stop();
+      Log.w('close vpn: $success');
+    } else {
+      try {
+        
+      final res = await ClashServiceApi.stopClash();
+      Log.w('close vpn: ${res.data}');
+      } catch (e) {
+        if (e case DioException e) {
+          Log.w(e.response);
+        }
+      }
+    }
+  }
+
+  Future<void> uninstall() async {
+    final success = await ClashService.uninstall();
     Log.w('close vpn: $success');
   }
 
