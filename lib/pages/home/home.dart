@@ -44,7 +44,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       clashConnectionsNotifier.toggle(false);
       clashMainNotifier.stopListen();
     } else if (state == AppLifecycleState.resumed) {
-      clashMainNotifier.getData();
+      clashMainNotifier.refreshOnResume();
       clashConnectionsNotifier.toggle(_notifier.value == 2);
     }
   }

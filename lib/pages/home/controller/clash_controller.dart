@@ -16,6 +16,8 @@ import 'package:nop/nop.dart';
 class ClashController with NopLifecycle {
   ClashController();
 
+  static const _resumeRefreshCooldown = Duration(seconds: 30);
+
   late final Repository repository = getType();
   final _mainChangedNotifier = (<String, AV<int>>{});
 
@@ -29,6 +31,8 @@ class ClashController with NopLifecycle {
 
   final AV<ProxiesData?> _data = .val(null);
   ProxiesData? get data => _data.value;
+  final AV<DateTime?> _lastRefreshTime = .val(null);
+  DateTime? get lastRefreshTime => _lastRefreshTime.value;
   final _isRunning = false.al;
   bool get isRunning => _isRunning.value;
   final _isTransitioning = true.al;
@@ -133,6 +137,17 @@ class ClashController with NopLifecycle {
     final data = remoteData ?? const ProxiesData(history: [], proxies: []);
     _data.value = data;
     removeProxyDelay();
+  }
+
+  Future<void> refreshOnResume() async {
+    final now = DateTime.now();
+    final lastRefresh = lastRefreshTime;
+    if (lastRefresh != null &&
+        now.difference(lastRefresh) < _resumeRefreshCooldown) {
+      return;
+    }
+    _lastRefreshTime.value = now;
+    await getData();
   }
 
   Future<bool> _queryRunningState({bool? apiAvailable}) async {
