@@ -83,6 +83,9 @@ bool isServiceRunning() {
   return s == 4 || s == 2;
 }
 
+/// 服务是否已安装。查询无需提权。
+bool isServiceInstalled() => _serviceExists();
+
 /// install 脚本（不含 start），行为见 [installService]。
 String _installScript() {
   final raw = Platform.resolvedExecutable;

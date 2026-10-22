@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:saver_gallery/saver_gallery.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../ext/screen_ext.dart';
@@ -51,8 +51,12 @@ abstract class ImagePickerUtils {
   }
 
   static Future<String> savePicture(Uint8List bytes, String name) async {
-    final result = await ImageGallerySaver.saveImage(bytes, name: name);
-    if (result case {'filePath': String filePath}) {
+    final result = await SaverGallery.saveImage(
+      bytes,
+      fileName: name,
+      skipIfExists: false,
+    );
+    if (result case SaveResult(savedUri: var filePath?)) {
       return filePath;
     }
     return '';

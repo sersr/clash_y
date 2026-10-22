@@ -1,4 +1,8 @@
-import 'package:flutter/widgets.dart';
+import 'package:common/common.dart';
+import 'package:flutter/material.dart';
+
+import '../../../_route/routes.dart';
+import 'setting_item.dart';
 
 class Settings extends StatefulWidget {
   const new({super.key});
@@ -10,6 +14,23 @@ class Settings extends StatefulWidget {
 class _SettingsState extends State<Settings> {
   @override
   Widget build(BuildContext context) {
-    return const Placeholder();
+    final body = ListView(
+      children: [
+        SettingDecoration(
+          child: Column(
+            children: [
+              SettingItem(
+                label: 'application list',
+                onTap: () => NavRoutes.applicationList().go(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    return SystemUI(
+      child: Scaffold(backgroundColor: const Color(0xFFF0F0F0), body: body),
+    );
   }
 }

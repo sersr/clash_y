@@ -14,6 +14,15 @@ export 'src/service/clash_service_windows.dart';
 const fs = f.LocalFileSystem();
 
 abstract final class ClashService {
+  /// 桌面端后台服务是否已安装。
+  static Future<bool> isInstalled() async {
+    if (Platform.isMacOS) return HelperInstaller.isInstalled();
+    if (Platform.isLinux) return isSystemdServiceInstalled();
+    if (Platform.isWindows) return isServiceInstalled();
+    if (Platform.isAndroid) return true;
+    return false;
+  }
+
   /// Brings the VPN service up for the configuration in [configDir].
   ///
   /// Android 使用 VPN 后端；macOS 安装并启动 privileged helper；Linux 写入
@@ -36,8 +45,6 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS) {
-      if (await HelperInstaller.isRunning()) return true;
-
       await HelperInstaller.install();
       return HelperInstaller.isRunning();
     }

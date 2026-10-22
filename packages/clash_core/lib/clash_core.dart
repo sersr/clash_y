@@ -27,6 +27,10 @@ ffi.Pointer<ffi.Char> startTun(ffi.Pointer<ffi.Char> configDir, int fd) =>
 ffi.Pointer<ffi.Char> stop() =>
     _useDynamicLibrary ? macos.stop() : native.stop();
 
+/// Stops only the desktop TUN listener, keeping the core process restartable.
+ffi.Pointer<ffi.Char> stopTun() =>
+    _useDynamicLibrary ? macos.stopTun() : native.stopTun();
+
 /// Releases a string returned by this library.
 void freeString(ffi.Pointer<ffi.Char> s) =>
     _useDynamicLibrary ? macos.freeString(s) : native.freeString(s);

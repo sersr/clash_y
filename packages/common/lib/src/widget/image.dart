@@ -1,169 +1,234 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' as ui;
+import 'dart:math';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:lottie/lottie.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-import '../utils/date_format.dart';
-import 'image_picker.dart';
+/// 从`packages/assets`资源库获取图片资源，支持重复平铺
+class RepeatImage extends StatelessWidget {
+  const RepeatImage(
+    this.name, {
+    super.key,
+    this.height,
+    this.width,
+    this.fit,
+    this.color,
+    this.alignment,
+    this.placeholder,
+    this.builder,
+    this.repeat = ImageRepeat.noRepeat,
+  });
 
-enum ImageSuf {
-  png('.png'),
-  webp('.webp'),
-  jpg('.jpg');
+  final String name;
+  final double? height;
+  final double? width;
+  final BoxFit? fit;
+  final Color? color;
+  final Alignment? alignment;
+  final Widget? placeholder;
+  final ImageFrameBuilder? builder;
+  final ImageRepeat repeat;
 
-  final String suf;
-  const ImageSuf(this.suf);
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      width: width,
+      decoration: BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage(name, package: 'common'),
+          fit: fit ?? BoxFit.cover,
+          alignment: alignment ?? Alignment.center,
+          repeat: repeat,
+          colorFilter: color != null
+              ? ColorFilter.mode(color!, BlendMode.srcIn)
+              : null,
+        ),
+      ),
+    );
+  }
 }
 
-/// 从`packages/assets`资源库获取图片资源
-Image getImage(
-  String basename, {
-  double? height,
-  double? width,
-  BoxFit? fit,
-  Color? color,
-  Key? key,
-  Alignment? alignment,
-  Widget? placeholder,
-  ImageFrameBuilder? builder,
-  ImageSuf suf = ImageSuf.png,
-}) {
-  return Image.asset(
-    'assets/images/$basename${suf.suf}',
-    key: key,
-    height: height,
-    width: width,
-    color: color,
-    fit: fit,
-    alignment: alignment ?? Alignment.center,
-    frameBuilder: builder,
-    errorBuilder: (context, error, stackTrace) {
-      assert(false, '确保 assets/images/ 中存在 $basename${suf.suf}');
-      if (suf == ImageSuf.png) {
-        return getImage(
-          basename,
-          height: height,
-          width: width,
-          fit: fit,
-          key: key,
-          color: color,
-          alignment: alignment,
-          placeholder: placeholder,
-          suf: ImageSuf.webp,
-        );
-      }
+class SvgImage extends StatelessWidget {
+  const SvgImage(
+    this.name, {
+    super.key,
+    this.height,
+    this.width,
+    this.fit,
+    this.color,
+    this.alignment,
+    this.placeholder,
+    this.builder,
+  });
+
+  final String name;
+  final double? height;
+  final double? width;
+  final BoxFit? fit;
+  final ColorFilter? color;
+  final Alignment? alignment;
+  final Widget? placeholder;
+  final ImageFrameBuilder? builder;
+
+  @override
+  Widget build(BuildContext context) {
+    return SvgPicture.asset(
+      name,
+      key: key,
+      height: height,
+      width: width,
+      colorFilter: color,
+      fit: fit ?? BoxFit.contain,
+      alignment: alignment ?? Alignment.center,
+      errorBuilder: (context, error, stackTrace) {
+        return placeholder ?? SizedBox(height: height, width: width);
+      },
+      package: 'common',
+    );
+  }
+}
+
+class SvgNetImage extends StatelessWidget {
+  const SvgNetImage(
+    this.name, {
+    super.key,
+    this.height,
+    this.width,
+    this.fit,
+    this.color,
+    this.alignment,
+    this.placeholder,
+    this.builder,
+  });
+
+  final String name;
+  final double? height;
+  final double? width;
+  final BoxFit? fit;
+  final ColorFilter? color;
+  final Alignment? alignment;
+  final Widget? placeholder;
+  final ImageFrameBuilder? builder;
+
+  @override
+  Widget build(BuildContext context) {
+    // return CachedNetworkSVGImage(
+    //   name,
+    //   height: height,
+    //   width: width,
+    //   fit: fit ?? BoxFit.contain,
+    //   alignment: alignment ?? Alignment.center,
+    //   placeholder: placeholder,
+    //   colorFilter: color,
+    //   errorWidget: placeholder ?? SizedBox(height: height, width: width),
+    // );
+    return SvgPicture.network(
+      name,
+      key: key,
+      height: height,
+      width: width,
+      colorFilter: color,
+      fit: fit ?? BoxFit.contain,
+      alignment: alignment ?? Alignment.center,
+      errorBuilder: (context, error, stackTrace) {
+        return placeholder ?? SizedBox(height: height, width: width);
+      },
+    );
+  }
+}
+
+class SvgFileImage extends StatelessWidget {
+  const SvgFileImage(
+    this.file, {
+    super.key,
+    this.height,
+    this.width,
+    this.fit,
+    this.color,
+    this.alignment,
+    this.placeholder,
+    this.builder,
+  });
+
+  final String file;
+
+  final double? height;
+  final double? width;
+  final BoxFit? fit;
+  final ColorFilter? color;
+  final Alignment? alignment;
+  final Widget? placeholder;
+  final ImageFrameBuilder? builder;
+
+  @override
+  Widget build(BuildContext context) {
+    return SvgPicture.file(
+      File(file),
+      key: key,
+      height: height,
+      width: width,
+      colorFilter: color,
+      fit: fit ?? BoxFit.contain,
+      alignment: alignment ?? Alignment.center,
+      errorBuilder: (context, error, stackTrace) {
+        return placeholder ?? SizedBox(height: height, width: width);
+      },
+    );
+  }
+}
+
+class SvgStrImage extends StatelessWidget {
+  const SvgStrImage(
+    this.svgStr, {
+    super.key,
+    this.height,
+    this.width,
+    this.fit,
+    this.color,
+    this.alignment,
+    this.placeholder,
+    this.builder,
+  });
+
+  final String svgStr;
+
+  final double? height;
+  final double? width;
+  final BoxFit? fit;
+  final ColorFilter? color;
+  final Alignment? alignment;
+  final Widget? placeholder;
+  final ImageFrameBuilder? builder;
+
+  @override
+  Widget build(BuildContext context) {
+    if (svgStr.isEmpty) {
       return placeholder ?? SizedBox(height: height, width: width);
-    },
-    package: 'assets',
-  );
-}
+    }
 
-Widget getLottie(
-  String basename, {
-  double? height,
-  double? width,
-  BoxFit? fit,
-  Key? key,
-  Widget? placeholder,
-  String suf = '.json',
-}) {
-  return Lottie.asset(
-    'assets/lottie/$basename$suf',
-    animate: true,
-    repeat: true,
-    key: key,
-    width: width,
-    height: height,
-    package: 'assets',
-    fit: fit,
-    errorBuilder: (context, error, stackTrace) {
-      return placeholder ?? SizedBox(height: height, width: width);
-    },
-  );
-}
-
-Widget getLocalImage(
-  String path, {
-  double? height,
-  double? width,
-  BoxFit? fit,
-}) {
-  return Image(
-    image: FileImage(File(path)),
-    height: height,
-    width: width,
-    fit: fit,
-  );
-}
-
-ImageProvider getImageProvider(
-  String basename, {
-  double? height,
-  double? width,
-  BoxFit? fit,
-  Color? color,
-  String suf = '.png',
-}) {
-  return Image.asset(
-    'assets/images/$basename$suf',
-    height: height,
-    width: width,
-    color: color,
-    fit: fit,
-    package: 'assets',
-  ).image;
-}
-
-Widget loadImage(
-  String name, {
-  double? height,
-  double? width,
-  BoxFit? fit,
-  bool isCircle = false,
-  Widget? placeholder,
-  Color? color,
-}) {
-  color ??= const Color.fromARGB(33, 201, 201, 201);
-  late final child =
-      placeholder ??
-      Container(
-        height: height,
-        width: width,
-        decoration: isCircle
-            ? ShapeDecoration(shape: const StadiumBorder(), color: color)
-            : null,
-        color: isCircle ? null : color,
-      );
-
-  if (name.isEmpty) return child;
-
-  final image = CachedNetworkImage(
-    imageUrl: name,
-    height: height,
-    width: width,
-    fit: fit,
-    fadeInDuration: const Duration(milliseconds: 300),
-    fadeOutDuration: const Duration(milliseconds: 500),
-    errorWidget: (context, url, error) {
-      return child;
-    },
-    placeholder: (context, url) {
-      return child;
-    },
-  );
-
-  return image;
+    return SvgPicture.string(
+      svgStr,
+      key: key,
+      height: height,
+      width: width,
+      colorFilter: color,
+      fit: fit ?? BoxFit.contain,
+      alignment: alignment ?? Alignment.center,
+      errorBuilder: (context, error, stackTrace) {
+        return placeholder ?? SizedBox(height: height, width: width);
+      },
+    );
+  }
 }
 
 /// 获取图片宽高，加载错误情况返回 Rect.zero.（单位 px）
-Future<Rect> getImageWH({
+Future<Rect> getImageSize({
   Image? image,
   String? url,
   String? localUrl,
@@ -221,121 +286,154 @@ Future<Rect> getImageWH({
   return completer.future;
 }
 
-/// 获取图片宽高，加载错误情况返回 Rect.zero.（单位 px）
-Future<ImageInfo?> getRawImage({
-  String? url,
-  String? localUrl,
-  String? package,
-  Uint8List? data,
-  Size? size,
-}) {
-  if (url?.isNotEmpty != true && localUrl?.isNotEmpty != true && data == null) {
-    return SynchronousFuture(null);
-  }
+/// 从`packages/assets`资源库获取图片资源
+class AImage extends StatelessWidget {
+  const AImage(
+    this.name, {
+    super.key,
+    this.height,
+    this.width,
+    this.fit,
+    this.color,
+    this.alignment,
+    this.placeholder,
+    this.builder,
+    this.package = 'common',
+  });
 
-  final completer = Completer<ImageInfo>.sync();
+  final String name;
+  final double? height;
+  final double? width;
+  final BoxFit? fit;
+  final Color? color;
+  final Alignment? alignment;
+  final Widget? placeholder;
+  final ImageFrameBuilder? builder;
+  final String? package;
 
-  ImageProvider img;
-  if (url != null && url.isNotEmpty) {
-    img = CachedNetworkImageProvider(url);
-  } else if (data != null) {
-    img = MemoryImage(data);
-  } else {
-    img = AssetImage(localUrl!, package: package);
-  }
-  late ImageStreamListener listener;
-  if (size case var size?) {
-    img = ResizeImage(
-      img,
-      width: size.width.toInt(),
-      height: size.height.toInt(),
-      allowUpscaling: true,
+  @override
+  Widget build(BuildContext context) {
+    if (name.toLowerCase().endsWith('.svg')) {
+      return SvgPicture.asset(
+        name,
+        key: key,
+        height: height,
+        width: width,
+        colorFilter: color != null
+            ? ColorFilter.mode(color!, BlendMode.srcIn)
+            : null,
+        fit: fit ?? BoxFit.contain,
+        alignment: alignment ?? Alignment.center,
+        package: package,
+        errorBuilder: (context, error, stackTrace) {
+          return placeholder ?? SizedBox(height: height, width: width);
+        },
+      );
+    }
+
+    return Image.asset(
+      name,
+      key: key,
+      height: height,
+      width: width,
+      color: color,
+      fit: fit,
+      alignment: alignment ?? Alignment.center,
+      frameBuilder: builder,
+      errorBuilder: (context, error, stackTrace) {
+        return placeholder ?? SizedBox(height: height, width: width);
+      },
+      package: package,
     );
   }
-
-  ImageInfo? infoSync;
-  final stream = img.resolve(const ImageConfiguration());
-  stream.addListener(
-    listener = ImageStreamListener(
-      (ImageInfo info, bool _) {
-        completer.complete(infoSync = info);
-        SchedulerBinding.instance.addPostFrameCallback((timeStamp) {
-          stream.removeListener(listener);
-        });
-      },
-      onError: (Object exception, StackTrace? stackTrace) {
-        completer.completeError(exception, stackTrace);
-        stream.removeListener(listener);
-      },
-    ),
-  );
-
-  // 同步
-  if (infoSync case var infoSync?) {
-    return SynchronousFuture(infoSync);
-  }
-
-  return completer.future;
 }
 
-/// [position] 所有值都在[0,1]范围内
-Future<bool> saveImage(
-  String url,
-  String qrData, {
-  String? localPath,
-  Rect position = Rect.zero,
-}) async {
-  final record = ui.PictureRecorder();
-  final canvas = ui.Canvas(record);
+class NetImage extends StatelessWidget {
+  const NetImage(
+    this.name, {
+    super.key,
+    this.height,
+    this.width,
+    this.fit,
+    this.circle = false,
+    this.placeholder,
+    this.color = const Color.fromARGB(33, 201, 201, 201),
+    this.imageBuilder,
+    this.errorWidget,
+    this.progressIndicatorBuilder,
+    this.cacheKey,
+  });
 
-  final provider = await getRawImage(localUrl: localPath, url: url);
+  final String name;
+  final double? height;
+  final double? width;
+  final BoxFit? fit;
+  final bool circle;
+  final Widget? placeholder;
+  final Color color;
+  final Widget Function(BuildContext context, Widget child)? imageBuilder;
+  final Widget? errorWidget;
+  final ProgressIndicatorBuilder? progressIndicatorBuilder;
+  final String? cacheKey;
 
-  var width = 0;
-  var height = 0;
+  @override
+  Widget build(BuildContext context) {
+    late final child =
+        placeholder ??
+        Container(
+          height: height,
+          width: width,
+          decoration: circle
+              ? ShapeDecoration(shape: const StadiumBorder(), color: color)
+              : null,
+          color: circle ? null : color,
+        );
 
-  if (provider?.image case var image?) {
-    width = image.width;
-    height = image.height;
-    canvas.drawImage(image, Offset.zero, Paint());
+    if (name.isEmpty) return child;
 
-    final qrWidth = width * position.width.clamp(0.0, 1.0);
-    final qrHeight = height * position.height.clamp(0.0, 1.0);
+    // Decode at display size × DPR so list icons/avatars don't keep full-res bitmaps.
+    // Skip when size is unknown — caller may show full-bleed images.
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final memW = width != null && width!.isFinite && width! > 0
+        ? max(1, (width! * dpr).round())
+        : null;
+    final memH = height != null && height!.isFinite && height! > 0
+        ? max(1, (height! * dpr).round())
+        : null;
 
-    final qrImage = await getRawImage(
-      data: base64Decode(qrData),
-      size: Size(qrWidth, qrHeight),
+    final image = CachedNetworkImage(
+      key: key,
+      imageUrl: name,
+      height: height,
+      width: width,
+      fit: fit,
+      cacheKey: cacheKey,
+      memCacheWidth: memW,
+      memCacheHeight: memH,
+      fadeInDuration: const Duration(milliseconds: 300),
+      fadeOutDuration: const Duration(milliseconds: 500),
+      errorWidget: (context, url, error) {
+        return errorWidget ?? child;
+      },
+      progressIndicatorBuilder: progressIndicatorBuilder,
+      imageBuilder: imageBuilder != null
+          ? (context, imageProvider) => imageBuilder!(
+              context,
+              Image(
+                image: imageProvider,
+                fit: fit,
+                width: width,
+                height: height,
+              ),
+            )
+          : null,
+      placeholder: progressIndicatorBuilder != null
+          ? null
+          : (context, url) {
+              return child;
+            },
     );
 
-    if (qrImage?.image case var image?) {
-      final offset = Offset(
-        width * position.left.clamp(0.0, 1.0),
-        height * position.top.clamp(0.0, 1.0),
-      );
-
-      canvas.drawImage(image, offset, Paint());
-      qrImage?.dispose();
-    }
-  } else {
-    return false;
+    return image;
   }
-
-  final picture = record.endRecording();
-
-  final img = await picture.toImage(width, height);
-  final imgBuffer = await img.toByteData(format: ui.ImageByteFormat.png);
-
-  if (imgBuffer case var imgBuffer?) {
-    await ImagePickerUtils.savePicture(
-      imgBuffer.buffer.asUint8List(),
-      'save-${formatDateYMdHms(DateTime.now())}',
-    );
-    // okToast('success');
-    img.dispose();
-    picture.dispose();
-    return true;
-  }
-
-  img.dispose();
-  picture.dispose();
-  return false;
 }

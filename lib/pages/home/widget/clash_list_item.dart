@@ -21,10 +21,10 @@ class _ClashListItemState extends State<ClashListItem> {
   Widget build(BuildContext context) {
     var header = Padding(
       padding: const EdgeInsets.only(bottom: 4),
-      child: btn1(
-        bgColor: const Color.fromARGB(255, 79, 181, 228),
+      child: InkButton(
+        backgroundColor: const Color.fromARGB(255, 79, 181, 228),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        onTap: () {
+        onPressed: () {
           _showBody.value = !_showBody.value;
         },
         child: Text(
@@ -125,13 +125,12 @@ class ProxyCard extends StatelessWidget {
           RepaintBoundary(
             child: Padding(
               padding: const EdgeInsets.only(left: 5),
-              child: btn1(
-                onTap: () {
+              child: InkButton.text(
+                onPressed: () {
                   clashMainNotifier.getDelay(itemName);
                 },
-                radius: 3,
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                bgColor: Colors.transparent,
+                borderRadius: BorderRadius.circular(3),
                 child: AnimatedBuilder(
                   animation: select,
                   builder: (context, _) {

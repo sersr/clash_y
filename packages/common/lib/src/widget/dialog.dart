@@ -35,15 +35,21 @@ Future<T?> showCenterDialog<T>(
           body = SafeArea(child: child);
         }
         return _AnimatedDialog(
-            animation: animation, alignment: alignment, child: body);
+          animation: animation,
+          alignment: alignment,
+          child: body,
+        );
       },
     ),
   );
 }
 
 class _AnimatedDialog extends StatefulWidget {
-  const _AnimatedDialog(
-      {required this.animation, required this.child, required this.alignment});
+  const _AnimatedDialog({
+    required this.animation,
+    required this.child,
+    required this.alignment,
+  });
   final Animation<double> animation;
   final Widget child;
   final Alignment alignment;
@@ -63,11 +69,14 @@ class _AnimatedDialogState extends State<_AnimatedDialog> {
   }
 
   void update() {
-    curvedAnimation =
-        CurvedAnimation(parent: widget.animation, curve: Curves.easeInOut);
-    scale = Tween(begin: 0.8, end: 1.0)
-        .chain(CurveTween(curve: Curves.easeInOut))
-        .animate(widget.animation);
+    curvedAnimation = CurvedAnimation(
+      parent: widget.animation,
+      curve: Curves.easeInOut,
+    );
+    scale = Tween(
+      begin: 0.8,
+      end: 1.0,
+    ).chain(CurveTween(curve: Curves.easeInOut)).animate(widget.animation);
   }
 
   @override
@@ -88,8 +97,9 @@ class _AnimatedDialogState extends State<_AnimatedDialog> {
   @override
   Widget build(BuildContext context) {
     final body = ScaleTransition(
-        scale: scale,
-        child: FadeTransition(opacity: curvedAnimation, child: widget.child));
+      scale: scale,
+      child: FadeTransition(opacity: curvedAnimation, child: widget.child),
+    );
     return Align(alignment: widget.alignment, child: body);
   }
 }
@@ -123,7 +133,7 @@ class BaseDialog extends StatelessWidget {
     final list = <Widget>[];
 
     if (img case String img) {
-      list.add(getImage(img, fit: BoxFit.fitWidth));
+      list.add(AImage(img, fit: BoxFit.fitWidth));
     }
     if (title case String title) {
       list.add(
@@ -131,10 +141,7 @@ class BaseDialog extends StatelessWidget {
           padding: EdgeInsets.only(top: 6.h),
           child: Text(
             title,
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 21.sp,
-            ),
+            style: TextStyle(color: Colors.black, fontSize: 21.sp),
           ),
         ),
       );
@@ -146,10 +153,7 @@ class BaseDialog extends StatelessWidget {
           padding: EdgeInsets.only(top: 14.h, left: 30.w, right: 30.w),
           child: Text(
             message,
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 14.sp,
-            ),
+            style: TextStyle(color: Colors.black, fontSize: 14.sp),
             textAlign: TextAlign.center,
           ),
         ),
@@ -161,10 +165,7 @@ class BaseDialog extends StatelessWidget {
 
     final content = Padding(
       padding: EdgeInsets.symmetric(horizontal: 10.w),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: list,
-      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: list),
     );
 
     final buttons = Padding(
@@ -182,10 +183,7 @@ class BaseDialog extends StatelessWidget {
             child: Center(
               child: Text(
                 rightLabel ?? '',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16.sp,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 16.sp),
               ),
             ),
           ),
@@ -202,10 +200,7 @@ class BaseDialog extends StatelessWidget {
             child: Center(
               child: Text(
                 leftLabel ?? '',
-                style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 16.sp,
-                ),
+                style: TextStyle(color: Colors.black, fontSize: 16.sp),
               ),
             ),
           ),

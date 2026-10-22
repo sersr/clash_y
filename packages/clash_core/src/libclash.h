@@ -30,6 +30,9 @@ char *startTun(char *configDir, int fd);
 // Stops the core and closes every listener, including TUN.
 char *stop(void);
 
+// Stops only the desktop TUN listener, keeping the core process restartable.
+char *stopTun(void);
+
 // Releases a string returned by this library.
 void freeString(char *s);
 

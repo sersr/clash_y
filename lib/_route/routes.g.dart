@@ -36,7 +36,19 @@ class Routes {
     List<NavigatorObserver> observers,
     bool updateLocation,
   ) {
+    __applicationList = NPage(
+      path: 'applicationList',
+      pageBuilder: (entry) {
+        return MaterialIgnorePage(
+          key: entry.pageKey,
+          entry: entry,
+          child: const ApplicationListPage(),
+        );
+      },
+    );
+
     _home = NPageMain(
+      pages: [__applicationList],
       path: '/',
       pageBuilder: (entry) {
         return MaterialIgnorePage(
@@ -59,12 +71,24 @@ class Routes {
 
   late final NRouter _router;
   static NRouter get router => _instance!._router;
+  late final NPage __applicationList;
+  static NPage get _applicationList => _instance!.__applicationList;
   late final NPageMain _home;
   static NPageMain get home => _instance!._home;
 }
 
 class NavRoutes {
   NavRoutes._();
+
+  /// [groupId]
+  /// see: [NPage.newGroupKey]
+  static RouterAction applicationList({dynamic groupId}) {
+    return RouterAction(
+      Routes._applicationList,
+      Routes.router,
+      groupId: groupId,
+    );
+  }
 
   /// [groupId]
   /// see: [NPage.newGroupKey]

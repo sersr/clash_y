@@ -183,6 +183,15 @@ final class ClashRequest implements ClashEvent {
     }
   }
 
+  Future<void> closeConnection(String id) async {
+    try {
+      await _dio.delete<void>('connections/$id');
+    } catch (e, s) {
+      Log.e('close connection failed: $e\n$s');
+      rethrow;
+    }
+  }
+
   Future<String> gets(String q) async {
     try {
       final response = await _dio.get<String>(q);

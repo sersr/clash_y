@@ -30,6 +30,7 @@ abstract final class ClashProcess {
     router
       ..ws('/ws', web.webSocketHandler(ws))
       ..get('/', getClash)
+      ..get('/status', getStatus)
       ..post('/', startClash)
       ..post('/stop', stopClash);
 
@@ -77,11 +78,15 @@ abstract final class ClashProcess {
     );
   }
 
+  static Future<Resp> getStatus(Request request) async => .ok(_started);
+
   static Future<Resp> startClash(Request request) async {
     final configDir = request.data as String;
 
     final res = await run(configDir);
-
+    if (res case String error when error.isNotEmpty) {
+      return .error(data: error);
+    }
     return .ok(res);
   }
 
@@ -115,7 +120,7 @@ abstract final class ClashProcess {
           final error = res.cast<Utf8>().toDartString();
           if (error.isNotEmpty) {
             err = error;
-            Log.e('start Error: $e');
+            Log.e('start Error: $error');
           }
           freeString(res);
           _started = false;
@@ -124,6 +129,7 @@ abstract final class ClashProcess {
         }
       } catch (e) {
         Log.e('start error: $e');
+        err = e.toString();
       }
     });
 
@@ -134,27 +140,29 @@ abstract final class ClashProcess {
 
   static Future<String?> _stopSingle() async {
     String? err;
-    _started = false;
-    _clashKey = null;
+    final wasStarted = _started;
 
     using((arena) {
       try {
-        final res = stop();
+        final res = stopTun();
         if (res != nullptr) {
           final error = res.cast<Utf8>().toDartString();
           if (error.isNotEmpty) {
             err = error;
-            Log.e('start Error: $e');
+            Log.e('stop Error: $error');
           }
           freeString(res);
-          _started = false;
+          _started = err != null ? wasStarted : false;
         } else {
-          _started = true;
+          _started = false;
         }
       } catch (e) {
-        Log.e('start error: $e');
+        Log.e('stop error: $e');
+        _started = wasStarted;
       }
     });
+
+    if (!_started) _clashKey = null;
 
     return err;
   }

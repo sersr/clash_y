@@ -29,6 +29,10 @@ external ffi.Pointer<ffi.Char> startTun(
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> stop();
 
+/// Stops only the desktop TUN listener, keeping the core process restartable.
+@ffi.Native<ffi.Pointer<ffi.Char> Function()>()
+external ffi.Pointer<ffi.Char> stopTun();
+
 /// Releases a string returned by this library.
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>()
 external void freeString(ffi.Pointer<ffi.Char> s);

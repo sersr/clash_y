@@ -4,6 +4,9 @@ import 'dart:io';
 /// systemd unit 文件路径。
 const systemdUnitPath = '/etc/systemd/system/clashy-service.service';
 
+/// systemd unit 是否已安装。查询无需 root。
+Future<bool> isSystemdServiceInstalled() => File(systemdUnitPath).exists();
+
 /// 安装 systemd 服务（写入 unit + enable + start）。
 ///
 /// 当前进程没有 root 权限时，通过 pkexec 弹出 polkit 密码框提权：

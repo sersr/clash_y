@@ -41,6 +41,10 @@ class ClashConnectionController with NopLifecycle {
     }
   }
 
+  Future<void> closeConnection(String id) async {
+    await repository.closeConnection(id);
+  }
+
   @override
   void nopDispose() {
     _sub?.cancel();

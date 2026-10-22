@@ -33,9 +33,11 @@ dependencies:
   lottie: ^3.6.1
 
   intl: any
-  image_gallery_saver: ^2.0.3
+  saver_gallery: ^5.1.0
   image_picker: ^1.2.4
   permission_handler: ^13.0.2
+  flutter_svg: ^2.3.0
+  cached_network_svg_image: ^2.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

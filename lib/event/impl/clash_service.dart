@@ -10,14 +10,12 @@ abstract final class _Apis {
   static const clashEnv = 'baseInfo/env';
   static const clashStart = 'clash';
   static const clashStop = 'clash/stop';
+  static const clashStatus = 'clash/status';
 }
 
 abstract final class ClashServiceApi {
   static final _dio = Dio(
-    .new(
-      baseUrl: 'http://localhost/',
-      contentType: Headers.jsonContentType,
-    ),
+    .new(baseUrl: 'http://localhost/', contentType: Headers.jsonContentType),
   )..interceptors.add(_RetryInterceptor());
 
   static Future<ApiResp> getClashEnv() async {
@@ -36,14 +34,17 @@ abstract final class ClashServiceApi {
 
     return .transform(res.data);
   }
+
+  static Future<bool> isClashRunning() async {
+    final res = await _dio.get(_Apis.clashStatus);
+    final response = ApiResp.transform(res.data);
+    return response.success && response.data == true;
+  }
 }
 
 class _RetryInterceptor extends Interceptor {
   static final _implDio = Dio(
-    .new(
-      baseUrl: 'http://localhost/',
-      contentType: Headers.jsonContentType,
-    ),
+    .new(baseUrl: 'http://localhost/', contentType: Headers.jsonContentType),
   )..httpClientAdapter = UnixSocketAdapter(clashSocket, port: 0);
 
   @override

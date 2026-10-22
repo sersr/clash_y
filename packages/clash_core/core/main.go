@@ -71,6 +71,9 @@ func start(configDir *C.char) *C.char {
 	defer mu.Unlock()
 
 	enableEmbeddedConfigUpdates()
+	if !started {
+		resetTunListener()
+	}
 
 	if err := setHomeDir(C.GoString(configDir)); err != nil {
 		return cError(err)
@@ -79,9 +82,21 @@ func start(configDir *C.char) *C.char {
 	if err := hub.Parse(nil); err != nil {
 		return cError(fmt.Errorf("start core: %w", err))
 	}
+	if !listener.GetTunConf().Enable {
+		resetTunListener()
+		tunnel.OnSuspend()
+		started = false
+		return cError(errors.New("start TUN failed; check the service log for details"))
+	}
 
 	started = true
 	return nil
+}
+
+func resetTunListener() {
+	// ReCreateTun serializes against config reloads and clears mihomo's cached
+	// configuration without modifying the mihomo subproject.
+	listener.ReCreateTun(LC.Tun{}, tunnel.Tunnel)
 }
 
 // startTun starts the core like start() but forces tun.enable to true, using
@@ -222,6 +237,21 @@ func stop() *C.char {
 	}
 
 	listener.Cleanup()
+	started = false
+	return nil
+}
+
+// stopTun disables only the desktop TUN listener. Keep the core process and
+// its initialized runtime alive so a later start() can apply the config again.
+// Android uses stop(), which also shuts down the complete core.
+//
+//export stopTun
+func stopTun() *C.char {
+	mu.Lock()
+	defer mu.Unlock()
+
+	resetTunListener()
+	tunnel.OnSuspend()
 	started = false
 	return nil
 }

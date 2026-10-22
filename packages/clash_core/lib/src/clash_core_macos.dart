@@ -36,6 +36,13 @@ final stop = _lib
       ffi.Pointer<ffi.Char> Function()
     >('stop');
 
+/// Stops only the desktop TUN listener, keeping the core process restartable.
+final stopTun = _lib
+    .lookupFunction<
+      ffi.Pointer<ffi.Char> Function(),
+      ffi.Pointer<ffi.Char> Function()
+    >('stopTun');
+
 /// Releases a string returned by this library.
 final freeString = _lib
     .lookupFunction<

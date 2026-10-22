@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:clashy/event/repository.dart';
+import 'package:clashy/pages/application_list/controller/application_list_controller.dart';
 import 'package:clashy/pages/home/controller/clash_controller.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
@@ -36,6 +37,7 @@ void initController() {
   router.put(() => ClashController());
   router.put(() => ClashConnectionController());
   router.put(() => ConfigsController());
+  router.put(() => ApplicationListController());
 }
 
 Future<String> initConfigPath(String unixSocketPath) async {

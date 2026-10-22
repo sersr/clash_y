@@ -64,6 +64,8 @@ class Repository with NopLifecycle {
 
   late final ClashRequest clashEvent = .new(paths: paths, repo: this);
 
+  Future<void> closeConnection(String id) => clashEvent.closeConnection(id);
+
   @override
   void nopInit() {
     init();
