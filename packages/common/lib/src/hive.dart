@@ -18,21 +18,23 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
   }
 }
 
-enum ConfigKey { currentProfile, baseConfig, unixSockPath }
+enum ConfigKey with StorageEnum {
+  currentProfile,
+  baseConfig,
+  unixSockPath;
+
+  @override
+  StorageMixin get target => Hives.config;
+}
 
 abstract final class BaseConfig {
-  static final currentProfile = Hives.config.read(
-    ConfigKey.currentProfile,
-    .string(),
-  );
+  static final currentProfile = ConfigKey.currentProfile.read(.string());
 
-  static final unixSockPath = Hives.config.readDef(
-    ConfigKey.unixSockPath,
+  static final unixSockPath = ConfigKey.unixSockPath.readDef(
     .string(join(G.appCachePath, 'clash_config', 'socket_clash.sock')),
   );
 
-  static final baseConfig = Hives.config.readDef(
-    ConfigKey.baseConfig,
+  static final baseConfig = ConfigKey.baseConfig.readDef(
     .fromJson(
       MihomoRootConfig.fromJson,
       MihomoRootConfig(externalController: unixSockPath.value),
@@ -40,11 +42,15 @@ abstract final class BaseConfig {
   );
 }
 
-enum _Window { windowRect }
+enum _Window with StorageEnum {
+  windowRect;
+
+  @override
+  StorageMixin get target => Hives.window;
+}
 
 abstract final class WindowHive {
-  static final windowRect = Hives.window.readDef(
-    _Window.windowRect,
+  static final windowRect = _Window.windowRect.readDef(
     .fromJson(WindowRect.fromJson, WindowRect.zero),
   );
 }

@@ -29,7 +29,13 @@ dependencies:
   collection: ^1.19.1
   nativeapi: ^0.4.0
   nativeapi_flutter: ^0.4.0
+  cached_network_image: ^4.0.5
+  lottie: ^3.6.1
 
+  intl: any
+  image_gallery_saver: ^2.0.3
+  image_picker: ^1.2.4
+  permission_handler: ^13.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
