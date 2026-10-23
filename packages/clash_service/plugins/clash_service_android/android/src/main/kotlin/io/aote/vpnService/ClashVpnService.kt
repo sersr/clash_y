@@ -15,6 +15,7 @@ import android.os.ResultReceiver
 import android.util.Log
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Android-only VpnService.
@@ -48,6 +49,7 @@ class ClashVpnService : VpnService() {
         private const val PREFS_NAME = "clash_vpn_state"
         private const val KEY_ENABLED = "enabled"
         private const val KEY_CONFIG_DIR = "configDir"
+        private const val KEY_ALLOW_LIST = "allowList"
         private const val KEY_ALLOWED_APPS = "allowedApplications"
         private const val KEY_DISALLOWED_APPS = "disallowedApplications"
 
@@ -73,10 +75,14 @@ class ClashVpnService : VpnService() {
         private const val TUN_ADDRESS = "172.19.0.1"
         private const val TUN_ADDRESS_PREFIX = 30
         private const val TUN_DNS = "172.19.0.2"
+        private const val TUN_IPV6_ADDRESS = "fdfe:dcba:9876::1"
+        private const val TUN_IPV6_ADDRESS_PREFIX = 126
+        private const val TUN_IPV6_DNS = "fdfe:dcba:9876::2"
         private const val TUN_MTU = 9000
     }
 
     private val executor = Executors.newSingleThreadExecutor()
+    private val protectCallCount = AtomicInteger(0)
 
     /** 退避用的主线程调度器（`onStartCommand`/`onDestroy` 都在主线程）。 */
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -221,13 +227,24 @@ class ClashVpnService : VpnService() {
         val disallowedApplications = intent?.getStringArrayListExtra(
             VpnServiceContract.EXTRA_DISALLOWED_APPLICATIONS
         ) ?: prefs.getStringSet(KEY_DISALLOWED_APPS, null)?.toList().orEmpty()
+        val allowList = if (intent?.hasExtra(VpnServiceContract.EXTRA_ALLOW_LIST) == true) {
+            intent.getBooleanExtra(VpnServiceContract.EXTRA_ALLOW_LIST, false)
+        } else {
+            prefs.getBoolean(KEY_ALLOW_LIST, false)
+        }
 
         if (!isAutoRestart(intent)) {
             // 手动启动（Dart 侧显式指令）：风暴状态归零，立即执行
             cancelPendingAutoStart()
             prefs.edit().putInt(KEY_STORM_LEVEL, 0).apply()
             executor.execute {
-                startCore(configDir, receiver, allowedApplications, disallowedApplications)
+                startCore(
+                    configDir,
+                    receiver,
+                    allowList,
+                    allowedApplications,
+                    disallowedApplications,
+                )
             }
             return
         }
@@ -251,7 +268,13 @@ class ClashVpnService : VpnService() {
                     return@Runnable
                 }
                 executor.execute {
-                    startCore(configDir, receiver, allowedApplications, disallowedApplications)
+                    startCore(
+                        configDir,
+                        receiver,
+                        allowList,
+                        allowedApplications,
+                        disallowedApplications,
+                    )
                 }
             }
             pendingAutoStart = task
@@ -260,7 +283,13 @@ class ClashVpnService : VpnService() {
         }
 
         executor.execute {
-            startCore(configDir, receiver, allowedApplications, disallowedApplications)
+            startCore(
+                configDir,
+                receiver,
+                allowList,
+                allowedApplications,
+                disallowedApplications,
+            )
         }
     }
 
@@ -315,6 +344,7 @@ class ClashVpnService : VpnService() {
     private fun startCore(
         configDir: String,
         receiver: ResultReceiver?,
+        allowList: Boolean,
         allowedApplications: List<String>,
         disallowedApplications: List<String>,
     ) {
@@ -329,7 +359,11 @@ class ClashVpnService : VpnService() {
             releaseNativeTunFd()
             closeTunDescriptor()
 
-            val descriptor = establishTun(allowedApplications, disallowedApplications)
+            val descriptor = establishTun(
+                allowList,
+                allowedApplications,
+                disallowedApplications,
+            )
                 ?: throw IllegalStateException("VpnService.establish() returned null")
             tunDescriptor = descriptor
 
@@ -339,14 +373,26 @@ class ClashVpnService : VpnService() {
             nativeTunFd = detachedNativeFd
 
             val error = ClashCore().startTun(configDir, detachedNativeFd) { protectFd ->
-                protect(protectFd)
+                val protected = protect(protectFd)
+                val call = protectCallCount.incrementAndGet()
+                // Log a small sample plus every failure without flooding logcat.
+                if (!protected || call <= 5) {
+                    Log.i(TAG, "protect(fd=$protectFd)=$protected call=$call")
+                }
+                protected
             }
             if (error != null) {
                 throw IllegalStateException(error)
             }
             coreStarted = true
 
-            persistState(configDir, allowedApplications, disallowedApplications, enabled = true)
+            persistState(
+                configDir,
+                allowList,
+                allowedApplications,
+                disallowedApplications,
+                enabled = true,
+            )
             sendResult(receiver, true)
             Log.i(TAG, "mihomo started, configDir=$configDir nativeFd=$detachedNativeFd")
         } catch (t: Throwable) {
@@ -405,6 +451,7 @@ class ClashVpnService : VpnService() {
     }
 
     private fun establishTun(
+        allowList: Boolean,
         allowedApplications: List<String>,
         disallowedApplications: List<String>,
     ): ParcelFileDescriptor? {
@@ -412,15 +459,24 @@ class ClashVpnService : VpnService() {
             .setSession("clashy")
             .setMtu(TUN_MTU)
             .addAddress(TUN_ADDRESS, TUN_ADDRESS_PREFIX)
+            .addAddress(TUN_IPV6_ADDRESS, TUN_IPV6_ADDRESS_PREFIX)
             .addDnsServer(TUN_DNS)
+            .addDnsServer(TUN_IPV6_DNS)
             .addRoute("0.0.0.0", 0)
+            .addRoute("::", 0)
             .setBlocking(false)
 
-        val effectiveAllowed = if (disallowedApplications.isEmpty()) {
-            allowedApplications
-        } else {
-            emptyList()
-        }
+        // selectedApplications() must contain this VPN app in allow-list mode.
+        // Outbound core sockets stay outside the TUN through protect(fd).
+        val effectiveAllowed = selectedApplications(
+            selected = allowedApplications,
+            allowList = allowList,
+            appPackageName = packageName,
+        )
+        Log.i(
+            TAG,
+            "establishTun allowed=${effectiveAllowed.joinToString()} disallowed=${disallowedApplications.joinToString()}"
+        )
         effectiveAllowed.forEach { packageName ->
             try {
                 builder.addAllowedApplication(packageName)
@@ -483,6 +539,7 @@ class ClashVpnService : VpnService() {
 
     private fun persistState(
         configDir: String,
+        allowList: Boolean,
         allowedApplications: List<String>,
         disallowedApplications: List<String>,
         enabled: Boolean,
@@ -490,6 +547,7 @@ class ClashVpnService : VpnService() {
         prefs.edit()
             .putBoolean(KEY_ENABLED, enabled)
             .putString(KEY_CONFIG_DIR, configDir)
+            .putBoolean(KEY_ALLOW_LIST, allowList)
             .putStringSet(KEY_ALLOWED_APPS, allowedApplications.toSet())
             .putStringSet(KEY_DISALLOWED_APPS, disallowedApplications.toSet())
             .apply()
@@ -558,4 +616,23 @@ class ClashVpnService : VpnService() {
         }
         receiver.send(if (success) 0 else 1, bundle)
     }
+}
+
+/**
+ * Resolves the VpnService allow list.
+ *
+ * Android cannot combine allow and deny lists, so non-allow-list routing
+ * returns an empty list and relies on [Builder.addDisallowedApplication].
+ * Allow-list mode always includes the VPN package itself: its core owns the
+ * TUN and must remain able to return selected-app traffic.
+ */
+internal fun selectedApplications(
+    selected: List<String>,
+    allowList: Boolean,
+    appPackageName: String,
+): List<String> {
+    if (!allowList) {
+        return emptyList()
+    }
+    return (selected + appPackageName).distinct()
 }

@@ -24,7 +24,7 @@ extension type StorageTransformDef<T>._(StorageTransform<T> target)
   }
 
   static StorageTransformDef<List<E>> list<E>([List<E>? defaultValue]) {
-    return ._(._(StorageTransform._list, defaultValue));
+    return ._(._(StorageTransform._list<E>, defaultValue));
   }
 
   static StorageTransformDef<String> string(String defaultValue) {
@@ -53,7 +53,7 @@ final class StorageTransform<T> {
   const new base([this.defaultValue]) : fn = _base;
 
   static StorageTransform<List<E>> list<E>([List<E>? defaultValue]) {
-    return ._(_list, defaultValue);
+    return ._(_list<E>, defaultValue);
   }
 
   static StorageTransform<String> string([String? defaultValue]) =>

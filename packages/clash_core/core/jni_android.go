@@ -3,6 +3,7 @@
 package main
 
 /*
+#cgo android LDFLAGS: -llog
 #include <jni.h>
 #include <stdlib.h>
 
@@ -12,6 +13,7 @@ jstring clash_jni_new_string(JNIEnv *env, const char *value);
 void clash_jni_set_protector(JNIEnv *env, jobject protector);
 void clash_jni_clear_protector(JNIEnv *env);
 int clash_jni_protect(int fd);
+void clash_jni_log(int priority, const char *message);
 */
 import "C"
 
@@ -23,12 +25,39 @@ import (
 	"unsafe"
 
 	"github.com/metacubex/mihomo/component/dialer"
+	clashLog "github.com/metacubex/mihomo/log"
 )
 
 var (
 	androidProtectorEnabled bool
 	androidProtectorOnce    sync.Once
+	androidCoreLogOnce      sync.Once
 )
+
+// enableAndroidCoreLog mirrors mihomo's event stream into Android logcat. The
+// core normally writes to stdout, which is not surfaced by every Android app
+// process, making VPN connection failures impossible to diagnose on-device.
+func enableAndroidCoreLog() {
+	androidCoreLogOnce.Do(func() {
+		subscription := clashLog.Subscribe()
+		go func() {
+			for event := range subscription {
+				priority := 4 // ANDROID_LOG_INFO
+				switch event.LogLevel {
+				case clashLog.DEBUG:
+					priority = 3 // ANDROID_LOG_DEBUG
+				case clashLog.WARNING:
+					priority = 5 // ANDROID_LOG_WARN
+				case clashLog.ERROR:
+					priority = 6 // ANDROID_LOG_ERROR
+				}
+				message := C.CString(event.Payload)
+				C.clash_jni_log(C.int(priority), message)
+				C.free(unsafe.Pointer(message))
+			}
+		}()
+	})
+}
 
 func enableAndroidSocketProtect() {
 	androidProtectorOnce.Do(func() {
@@ -99,6 +128,7 @@ func Java_io_aote_vpnService_ClashCore_startTun(env *C.JNIEnv, thiz C.jobject, c
 	defer C.clash_jni_release_string(env, configDir, cConfigDir)
 
 	enableAndroidSocketProtect()
+	enableAndroidCoreLog()
 	C.clash_jni_set_protector(env, protector)
 	androidProtectorEnabled = true
 

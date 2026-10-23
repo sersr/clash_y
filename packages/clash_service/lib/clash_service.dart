@@ -29,16 +29,22 @@ abstract final class ClashService {
   /// systemd unit 并启动（未提权时弹 pkexec 密码框）；Windows 安装并启动
   /// SCM 服务（未提权时弹 UAC 密码框）。
   ///
+  /// [allowList] 为 `true` 时仅将 [allowedApplications]（以及 Android VPN
+  /// 自身包名）纳入 VPN；为 `false` 时使用全局路由和
+  /// [disallowedApplications] 排除列表。
+  ///
   /// 返回 `false` 表示平台没有 VPN 后端，或后端拒绝启动 —— 例如用户拒绝了
   /// Android VPN 授权对话框、提权被取消、或 Windows 非管理员运行。
   static Future<bool> start(
     String configDir, {
+    bool allowList = false,
     List<String> allowedApplications = const [],
     List<String> disallowedApplications = const [],
   }) async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.start(
         configDir,
+        allowList: allowList,
         allowedApplications: allowedApplications,
         disallowedApplications: disallowedApplications,
       );
@@ -90,6 +96,7 @@ abstract final class ClashService {
 
     return false;
   }
+
   static Future<bool> stop() async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.close();

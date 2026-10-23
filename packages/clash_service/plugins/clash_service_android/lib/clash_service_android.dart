@@ -12,6 +12,9 @@ export 'src/android_vpn_service.dart' show AndroidVpnService;
 /// Starts the bundled VPN service with [configDir] as mihomo's configuration
 /// directory.
 ///
+/// [allowList] enables per-application allow-list routing. The Android service
+/// also adds its own package, which owns the TUN, to that list.
+///
 /// Returns `false` when the platform is not Android, when [configDir] is empty,
 /// when the user rejects the VPN consent dialog, or when the foreground service
 /// could not be started.
@@ -21,11 +24,13 @@ export 'src/android_vpn_service.dart' show AndroidVpnService;
 /// poll its API until it answers.
 Future<bool> start(
   String configDir, {
+  bool allowList = false,
   List<String> allowedApplications = const <String>[],
   List<String> disallowedApplications = const <String>[],
 }) {
   return AndroidVpnService.start(
     configDir,
+    allowList: allowList,
     allowedApplications: allowedApplications,
     disallowedApplications: disallowedApplications,
   );

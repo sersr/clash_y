@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:clash_service/clash_service.dart';
 import 'package:clashy/event/base/data.dart';
 import 'package:clashy/event/impl/clash_service.dart';
-import 'package:clashy/event/impl/dio/unix_socket_http.dart';
 import 'package:clashy/event/repository.dart';
 import 'package:clashy/init.dart';
 import 'package:common/common.dart';
@@ -85,9 +83,10 @@ class ClashController with NopLifecycle {
 
       final unixSocketPath = BaseConfig.unixSockPath.value;
       final path = await initConfigPath(unixSocketPath);
-
+      Log.w(allowedApplications);
       final success = await ClashService.start(
         path,
+        allowList: isAllowList,
         allowedApplications: isAllowList ? allowedApplications : const [],
         disallowedApplications: isAllowList
             ? const []
@@ -236,7 +235,6 @@ class ClashController with NopLifecycle {
   }
 
   StreamSubscription? _log;
-  StreamSubscription? _logService;
   StreamSubscription? _traffic;
 
   void _logListen(LogModel log) {
@@ -248,17 +246,24 @@ class ClashController with NopLifecycle {
   }
 
   void stopListen() {
+    final wasListening = _log != null;
     _log?.cancel();
-    _logService?.cancel();
     _traffic?.cancel();
     _log = null;
     _traffic = null;
+    if (wasListening && isRunning) {
+      unawaited(_setLogLevel(kDebugMode ? 'debug' : 'warning'));
+    }
   }
 
   void startListen() {
-    serviceLog();
-    // if (_log != null && _traffic != null) return;
-    // listenLogTraffic();
+    if (_log != null) return;
+    unawaited(_setLogLevel('debug'));
+    listenLogTraffic();
+  }
+
+  Future<void> _setLogLevel(String level) async {
+    await repository.clashEvent.resetConfigs(ConfigsData(logLevel: level));
   }
 
   void listenLogTraffic() async {
@@ -278,24 +283,5 @@ class ClashController with NopLifecycle {
       onDone: () => _traffic = null,
       onError: (e) => _traffic = null,
     );
-  }
-
-  void serviceLog() async {
-    _logService?.cancel();
-    final socket = await WebSocket.connect(
-      "ws://localhost:7887/clash/ws",
-      customClient: createUnixSocketClient(clashSocket),
-    );
-    _logService?.cancel();
-
-    late StreamController controller;
-    controller = StreamController(onCancel: () => socket.close());
-
-    controller.addStream(socket);
-    socket.done.whenComplete(() => _logService = null);
-
-    _logService = controller.stream.listen((data) {
-      Log.w(data);
-    });
   }
 }

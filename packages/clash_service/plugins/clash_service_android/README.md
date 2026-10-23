@@ -55,7 +55,8 @@ import 'package:clash_service_android/clash_service_android.dart' as clash;
 
 final started = await clash.start(
   '/data/user/0/io.aote.clashy/files/clashy/clash_config',
-  allowedApplications: const [],
+  allowList: true,
+  allowedApplications: const ['org.telegram.messenger'],
   disallowedApplications: const [],
 );
 

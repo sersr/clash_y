@@ -20,7 +20,9 @@ abstract final class AndroidApi {
   static final JClass contextClass = JClass.forName('android/content/Context');
   static final JClass intentClass = JClass.forName('android/content/Intent');
   static final JClass activityClass = JClass.forName('android/app/Activity');
-  static final JClass vpnServiceClass = JClass.forName('android/net/VpnService');
+  static final JClass vpnServiceClass = JClass.forName(
+    'android/net/VpnService',
+  );
   static final JClass arrayListClass = JClass.forName('java/util/ArrayList');
   static final JClass buildVersionClass = JClass.forName(
     r'android/os/Build$VERSION',
@@ -42,10 +44,11 @@ abstract final class AndroidApi {
   ///
   /// Returns `null` when the app already holds the user's consent, and the
   /// consent [android.content.Intent] otherwise.
-  static final JStaticMethodId vpnServicePrepare = vpnServiceClass.staticMethodId(
-    'prepare',
-    '(Landroid/content/Context;)Landroid/content/Intent;',
-  );
+  static final JStaticMethodId vpnServicePrepare = vpnServiceClass
+      .staticMethodId(
+        'prepare',
+        '(Landroid/content/Context;)Landroid/content/Intent;',
+      );
 
   // ---------------------------------------------------------------------------
   // android.content.Intent.
@@ -65,6 +68,12 @@ abstract final class AndroidApi {
       .instanceMethodId(
         'putExtra',
         '(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;',
+      );
+
+  static final JInstanceMethodId intentPutExtraBoolean = intentClass
+      .instanceMethodId(
+        'putExtra',
+        '(Ljava/lang/String;Z)Landroid/content/Intent;',
       );
 
   static final JInstanceMethodId intentPutStringArrayListExtra = intentClass
@@ -111,7 +120,9 @@ abstract final class AndroidApi {
   // ---------------------------------------------------------------------------
 
   /// `ArrayList(int)` — sized up front because the lists are written once.
-  static final JConstructorId arrayListNew = arrayListClass.constructorId('(I)V');
+  static final JConstructorId arrayListNew = arrayListClass.constructorId(
+    '(I)V',
+  );
 
   static final JInstanceMethodId arrayListAdd = arrayListClass.instanceMethodId(
     'add',

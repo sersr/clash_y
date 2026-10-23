@@ -2,7 +2,15 @@
 
 #if defined(__ANDROID__)
 
+#include <android/log.h>
 #include <jni.h>
+
+void clash_jni_log(int priority, const char *message) {
+    if (message == NULL) {
+        return;
+    }
+    __android_log_write(priority, "ClashCore", message);
+}
 
 const char *clash_jni_get_string(JNIEnv *env, jstring value) {
     if (env == NULL || value == NULL) {

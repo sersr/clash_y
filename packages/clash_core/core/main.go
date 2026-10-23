@@ -189,6 +189,9 @@ func buildAndroidTunOptions(cfg *config.Config, fd int) LC.Tun {
 		Inet4Address: []netip.Prefix{
 			netip.MustParsePrefix("172.19.0.1/30"),
 		},
+		Inet6Address: []netip.Prefix{
+			netip.MustParsePrefix("fdfe:dcba:9876::1/126"),
+		},
 		MTU:            9000,
 		FileDescriptor: fd,
 	}

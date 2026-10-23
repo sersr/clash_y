@@ -59,6 +59,7 @@ abstract final class AndroidVpnService {
   /// which deliberately keeps no runtime status object.
   static Future<bool> start(
     String configDir, {
+    bool allowList = false,
     List<String> allowedApplications = const <String>[],
     List<String> disallowedApplications = const <String>[],
   }) async {
@@ -86,6 +87,7 @@ abstract final class AndroidVpnService {
       final intent = _serviceIntent(context, _Contract.actionStart);
       try {
         _putString(intent, _Contract.extraConfigDir, directory);
+        _putBoolean(intent, _Contract.extraAllowList, allowList);
         _putStringList(
           intent,
           _Contract.extraAllowedApplications,
@@ -357,9 +359,11 @@ abstract final class AndroidVpnService {
 
     final jAction = action.toJString();
     try {
-      AndroidApi.intentSetAction
-          .callNullable<JObject, JObject>(intent, JObject.type, [jAction])
-          ?.release();
+      AndroidApi.intentSetAction.callNullable<JObject, JObject>(
+        intent,
+        JObject.type,
+        [jAction],
+      )?.release();
     } finally {
       jAction.release();
     }
@@ -370,20 +374,31 @@ abstract final class AndroidVpnService {
     final jName = name.toJString();
     final jValue = value.toJString();
     try {
-      AndroidApi.intentPutExtraString
-          .callNullable<JObject, JObject>(intent, JObject.type, [jName, jValue])
-          ?.release();
+      AndroidApi.intentPutExtraString.callNullable<JObject, JObject>(
+        intent,
+        JObject.type,
+        [jName, jValue],
+      )?.release();
     } finally {
       jName.release();
       jValue.release();
     }
   }
 
-  static void _putStringList(
-    JObject intent,
-    String name,
-    List<String> values,
-  ) {
+  static void _putBoolean(JObject intent, String name, bool value) {
+    final jName = name.toJString();
+    try {
+      AndroidApi.intentPutExtraBoolean.callNullable<JObject, JObject>(
+        intent,
+        JObject.type,
+        [jName, value],
+      )?.release();
+    } finally {
+      jName.release();
+    }
+  }
+
+  static void _putStringList(JObject intent, String name, List<String> values) {
     final list = AndroidApi.arrayListNew.call<JObject>(
       AndroidApi.arrayListClass,
       [JValueInt(values.length)],
@@ -401,9 +416,11 @@ abstract final class AndroidVpnService {
         }
       }
 
-      AndroidApi.intentPutStringArrayListExtra
-          .callNullable<JObject, JObject>(intent, JObject.type, [jName, list])
-          ?.release();
+      AndroidApi.intentPutStringArrayListExtra.callNullable<JObject, JObject>(
+        intent,
+        JObject.type,
+        [jName, list],
+      )?.release();
     } finally {
       jName.release();
       list.release();
@@ -414,13 +431,17 @@ abstract final class AndroidVpnService {
   /// start on API levels below Android O.
   static void _startService(JObject context, JObject intent) {
     if (AndroidApi.sdkInt >= _androidO) {
-      AndroidApi.contextStartForegroundService
-          .callNullable<JObject, JObject>(context, JObject.type, [intent])
-          ?.release();
+      AndroidApi.contextStartForegroundService.callNullable<JObject, JObject>(
+        context,
+        JObject.type,
+        [intent],
+      )?.release();
     } else {
-      AndroidApi.contextStartService
-          .callNullable<JObject, JObject>(context, JObject.type, [intent])
-          ?.release();
+      AndroidApi.contextStartService.callNullable<JObject, JObject>(
+        context,
+        JObject.type,
+        [intent],
+      )?.release();
     }
   }
 
@@ -443,6 +464,7 @@ abstract final class _Contract {
   static const String actionStart = 'io.aote.vpnService.action.START';
   static const String actionStop = 'io.aote.vpnService.action.STOP';
   static const String extraConfigDir = 'configDir';
+  static const String extraAllowList = 'allowList';
   static const String extraAllowedApplications = 'allowedApplications';
   static const String extraDisallowedApplications = 'disallowedApplications';
 }
