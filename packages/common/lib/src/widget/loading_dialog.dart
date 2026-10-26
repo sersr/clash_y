@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:common/src/navigator_observer.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../ext/screen_ext.dart';
 
@@ -154,16 +154,16 @@ class Loading extends StatelessWidget {
   }
 }
 
-final _greyColors = [
-  Colors.grey.shade100,
-  Colors.grey.shade200,
-  Colors.grey.shade300,
-  Colors.grey.shade400,
-  Colors.grey.shade500,
-  Colors.grey.shade600,
-  Colors.grey.shade700,
-  Colors.grey.shade800,
-  Colors.grey.shade900,
+const List<Color> _greyColors = [
+  .from(alpha: 0.9, red: 0, green: 0, blue: 0),
+  .from(alpha: 0.8, red: 0, green: 0, blue: 0),
+  .from(alpha: 0.7, red: 0, green: 0, blue: 0),
+  .from(alpha: 0.6, red: 0, green: 0, blue: 0),
+  .from(alpha: 0.5, red: 0, green: 0, blue: 0),
+  .from(alpha: 0.4, red: 0, green: 0, blue: 0),
+  .from(alpha: 0.3, red: 0, green: 0, blue: 0),
+  .from(alpha: 0.2, red: 0, green: 0, blue: 0),
+  .from(alpha: 0.1, red: 0, green: 0, blue: 0),
 ];
 
 class LoadingWidget extends StatelessWidget {

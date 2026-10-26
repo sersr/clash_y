@@ -3,6 +3,7 @@ description: "A new Flutter package project."
 version: 0.0.1
 homepage:
 
+publish_to: none
 resolution: workspace
 
 environment:
@@ -38,6 +39,12 @@ dependencies:
   permission_handler: ^13.0.2
   flutter_svg: ^2.3.0
   cached_network_svg_image: ^2.0.0
+  material_ui: any
+  cupertino_ui: any
+  overlays:
+    git:
+      url: https://github.com/sersr/overlays.git
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

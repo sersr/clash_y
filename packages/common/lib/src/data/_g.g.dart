@@ -174,49 +174,6 @@ HistoryHistory _$HistoryHistoryFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$HistoryHistoryToJson(HistoryHistory instance) =>
     <String, dynamic>{'time': instance.time, 'delay': instance.delay};
 
-ProxyItem _$ProxyItemFromJson(Map<String, dynamic> json) => ProxyItem(
-  all: json['all'] as List<dynamic>?,
-  history: json['history'] as List<dynamic>?,
-  name: json['name'] as String?,
-  now: json['now'] as String?,
-  type: json['type'] as String?,
-  udp: json['udp'] as bool?,
-);
-
-Map<String, dynamic> _$ProxyItemToJson(ProxyItem instance) => <String, dynamic>{
-  'all': instance.all,
-  'history': instance.history,
-  'name': instance.name,
-  'now': instance.now,
-  'type': instance.type,
-  'udp': instance.udp,
-};
-
-LogModel _$LogModelFromJson(Map<String, dynamic> json) => LogModel(
-  type: json['type'] as String? ?? '',
-  payload: json['payload'] as String? ?? '',
-);
-
-Map<String, dynamic> _$LogModelToJson(LogModel instance) => <String, dynamic>{
-  'type': instance.type,
-  'payload': instance.payload,
-};
-
-TrafficModel _$TrafficModelFromJson(Map<String, dynamic> json) => TrafficModel(
-  up: (json['up'] as num?)?.toInt() ?? 0,
-  down: (json['down'] as num?)?.toInt() ?? 0,
-  upTotal: (json['upTotal'] as num?)?.toInt() ?? 0,
-  downTotal: (json['downTotal'] as num?)?.toInt() ?? 0,
-);
-
-Map<String, dynamic> _$TrafficModelToJson(TrafficModel instance) =>
-    <String, dynamic>{
-      'up': instance.up,
-      'down': instance.down,
-      'upTotal': instance.upTotal,
-      'downTotal': instance.downTotal,
-    };
-
 MihomoFallbackFilter _$MihomoFallbackFilterFromJson(
   Map<String, dynamic> json,
 ) => MihomoFallbackFilter(
@@ -618,6 +575,49 @@ Map<String, dynamic> _$MihomoRootConfigToJson(MihomoRootConfig instance) =>
       'rule-providers': ?instance.ruleProviders,
     };
 
+ProxyItem _$ProxyItemFromJson(Map<String, dynamic> json) => ProxyItem(
+  all: json['all'] as List<dynamic>?,
+  history: json['history'] as List<dynamic>?,
+  name: json['name'] as String?,
+  now: json['now'] as String?,
+  type: json['type'] as String?,
+  udp: json['udp'] as bool?,
+);
+
+Map<String, dynamic> _$ProxyItemToJson(ProxyItem instance) => <String, dynamic>{
+  'all': instance.all,
+  'history': instance.history,
+  'name': instance.name,
+  'now': instance.now,
+  'type': instance.type,
+  'udp': instance.udp,
+};
+
+LogModel _$LogModelFromJson(Map<String, dynamic> json) => LogModel(
+  type: json['type'] as String? ?? '',
+  payload: json['payload'] as String? ?? '',
+);
+
+Map<String, dynamic> _$LogModelToJson(LogModel instance) => <String, dynamic>{
+  'type': instance.type,
+  'payload': instance.payload,
+};
+
+TrafficModel _$TrafficModelFromJson(Map<String, dynamic> json) => TrafficModel(
+  up: (json['up'] as num?)?.toInt() ?? 0,
+  down: (json['down'] as num?)?.toInt() ?? 0,
+  upTotal: (json['upTotal'] as num?)?.toInt() ?? 0,
+  downTotal: (json['downTotal'] as num?)?.toInt() ?? 0,
+);
+
+Map<String, dynamic> _$TrafficModelToJson(TrafficModel instance) =>
+    <String, dynamic>{
+      'up': instance.up,
+      'down': instance.down,
+      'upTotal': instance.upTotal,
+      'downTotal': instance.downTotal,
+    };
+
 WindowRect _$WindowRectFromJson(Map<String, dynamic> json) => WindowRect(
   top: (json['top'] as num?)?.toDouble() ?? 0,
   left: (json['left'] as num?)?.toDouble() ?? 0,
@@ -632,3 +632,31 @@ Map<String, dynamic> _$WindowRectToJson(WindowRect instance) =>
       'right': instance.right,
       'bottom': instance.bottom,
     };
+
+Profile _$ProfileFromJson(Map<String, dynamic> json) => Profile(
+  id: json['id'] as String?,
+  name: json['name'] as String?,
+  rawName: json['rawName'] as String?,
+  updateInterval: (json['updateInterval'] as num?)?.toInt(),
+  updateTime: json['updateTime'] == null
+      ? null
+      : DateTime.parse(json['updateTime'] as String),
+  url: json['url'] as String?,
+  upload: (json['upload'] as num?)?.toInt(),
+  download: (json['download'] as num?)?.toInt(),
+  total: (json['total'] as num?)?.toInt(),
+  expire: (json['expire'] as num?)?.toInt(),
+);
+
+Map<String, dynamic> _$ProfileToJson(Profile instance) => <String, dynamic>{
+  'id': instance.id,
+  'url': instance.url,
+  'name': instance.name,
+  'rawName': instance.rawName,
+  'updateInterval': instance.updateInterval,
+  'updateTime': instance.updateTime?.toIso8601String(),
+  'upload': instance.upload,
+  'download': instance.download,
+  'total': instance.total,
+  'expire': instance.expire,
+};

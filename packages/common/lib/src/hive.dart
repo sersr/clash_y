@@ -1,4 +1,5 @@
 import 'package:common/common.dart';
+import 'package:flutter_nop/flutter_nop.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart';
 
@@ -20,6 +21,7 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
 
 enum ConfigKey with StorageEnum {
   currentProfile,
+  profiles,
   baseConfig,
   unixSockPath;
 
@@ -28,7 +30,13 @@ enum ConfigKey with StorageEnum {
 }
 
 abstract final class BaseConfig {
-  static final currentProfile = ConfigKey.currentProfile.read(.string());
+  static final currentProfile = ConfigKey.currentProfile.readDef(
+    .fromJson(Profile.fromJson, Profile()),
+  );
+
+  static final profiles = ConfigKey.profiles
+      .readDef(.map(Profile.fromJson, <String, Profile>{}))
+      .al;
 
   static final unixSockPath = ConfigKey.unixSockPath.readDef(
     .string(join(G.appCachePath, 'clash_config', 'socket_clash.sock')),

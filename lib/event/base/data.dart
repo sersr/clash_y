@@ -1,7 +1,5 @@
 import 'package:common/common.dart';
 
-import 'database.dart';
-
 class ConfigName {
   ConfigName({
     required this.name,
@@ -13,12 +11,6 @@ class ConfigName {
   final String name;
   final int updateInterval;
   final DateTime updateTime;
-}
-
-class ConfigsCurrent {
-  const ConfigsCurrent(this.tables);
-  static const none = ConfigsCurrent([]);
-  final List<ConfigTable> tables;
 }
 
 class ProxiesData {

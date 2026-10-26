@@ -32,7 +32,7 @@ void initLog() {
 }
 
 void initController() {
-  Routes.init();
+  Routes.init(observers: [globalObserver, Overlays]);
   router.put(() => Repository());
   router.put(() => ClashController());
   router.put(() => ClashConnectionController());
@@ -69,9 +69,9 @@ Future<String> initConfigPath(String unixSocketPath) async {
       data['log-level'] = kDebugMode ? 'debug' : 'warning';
       data['mode'] = 'rule';
       data['ipv6'] = true;
-      (data.putIfAbsent('tun', () => {}) as Map)
+      final tun = data['tun'] ??= <String, dynamic>{};
+      tun
         ..['enable'] = true
-        // ..['stack'] = 'gvisor'
         ..['stack'] = 'mixed'
         ..['device'] = 'clashy';
       data['dns'] = defaultDnsConfig();

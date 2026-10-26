@@ -13,3 +13,4 @@ extension ScreenExt on num {
 extension Tr on String {
   String get tr => this;
 }
+

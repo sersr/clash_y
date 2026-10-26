@@ -1,5 +1,5 @@
 import 'package:clashy/_route/routes.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class ClashApp extends StatefulWidget {
   const ClashApp({super.key});

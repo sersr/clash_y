@@ -1,8 +1,7 @@
 import 'package:common/common.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
-import 'package:useful_tools/useful_tools.dart';
 
 import '../controller/clash_controller.dart';
 
@@ -27,12 +26,14 @@ class _ClashListItemState extends State<ClashListItem> {
         onPressed: () {
           _showBody.value = !_showBody.value;
         },
-        child: Text(
-          '${widget.proxyItem.name}',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
-            fontFamily: '微软雅黑',
+        borderRadius: .zero,
+        overlayColor: const Color(0x2FFFFFFF),
+        child: Container(
+          alignment: .centerLeft,
+          child: Text(
+            '${widget.proxyItem.name}',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+            textAlign: .left,
           ),
         ),
       ),
@@ -43,19 +44,24 @@ class _ClashListItemState extends State<ClashListItem> {
         final proxyItem = widget.proxyItem;
         final items = proxyItem.all;
         if (_showBody.value && items != null) {
-          return SliverGrid(
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final item = items[index];
-              return ProxyCard(
-                itemName: '$item',
-                proxyGroupName: '${proxyItem.name}',
-                type: '${proxyItem.type}',
-                selected: proxyItem.now != null && proxyItem.now == item,
-              );
-            }, childCount: items.length),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              mainAxisExtent: 60,
-              crossAxisCount: 2,
+          return SliverPadding(
+            padding: .symmetric(horizontal: 10),
+            sliver: SliverGrid(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final item = items[index];
+                return ProxyCard(
+                  itemName: '$item',
+                  proxyGroupName: '${proxyItem.name}',
+                  type: '${proxyItem.type}',
+                  selected: proxyItem.now != null && proxyItem.now == item,
+                );
+              }, childCount: items.length),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                mainAxisExtent: 60,
+                crossAxisCount: 2,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+              ),
             ),
           );
         }
@@ -91,20 +97,15 @@ class ProxyCard extends StatelessWidget {
     final clashMainNotifier = context.getType<ClashController>();
     final select = clashMainNotifier.getSelector(itemName);
 
-    return ListItem(
+    return InkButton(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      outPadding: EdgeInsets.only(
-        left: left == true ? 8 : 4,
-        right: left == false ? 8 : 4,
-        top: 3,
-        bottom: 3,
-      ),
-      onTap: () {
+      onPressed: () {
         if (type == 'Selector') {
           clashMainNotifier.selectProxy(proxyGroupName, itemName);
         }
       },
-      bgColor: selected ? Colors.grey.shade400 : null,
+      backgroundColor: selected ? Colors.grey.shade400 : null,
+      overlayColor: const Color.from(alpha: 0.31, red: 0.467, green: 0.467, blue: 0.467),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -117,7 +118,6 @@ class ProxyCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  fontFamily: '微软雅黑',
                 ),
               );
             }),

@@ -143,13 +143,13 @@ Future<void> buildClashServer(
   );
 }
 
-Future<void> copy(Directory from, Directory to) async {
+Future<void> directoryCopy(Directory from, Directory to) async {
   final list = from.listSync();
   for (var item in list) {
     if (item is Directory) {
       final toDir = to.childDirectory(item.basename);
       toDir.createSync(recursive: true);
-      await copy(item, toDir);
+      await directoryCopy(item, toDir);
       continue;
     }
     if (item is File) {

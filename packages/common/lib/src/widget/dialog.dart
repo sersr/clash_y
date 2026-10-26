@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../ext/screen_ext.dart';
 import 'buttons.dart';
@@ -13,15 +13,18 @@ Future<T?> showCenterDialog<T>(
   Widget child, {
   Alignment alignment = Alignment.center,
   bool useSafeArea = true,
+  BoxConstraints? constraints,
   bool barrierDismissible = true,
   Color? barrierColor,
+  String? routeName,
 }) {
-  if (dialogScopeBack case var back?) {
-    back();
+  if (dialogScopeBack != null) {
+    dialogScopeBack!();
   }
   return Navigator.push(
     context,
     PageRouteBuilder(
+      settings: routeName != null ? RouteSettings(name: routeName) : null,
       barrierDismissible: barrierDismissible,
       barrierColor: barrierColor ?? Colors.black54,
       opaque: false,
@@ -34,7 +37,10 @@ Future<T?> showCenterDialog<T>(
         if (useSafeArea) {
           body = SafeArea(child: child);
         }
+
+        /// 限制最大宽度
         return _AnimatedDialog(
+          constraints: constraints,
           animation: animation,
           alignment: alignment,
           child: body,
@@ -49,10 +55,12 @@ class _AnimatedDialog extends StatefulWidget {
     required this.animation,
     required this.child,
     required this.alignment,
+    this.constraints,
   });
   final Animation<double> animation;
   final Widget child;
   final Alignment alignment;
+  final BoxConstraints? constraints;
   @override
   State<_AnimatedDialog> createState() => _AnimatedDialogState();
 }
@@ -100,7 +108,13 @@ class _AnimatedDialogState extends State<_AnimatedDialog> {
       scale: scale,
       child: FadeTransition(opacity: curvedAnimation, child: widget.child),
     );
-    return Align(alignment: widget.alignment, child: body);
+    return Align(
+      alignment: widget.alignment,
+      child: Container(
+        constraints: widget.constraints ?? const BoxConstraints(maxWidth: 640),
+        child: body,
+      ),
+    );
   }
 }
 
@@ -132,35 +146,43 @@ class BaseDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final list = <Widget>[];
 
-    if (img case String img) {
-      list.add(AImage(img, fit: BoxFit.fitWidth));
+    if (img != null) {
+      list.add(AImage(img!, fit: BoxFit.fitWidth));
     }
-    if (title case String title) {
+    if (title is String) {
       list.add(
         Padding(
           padding: EdgeInsets.only(top: 6.h),
           child: Text(
-            title,
-            style: TextStyle(color: Colors.black, fontSize: 21.sp),
+            title!,
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 21.sp,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       );
     }
 
-    if (message case String message) {
+    if (message is String) {
       list.add(
         Padding(
           padding: EdgeInsets.only(top: 14.h, left: 30.w, right: 30.w),
           child: Text(
-            message,
-            style: TextStyle(color: Colors.black, fontSize: 14.sp),
+            message!,
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 14.sp,
+              fontWeight: FontWeight.w500,
+            ),
             textAlign: TextAlign.center,
           ),
         ),
       );
     }
-    if (center case Widget child) {
-      list.add(child);
+    if (center != null) {
+      list.add(center!);
     }
 
     final content = Padding(
@@ -183,7 +205,11 @@ class BaseDialog extends StatelessWidget {
             child: Center(
               child: Text(
                 rightLabel ?? '',
-                style: TextStyle(color: Colors.white, fontSize: 16.sp),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
@@ -200,7 +226,11 @@ class BaseDialog extends StatelessWidget {
             child: Center(
               child: Text(
                 leftLabel ?? '',
-                style: TextStyle(color: Colors.black, fontSize: 16.sp),
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
@@ -225,31 +255,6 @@ class BaseDialog extends StatelessWidget {
                 SizedBox(height: 24.h),
               ],
             ),
-            // Positioned(
-            //   right: 20.w,
-            //   top: 20.w,
-            //   child: SizedBox(
-            //     width: 24.w,
-            //     height: 24.w,
-            //     child: OverflowBox(
-            //       maxHeight: 32.w,
-            //       maxWidth: 32.w,
-            //       minHeight: 32.w,
-            //       minWidth: 32.w,
-            //       child: InkButton.text(
-            //         onPressed: () {
-            //           Get.back();
-            //         },
-            //         padding: EdgeInsets.zero,
-            //         child: getImage(
-            //           'btn_close',
-            //           width: 24.w,
-            //           fit: BoxFit.fitWidth,
-            //         ),
-            //       ),
-            //     ),
-            //   ),
-            // ),
           ],
         ),
       ),

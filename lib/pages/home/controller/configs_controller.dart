@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
+import 'package:uuid/uuid.dart';
 
-import '../../../event/event.dart';
 import '../../../event/repository.dart';
 import 'clash_controller.dart';
 
@@ -13,75 +13,46 @@ class ConfigsController with NopLifecycle {
   late final Repository repository = getType();
   late final ClashController clash = getType();
 
-  @override
-  void nopInit() {
-    super.nopInit();
-    getConfigs();
-  }
-
-  void getConfigs() {
-    _getConfigDb();
-  }
-
-  Future<void> reloadConfig(String path) async {
-    await repository.clashEvent.reloadConfigs(true, path);
-    await release(const Duration(milliseconds: 300));
-    clash.getData();
-  }
-
-  final AV<ConfigsCurrent?> _data = .val(null);
-  ConfigsCurrent? get data => _data.value;
-  List<ConfigTable>? get tables => data?.tables;
-  final _current = BaseConfig.currentProfile;
-  String get current => _current.value ?? '';
-
-  bool get listening => _sub != null;
-  StreamSubscription<ConfigsCurrent>? _sub;
-  void _getConfigDb() async {
-    Log.w('listen');
-    _sub?.cancel();
-    _sub = repository.configsEvent.getConfigsCurrent().listen(
-      (event) {
-        _data.value = event;
-      },
-      onDone: () {
-        _sub = null;
-        Log.e('done');
-      },
-      onError: (e) {
-        _sub = null;
-        Log.w('error: $e.');
-      },
-    );
+  AMap<String, Profile> get profiles => BaseConfig.profiles;
+  bool isCurrent(Profile profile) {
+    return BaseConfig.currentProfile.value.isCurrent(profile);
   }
 
   Future<void> addNewConfigUrl(
     String url,
-    String? name,
-    int updateInterval,
+    String name,
+    int? updateIntervalM,
   ) async {
-    await repository.configsEvent.addNewConfigUrl(url, updateInterval, name);
-  }
+    final data = BaseConfig.profiles.value;
+    final id = Uuid().v4();
 
-  Future<void> updateConfigUrl(
-    String url,
-    String? name,
-    int? updateInterval,
-  ) async {
-    await repository.configsEvent.updateConfigsUrl(
-      url,
-      ConfigTable(url: url, name: name, updateInterval: updateInterval),
+    final profile = Profile(
+      id: id,
+      url: url,
+      name: name,
+      updateInterval: updateIntervalM,
     );
+    data[id] = profile;
+    updateConfigData(profile);
   }
 
-  Future<void> updateConfigData(String url) async {
-    await repository.clashEvent.updateCurrentConfig(url);
+  Future<void> updateConfigUrl(Profile profile) async {
+    final data = BaseConfig.profiles.value;
+    data[profile.id!] = profile;
   }
 
-  @override
-  void nopDispose() {
-    _sub?.cancel();
-    _sub = null;
-    super.nopDispose();
+  Future<void> reloadConfig(Profile profile) async {
+    if (await repository.clashEvent.reloadConfigs(profile, update: true)) {
+      await release(const Duration(milliseconds: 300));
+      clash.getData();
+    }
+  }
+
+  Future<void> updateConfigData(Profile profile) async {
+    await repository.clashEvent.reloadConfigs(profile, update: false);
+    await release(const Duration(milliseconds: 300));
+    if (isCurrent(profile)) {
+      clash.getData();
+    }
   }
 }

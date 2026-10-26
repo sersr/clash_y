@@ -23,8 +23,22 @@ extension type StorageTransformDef<T>._(StorageTransform<T> target)
     return ._(.base(defaultValue));
   }
 
-  static StorageTransformDef<List<E>> list<E>([List<E>? defaultValue]) {
+  static StorageTransformDef<List<E>> list<E>(List<E> defaultValue) {
     return ._(._(StorageTransform._list<E>, defaultValue));
+  }
+
+  static StorageTransformDef<List<E>> listDy<E>(
+    Function fn,
+    List<E> defaultValue,
+  ) {
+    return ._(.listDy<E>(fn, defaultValue));
+  }
+
+  static StorageTransformDef<Map<K, V>> map<K, V>(
+    Function fn,
+    Map<K, V> defaultValue,
+  ) {
+    return ._(.map<K, V>(fn, defaultValue));
   }
 
   static StorageTransformDef<String> string(String defaultValue) {
@@ -54,6 +68,23 @@ final class StorageTransform<T> {
 
   static StorageTransform<List<E>> list<E>([List<E>? defaultValue]) {
     return ._(_list<E>, defaultValue);
+  }
+
+  static StorageTransform<List<E>> listDy<E>(
+    Function fn, [
+    List<E>? defaultValue,
+  ]) {
+    return ._((List list) => list.map((e) => fn(e)).toList(), defaultValue);
+  }
+
+  static StorageTransform<Map<K, E>> map<K, E>(
+    Function fn, [
+    Map<K, E>? defaultValue,
+  ]) {
+    return ._(
+      (Map map) => map.map<K, E>((k, v) => MapEntry(k, fn(v))),
+      defaultValue,
+    );
   }
 
   static StorageTransform<String> string([String? defaultValue]) =>

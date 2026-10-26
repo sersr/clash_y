@@ -14,7 +14,7 @@ import 'package:path/path.dart';
 import '../../event.dart';
 import 'unix_socket_dio.dart';
 
-final class ClashRequest implements ClashEvent {
+final class ClashRequest {
   ClashRequest({required this.paths, required this.repo}) {
     init();
   }
@@ -35,7 +35,6 @@ final class ClashRequest implements ClashEvent {
     _dio.httpClientAdapter = UnixSocketAdapter(unixSocketPath);
   }
 
-  @override
   FutureOr<ProxiesData?> getProxies() async {
     final data = await gets('proxies');
     try {
@@ -76,7 +75,6 @@ final class ClashRequest implements ClashEvent {
     return null;
   }
 
-  @override
   Stream<TrafficModel> watchTraffic() async* {
     try {
       final response = await _dio.get<ResponseBody>(
@@ -103,7 +101,6 @@ final class ClashRequest implements ClashEvent {
     }
   }
 
-  @override
   Stream<LogModel> watchLogs(String level) async* {
     try {
       final response = await _dio.get<ResponseBody>(
@@ -143,7 +140,6 @@ final class ClashRequest implements ClashEvent {
     return base64.encode(bytes);
   }
 
-  @override
   Stream<Connections> watchConnections(Duration interval) async* {
     try {
       final socket = await io.WebSocket.connect(
@@ -205,7 +201,6 @@ final class ClashRequest implements ClashEvent {
     return '';
   }
 
-  @override
   Future<void> selectProxy(String selector, String proxy) async {
     try {
       await getConfigs();
@@ -227,24 +222,20 @@ final class ClashRequest implements ClashEvent {
     _dio.httpClientAdapter = UnixSocketAdapter(unixSocketPath);
   }
 
-  @override
   FutureOr<void> getRules() async {
     final data = await gets('rules');
     Log.i('all Rules: $data');
   }
 
-  @override
   FutureOr<void> getConfigs() async {
     final data = await gets('configs');
     Log.i('all Configs: $data');
   }
 
-  FutureOr<void> updateConfig(bool force, String path) async {
+  FutureOr<void> updateConfig(String path) async {
     try {
       final bytes = await fs.currentDirectory.childFile(path).readAsString();
-      // final file = fs.currentDirectory
-      //     .childDirectory(G.appCachePath)
-      //     .childFile('configt.yaml');
+
       final file = configYaml;
       final text = await configYaml.readAsString();
 
@@ -265,17 +256,6 @@ final class ClashRequest implements ClashEvent {
     }
   }
 
-  @override
-  FutureOr<void> resetConfigs(ConfigsData data) async {
-    try {
-      final response = await _dio.patch<String>('configs', data: data.body);
-      Log.i(response.data);
-    } catch (e) {
-      Log.i(e);
-    }
-  }
-
-  @override
   FutureOr<Delay?> getDelay(String proxy, int timeout, String testUrl) async {
     try {
       final response = await _dio.get<String>(
@@ -286,12 +266,12 @@ final class ClashRequest implements ClashEvent {
       if (data != null) {
         return Delay.fromJson(jsonDecode(data));
       }
-    } on DioException catch (e, s) {
-      if (e.response case var res?) {
-        Log.w(res.data);
-        return null;
-      }
-      Log.w('${e.response?.data}\n$s');
+    } on DioException catch (_) {
+      // if (e.response case var res?) {
+        // Log.w(res.data);
+        // return null;
+      // }
+      // Log.w('${e.response?.data}\n$s');
     }
     return null;
   }
@@ -343,41 +323,40 @@ final class ClashRequest implements ClashEvent {
     );
   }
 
+  Map<String, int> _parseSubscriptionUserInfo(String info) {
+    final values = <String, int>{};
+    for (final part in info.split(';')) {
+      final separator = part.indexOf('=');
+      if (separator < 0) continue;
+
+      final key = part.substring(0, separator).trim().toLowerCase();
+      if (key != 'upload' &&
+          key != 'download' &&
+          key != 'total' &&
+          key != 'expire') {
+        continue;
+      }
+
+      final value = int.tryParse(part.substring(separator + 1).trim());
+      if (value != null) values[key] = value;
+    }
+    return values;
+  }
+
   final dlConfigDio = Dio();
 
-  Future<void> onClashInit() async {
-    final current = BaseConfig.currentProfile;
-    if (current.value != null) {
-      final file = getFile('${current.value}');
-      if (file.existsSync()) {
-        return reloadConfigs(true, file.path);
-      }
-    }
-  }
+  FutureOr<bool> reloadConfigs(Profile profile, {bool update = false}) async {
+    final url = profile.url;
+    if (url == null) return false;
 
-  @override
-  FutureOr<void> updateCurrentConfig(String url) async {
-    final current = BaseConfig.currentProfile.value;
-    await reloadConfigs(true, url, update: true, reload: url == current);
-  }
-
-  /// clashEvent
-
-  FutureOr<void> reloadConfigs(
-    bool force,
-    String url, {
-    bool update = false,
-    bool reload = true,
-  }) async {
-    return EventQueue.runOne(reloadConfigs, () async {
-      final file = getFile(url);
-      final baseName = file.path;
+    final res = await EventQueue.runOne(reloadConfigs, () async {
+      var file = getFile(url);
 
       try {
         final fileExists = file.existsSync();
-        final config = await repo.configsEvent.getConfig(url);
+        final config = profile;
 
-        if (!fileExists || update || config?.shouldUpdate() == true) {
+        if (!fileExists || config.shouldUpdate()) {
           Log.w('update: $url');
 
           final responseFile = await dlConfigDio.get<String>(
@@ -391,6 +370,27 @@ final class ClashRequest implements ClashEvent {
           final info =
               responseFile.headers['subscription-userinfo']?.firstOrNull ?? '';
           Log.w("header: $info");
+          final disposition = responseFile.headers['content-disposition'];
+
+          final fileName = getFilenameFromContentDisposition(
+            disposition?.join(''),
+          );
+          final userInfo = _parseSubscriptionUserInfo(info);
+
+          profile = profile.copyWith(
+            rawName: fileName,
+            upload: userInfo['upload'],
+            download: userInfo['download'],
+            total: userInfo['total'],
+            expire: userInfo['expire'],
+            updateTime: DateTime.now(),
+          );
+          if (profile.id case var id?) {
+            BaseConfig.profiles[id] = profile;
+          }
+
+          final baseName = file.path;
+
           if (fileData != null) {
             final editor = YamlUtils.edit(fileData);
 
@@ -404,32 +404,33 @@ final class ClashRequest implements ClashEvent {
               file.createSync(recursive: true);
             }
             fileTemp.renameSync(file.path);
-            await repo.configsEvent.setConfigDateTime(url, info);
-          }
-        }
-        final exists = file.existsSync();
-        if (exists) {
-          Log.w('$exists $file');
-          if (reload) {
-            BaseConfig.currentProfile.value = url;
-            await updateConfig(force, file.path);
           }
         }
       } catch (e) {
-        Log.i(e);
-        BaseConfig.currentProfile.value = url;
-        await updateConfig(force, file.path);
+        Log.e(e);
       }
+
+      final exists = await file.exists();
+      if (update) {
+        BaseConfig.currentProfile.value = profile;
+        if (exists) {
+          Log.w('$exists $file');
+          await updateConfig(file.path);
+          return true;
+        }
+      }
+      return false;
     });
+
+    return res ?? false;
   }
 
   void updateDelegateConfig(YamlEditor editor) {
-    // 'external-controller-unix': paths.unixSocketPath,
     Log.w(editor.toString());
     editor
-      ..update(['log-level'], const bool.fromEnvironment('dart.vm.product')
-          ? 'warning'
-          : 'debug')
+      ..update([
+        'log-level',
+      ], const bool.fromEnvironment('dart.vm.product') ? 'warning' : 'debug')
       ..update(['mode'], 'rule')
       ..update(['mixed-port'], 7890)
       ..update(['allow-lan'], false)
@@ -446,4 +447,55 @@ final class ClashRequest implements ClashEvent {
     // 'dns':
     // 'rules':
   }
+}
+
+String? getFilenameFromContentDisposition(String? header) {
+  if (header == null || header.isEmpty) return null;
+
+  // 1) 优先解析 RFC 5987 的 filename*=charset'lang'encoded
+  final starMatch = RegExp(
+    r"filename\*\s*=\s*([^']*)'[^']*'([^;]+)",
+    caseSensitive: false,
+  ).firstMatch(header);
+
+  if (starMatch != null) {
+    final charset = (starMatch.group(1) ?? 'UTF-8').toUpperCase();
+    final encoded = starMatch.group(2)!.trim();
+    try {
+      if (charset == 'ISO-8859-1') {
+        // 逐字节 %XX 解码后按 latin1 还原
+        final bytes = <int>[];
+        for (var i = 0; i < encoded.length; i++) {
+          if (encoded[i] == '%' && i + 2 < encoded.length) {
+            bytes.add(int.parse(encoded.substring(i + 1, i + 3), radix: 16));
+            i += 2;
+          } else {
+            bytes.add(encoded.codeUnitAt(i));
+          }
+        }
+        return String.fromCharCodes(bytes);
+      }
+      return Uri.decodeComponent(encoded); // UTF-8
+    } catch (_) {
+      // 解码失败就继续尝试普通 filename
+    }
+  }
+
+  // 2) 普通 filename=，支持带引号（含转义 \"）和不带引号
+  final match = RegExp(
+    r'''filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;]+))''',
+    caseSensitive: false,
+  ).firstMatch(header);
+
+  if (match != null) {
+    final quoted = match.group(1);
+    if (quoted != null) {
+      // 还原 \" \\ 等转义
+      return quoted.replaceAllMapped(RegExp(r'\\(.)'), (m) => m.group(1)!);
+    }
+    final unquoted = match.group(2)?.trim();
+    if (unquoted != null && unquoted.isNotEmpty) return unquoted;
+  }
+
+  return null;
 }

@@ -1,3 +1,4 @@
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/widgets.dart';
 
 BuildContext? get currentContext => globalObserver.navigator?.context;
@@ -15,5 +16,17 @@ abstract final class Nav {
 
   static void back([dynamic result]) {
     globalObserver.navigator?.pop(result);
+  }
+
+  static double get screenWidth {
+    return MediaQuery.sizeOf(currentContext!).width;
+  }
+
+  static double get screenHeight {
+    return MediaQuery.sizeOf(currentContext!).height;
+  }
+
+  static double get statusBarHeight {
+    return MediaQuery.paddingOf(currentContext!).top;
   }
 }

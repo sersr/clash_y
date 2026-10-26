@@ -33,8 +33,7 @@ class ClashController with NopLifecycle {
   DateTime? get lastRefreshTime => _lastRefreshTime.value;
   final _isRunning = false.al;
   bool get isRunning => _isRunning.value;
-  final _isTransitioning = true.al;
-  bool get isTransitioning => _isTransitioning.value;
+
   final map = <String, int?>{};
   late final ss = map.al;
   String getName(String proxyName) {
@@ -62,9 +61,7 @@ class ClashController with NopLifecycle {
           : null;
       _data.value = remoteData ?? const ProxiesData(history: [], proxies: []);
       removeProxyDelay();
-    } finally {
-      _isTransitioning.value = false;
-    }
+    } finally {}
   }
 
   @override
@@ -74,16 +71,16 @@ class ClashController with NopLifecycle {
     super.nopDispose();
   }
 
+  final _queue = TaskQueue();
   Future<void> start() async {
-    if (isRunning || isTransitioning) return;
-    _isTransitioning.value = true;
-    try {
+    if (isRunning) return;
+    _queue.run(() async {
       final isAllowList = SettingsHive.applicationListMode.value == 'whitelist';
       final allowedApplications = SettingsHive.allowApplications.value;
 
       final unixSocketPath = BaseConfig.unixSockPath.value;
       final path = await initConfigPath(unixSocketPath);
-      Log.w(allowedApplications);
+
       final success = await ClashService.start(
         path,
         allowList: isAllowList,
@@ -105,9 +102,9 @@ class ClashController with NopLifecycle {
         if (!await _run(path)) return;
       }
       _isRunning.value = true;
-    } finally {
-      _isTransitioning.value = false;
-    }
+
+      getData();
+    });
   }
 
   Future<bool> _run(String configPath) async {
@@ -127,15 +124,17 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> getData() async {
-    final remoteData = await repository.clashEvent.getProxies();
-    if (!isTransitioning) {
+    _queue.run(() async {
+      final remoteData = await repository.clashEvent.getProxies();
+
       _isRunning.value = await _queryRunningState(
         apiAvailable: remoteData != null,
       );
-    }
-    final data = remoteData ?? const ProxiesData(history: [], proxies: []);
-    _data.value = data;
-    removeProxyDelay();
+
+      final data = remoteData ?? const ProxiesData(history: [], proxies: []);
+      _data.value = data;
+      removeProxyDelay();
+    });
   }
 
   Future<void> refreshOnResume() async {
@@ -181,33 +180,37 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> stop() async {
-    if (!isRunning || isTransitioning) return;
-    _isTransitioning.value = true;
-    try {
+    if (!isRunning) return;
+
+    return _queue.run(() async {
       var success = false;
+
       if (defaultTargetPlatform == .android) {
         success = await ClashService.stop();
-      } else {
-        if (!await ClashService.isInstalled()) {
+        if (success) {
           _isRunning.value = false;
-          return;
         }
-        try {
-          final response = await ClashServiceApi.stopClash();
-          Log.w('stop clash: ${response.success}, ${response.data}');
-          _isRunning.value = await _queryRunningState();
-          success = response.success && !_isRunning.value;
-        } catch (e) {
-          _isRunning.value = await _queryRunningState();
-        }
+
+        Log.w('close vpn: $success');
+        return;
       }
-      Log.w('close vpn: $success');
-      if (success && defaultTargetPlatform == TargetPlatform.android) {
+
+      if (!await ClashService.isInstalled()) {
         _isRunning.value = false;
+        return;
       }
-    } finally {
-      _isTransitioning.value = false;
-    }
+
+      try {
+        final response = await ClashServiceApi.stopClash();
+        Log.w('stop clash: ${response.success}, ${response.data}');
+        _isRunning.value = await _queryRunningState();
+        success = response.success && !_isRunning.value;
+      } catch (e) {
+        _isRunning.value = await _queryRunningState();
+      }
+
+      Log.w('close vpn: $success');
+    });
   }
 
   Future<void> uninstall() async {
@@ -246,24 +249,15 @@ class ClashController with NopLifecycle {
   }
 
   void stopListen() {
-    final wasListening = _log != null;
     _log?.cancel();
     _traffic?.cancel();
     _log = null;
     _traffic = null;
-    if (wasListening && isRunning) {
-      unawaited(_setLogLevel(kDebugMode ? 'debug' : 'warning'));
-    }
   }
 
   void startListen() {
     if (_log != null) return;
-    unawaited(_setLogLevel('debug'));
     listenLogTraffic();
-  }
-
-  Future<void> _setLogLevel(String level) async {
-    await repository.clashEvent.resetConfigs(ConfigsData(logLevel: level));
   }
 
   void listenLogTraffic() async {

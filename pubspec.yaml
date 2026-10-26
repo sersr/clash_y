@@ -19,8 +19,6 @@ dependencies:
     path: ../packages/nop_db
   nop_db_sqlite:
     path: ../packages/nop_db_sqlite
-  useful_tools:
-    path: ../packages/useful_tools
 
   nop: ^0.3.0
   http: ^1.6.0
@@ -36,6 +34,7 @@ dependencies:
   common: ^0.0.1
   flutter_nop: ^4.0.0
   material_ui: ^1.2.0
+  cupertino_ui: any
   web_socket_channel: ^3.0.3
   crypto: ^3.0.7
   installed_apps: ^2.2.1
@@ -44,6 +43,8 @@ dependencies:
     path: packages/clash_service
   native_assets_cli: ^0.18.0
   native_toolchain_c: ^0.19.5
+  uuid: ^4.6.0
+
 
 dev_dependencies:
   flutter_test:
@@ -54,6 +55,7 @@ dev_dependencies:
   build_runner: ^2.1.5
   json_serializable: ^6.0.1
 
+
 dependency_overrides:
   flutter_nop:
     path: ../packages/flutter_nop
@@ -61,12 +63,12 @@ dependency_overrides:
     path: ../packages/nop_db
   nop_db_sqlite:
     path: ../packages/nop_db_sqlite
-  useful_tools:
-    path: ../packages/useful_tools
   nop:
     path: ../packages/nop
   clash_core:
     path: packages/clash_core
+  overlays:
+    path: ../packages/overlays
 
 flutter:
   uses-material-design: true

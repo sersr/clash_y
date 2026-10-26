@@ -1,7 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
-import 'package:useful_tools/useful_tools.dart';
 import 'package:common/common.dart';
 
 import '../controller/clash_connection_controller.dart';
@@ -37,71 +36,97 @@ class _ClashConnectionsState extends State<ClashConnections> {
 
   @override
   Widget build(BuildContext context) {
-    return ((context) {
-      final data = clashConnectionsNotifier.connections;
-      final connections = data?.connections;
-      if (data == null) return loadingIndicator();
-      if (connections == null) {
-        return reloadBotton(clashConnectionsNotifier.watchConnections);
-      }
+    return Column(
+      children: [
+        BaseAppBar(
+          center: Text(
+            'Connections',
+            style: .new(fontSize: 18.sp, fontWeight: .w500),
+          ),
+        ),
+        Expanded(
+          child: ((context) {
+            final data = clashConnectionsNotifier.connections;
+            final connections = data?.connections ?? const [];
 
-      return ListViewBuilder(
-        scrollController: controller,
-        itemCount: connections.length,
-        itemBuilder: (context, index) {
-          final item = connections[index];
-          if (item == null) return const SizedBox.shrink();
-          final metadata = item.metadata;
-          final destination = metadata?.host?.isNotEmpty == true
-              ? metadata!.host!
-              : metadata?.destinationIP ?? 'Unknown destination';
-          final chain = item.chains?.isNotEmpty == true
-              ? item.chains!.first.toString()
-              : 'Direct';
+            final body = SliverList.builder(
+              itemCount: connections.length,
+              itemBuilder: (context, index) {
+                final item = connections[index];
+                if (item == null) return const SizedBox.shrink();
+                final metadata = item.metadata;
+                final destination = metadata?.host?.isNotEmpty == true
+                    ? metadata!.host!
+                    : metadata?.destinationIP ?? 'Unknown destination';
+                final chain = item.chains?.isNotEmpty == true
+                    ? item.chains!.first.toString()
+                    : 'Direct';
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            child: InkButton(
-              backgroundColor: const Color(0xFFD6D6D6),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              borderRadius: BorderRadius.circular(6),
-              overlayColor: const Color(0x2EA1A0A0),
-              onPressed: () => _showConnectionDetails(context, item),
-              child: Row(
-                children: [
-                  const Icon(Icons.public, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                return Padding(
+                  padding: .symmetric(horizontal: 12.w, vertical: 5.h),
+                  child: InkButton(
+                    backgroundColor: const Color(0xFFD6D6D6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    borderRadius: BorderRadius.circular(6),
+                    overlayColor: const Color(0x2EA1A0A0),
+                    onPressed: () => _showConnectionDetails(context, item),
+                    child: Row(
                       children: [
-                        Text(
-                          destination,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 15),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '${metadata?.network ?? '未知网络'} · $chain · ↓${_formatBytes(item.download)}  ↑${_formatBytes(item.upload)}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
+                        const Icon(Icons.public, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                destination,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 15),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${metadata?.network ?? '未知网络'} · $chain · ↓${_formatBytes(item.download)}  ↑${_formatBytes(item.upload)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                        const Icon(Icons.chevron_right, size: 20),
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right, size: 20),
-                ],
+                );
+              },
+            );
+
+            return Refresh(
+              scrollController: controller,
+              isEmpty: connections.isEmpty,
+              emptyWidget: Center(
+                child: Text(
+                  'Empty',
+                  style: .new(
+                    fontSize: 14.sp,
+                    fontWeight: .w300,
+                    color: .new(0x3D818181),
+                  ),
+                ),
               ),
-            ),
-          );
-        },
-      );
-    }).cs;
+              slivers: [body],
+            );
+          }).cs,
+        ),
+      ],
+    );
   }
 
   void _showConnectionDetails(
@@ -149,7 +174,10 @@ class _ClashConnectionsState extends State<ClashConnections> {
                         _detail('Rule', connection.rule),
                         _detail('Rule payload', connection.rulePayload),
                         _detail('Started', _formatStarted(connection.start)),
-                        _detail('Downloaded', _formatBytes(connection.download)),
+                        _detail(
+                          'Downloaded',
+                          _formatBytes(connection.download),
+                        ),
                         _detail('Uploaded', _formatBytes(connection.upload)),
                       ],
                     ),

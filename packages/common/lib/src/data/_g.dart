@@ -13,3 +13,4 @@ part 'owner_config.dart';
 part 'proxy_item.dart';
 part 'traffic.dart';
 part 'window_rect.dart';
+part 'profile.dart';

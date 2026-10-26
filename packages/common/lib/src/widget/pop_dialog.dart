@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:common/src/navigator_observer.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 void popDialog(
   Widget body, {
