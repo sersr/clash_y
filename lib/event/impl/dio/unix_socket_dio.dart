@@ -1,27 +1,27 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:dart_ipc/dart_ipc.dart' show connect;
 import 'package:dio/dio.dart';
 
 class UnixSocketAdapter implements HttpClientAdapter {
   String socketPath;
   late final HttpClient _client;
   var _closed = false;
-  final int port;
 
-  UnixSocketAdapter(this.socketPath, {this.port = 0}) {
+  UnixSocketAdapter(this.socketPath) {
     _client = createUnixSocketClient();
   }
 
   HttpClient createUnixSocketClient() {
     final client = HttpClient();
     HttpClientAdapter;
-    client.connectionFactory = (uri, proxyHost, proxyPort) {
-      final address = InternetAddress(
-        socketPath,
-        type: InternetAddressType.unix,
-      );
-      return Socket.startConnect(address, port);
+    client.connectionFactory = (uri, proxyHost, proxyPort) async {
+      final future = connect(socketPath);
+      final socket = await future;
+      return ConnectionTask.fromSocket(future, () {
+        socket.destroy();
+      });
     };
     client.findProxy = (uri) => 'DIRECT';
 

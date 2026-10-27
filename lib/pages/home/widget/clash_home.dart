@@ -68,16 +68,32 @@ class _ClashHomeState extends State<ClashHome> {
 
   Widget _action() {
     final running = clashMainNotifier.isRunning;
+    final loading = clashMainNotifier.isStarting;
     return FloatingActionButton(
-      onPressed: () {
-        if (running) {
-          clashMainNotifier.stop();
-        } else {
-          clashMainNotifier.start();
-        }
-      },
-      tooltip: running ? 'Stop Clash' : 'Start Clash',
-      child: Icon(running ? Icons.stop : Icons.play_arrow),
+      onPressed: loading
+          ? null
+          : () {
+              if (running) {
+                clashMainNotifier.stop();
+              } else {
+                clashMainNotifier.start();
+              }
+            },
+      tooltip: loading
+          ? 'Starting Clash'
+          : running
+          ? 'Stop Clash'
+          : 'Start Clash',
+      child: loading
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : Icon(running ? Icons.stop : Icons.play_arrow),
     );
   }
 }

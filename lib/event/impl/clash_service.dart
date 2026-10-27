@@ -45,7 +45,7 @@ abstract final class ClashServiceApi {
 class _RetryInterceptor extends Interceptor {
   static final _implDio = Dio(
     .new(baseUrl: 'http://localhost/', contentType: Headers.jsonContentType),
-  )..httpClientAdapter = UnixSocketAdapter(clashSocket, port: 0);
+  )..httpClientAdapter = UnixSocketAdapter(clashSocket);
 
   @override
   void onRequest(

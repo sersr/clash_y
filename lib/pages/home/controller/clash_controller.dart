@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:clash_service/clash_service.dart';
+import 'package:clash_service/clash_service.dart' hide fs;
 import 'package:clashy/event/base/data.dart';
 import 'package:clashy/event/impl/clash_service.dart';
 import 'package:clashy/event/repository.dart';
-import 'package:clashy/init.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
@@ -33,6 +32,8 @@ class ClashController with NopLifecycle {
   DateTime? get lastRefreshTime => _lastRefreshTime.value;
   final _isRunning = false.al;
   bool get isRunning => _isRunning.value;
+  final _isStarting = false.al;
+  bool get isStarting => _isStarting.value;
 
   final map = <String, int?>{};
   late final ss = map.al;
@@ -73,38 +74,51 @@ class ClashController with NopLifecycle {
 
   final _queue = TaskQueue();
   Future<void> start() async {
-    if (isRunning) return;
-    _queue.run(() async {
-      final isAllowList = SettingsHive.applicationListMode.value == 'whitelist';
-      final allowedApplications = SettingsHive.allowApplications.value;
+    if (isRunning || isStarting) return;
+    _isStarting.value = true;
+    try {
+      await _queue.run(() async {
+        final isAllowList =
+            SettingsHive.applicationListMode.value == .whiteList;
+        final allowedApplications = SettingsHive.allowApplications.value;
 
-      final unixSocketPath = BaseConfig.unixSockPath.value;
-      final path = await initConfigPath(unixSocketPath);
+        final path = await initConfigPath();
 
-      final success = await ClashService.start(
-        path,
-        allowList: isAllowList,
-        allowedApplications: isAllowList ? allowedApplications : const [],
-        disallowedApplications: isAllowList
-            ? const []
-            : SettingsHive.disAllowApplications.value,
-      );
-      if (success == false) {
-        Log.e('start vpn failed');
-        return;
-      }
-
-      if (defaultTargetPlatform.isDesktop) {
-        if (!await ClashService.isInstalled()) {
-          Log.e('desktop service is not installed');
+        final success = await ClashService.start(
+          path,
+          allowList: isAllowList,
+          allowedApplications: isAllowList ? allowedApplications : const [],
+          disallowedApplications: isAllowList
+              ? const []
+              : SettingsHive.disAllowApplications.value,
+        );
+        if (success == false) {
+          Log.e('start vpn failed');
           return;
         }
-        if (!await _run(path)) return;
-      }
-      _isRunning.value = true;
 
-      getData();
-    });
+        if (defaultTargetPlatform.isDesktop) {
+          if (!await ClashService.isInstalled()) {
+            Log.e('desktop service is not installed');
+            return;
+          }
+          if (!await _run(path)) return;
+        }
+        _isRunning.value = true;
+
+        for (var attempt = 0; attempt < 20; attempt++) {
+          final remoteData = await repository.clashEvent.getProxies();
+          if (remoteData != null) {
+            _updateData(remoteData);
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+        }
+        await _refreshData();
+      });
+    } finally {
+      _isStarting.value = false;
+    }
   }
 
   Future<bool> _run(String configPath) async {
@@ -124,17 +138,20 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> getData() async {
-    _queue.run(() async {
-      final remoteData = await repository.clashEvent.getProxies();
+    await _queue.run(_refreshData);
+  }
 
-      _isRunning.value = await _queryRunningState(
-        apiAvailable: remoteData != null,
-      );
+  Future<void> _refreshData() async {
+    final remoteData = await repository.clashEvent.getProxies();
+    _isRunning.value = await _queryRunningState(
+      apiAvailable: remoteData != null,
+    );
+    _updateData(remoteData ?? const ProxiesData(history: [], proxies: []));
+  }
 
-      final data = remoteData ?? const ProxiesData(history: [], proxies: []);
-      _data.value = data;
-      removeProxyDelay();
-    });
+  void _updateData(ProxiesData data) {
+    _data.value = data;
+    removeProxyDelay();
   }
 
   Future<void> refreshOnResume() async {

@@ -47,8 +47,19 @@ class Routes {
       },
     );
 
+    __clashSettings = NPage(
+      path: 'clashSettings',
+      pageBuilder: (entry) {
+        return MaterialIgnorePage(
+          key: entry.pageKey,
+          entry: entry,
+          child: const ClashSettings(),
+        );
+      },
+    );
+
     _home = NPageMain(
-      pages: [__applicationList],
+      pages: [__applicationList, __clashSettings],
       path: '/',
       pageBuilder: (entry) {
         return MaterialIgnorePage(
@@ -73,6 +84,8 @@ class Routes {
   static NRouter get router => _instance!._router;
   late final NPage __applicationList;
   static NPage get _applicationList => _instance!.__applicationList;
+  late final NPage __clashSettings;
+  static NPage get _clashSettings => _instance!.__clashSettings;
   late final NPageMain _home;
   static NPageMain get home => _instance!._home;
 }
@@ -88,6 +101,12 @@ class NavRoutes {
       Routes.router,
       groupId: groupId,
     );
+  }
+
+  /// [groupId]
+  /// see: [NPage.newGroupKey]
+  static RouterAction clashSettings({dynamic groupId}) {
+    return RouterAction(Routes._clashSettings, Routes.router, groupId: groupId);
   }
 
   /// [groupId]

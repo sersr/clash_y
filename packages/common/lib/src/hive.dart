@@ -1,9 +1,11 @@
 import 'package:common/common.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart';
 
 part 'hive/settings.dart';
+part 'hive/model.dart';
 
 enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
   settings,
@@ -39,14 +41,15 @@ abstract final class BaseConfig {
       .al;
 
   static final unixSockPath = ConfigKey.unixSockPath.readDef(
-    .string(join(G.appCachePath, 'clash_config', 'socket_clash.sock')),
+    .string(
+      defaultTargetPlatform == .windows
+          ? r"\\.\pipe\clashy.pipe"
+          : join(G.appCachePath, 'clash_config', 'socket_clash.sock'),
+    ),
   );
 
   static final baseConfig = ConfigKey.baseConfig.readDef(
-    .fromJson(
-      MihomoRootConfig.fromJson,
-      MihomoRootConfig(externalController: unixSockPath.value),
-    ),
+    .fromJson(MihomoRootConfig.fromJson, MihomoRootConfig()),
   );
 }
 

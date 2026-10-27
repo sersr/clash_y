@@ -13,6 +13,7 @@ class SettingItem extends StatelessWidget {
     this.info,
     this.onTap,
     this.value,
+    this.child,
   });
   final String label;
   final bool? enabled;
@@ -20,6 +21,7 @@ class SettingItem extends StatelessWidget {
   final VoidCallback? onTap;
   final String? value;
   final String? icon;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +45,8 @@ class SettingItem extends StatelessWidget {
           if (onTap != null) ...[2.horizontalSpace, end],
         ],
       );
+    } else if (child case var child?) {
+      end = child;
     }
 
     Widget content = Text(

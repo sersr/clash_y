@@ -3,13 +3,17 @@ import 'package:flutter_nop/router.dart';
 import 'package:nop/nop.dart';
 
 import '../pages/application_list/application_list.dart';
+import '../pages/clash_settings/clash_settings.dart';
 import '../pages/home/home.dart';
 
 part 'routes.g.dart';
 
 @RouterMain(
   page: Home,
-  pages: [RouterPage(name: 'applicationList', page: ApplicationListPage)],
+  pages: [
+    RouterPage(name: 'applicationList', page: ApplicationListPage),
+    .new(page: ClashSettings),
+  ],
 )
 // ignore: unused_element
 abstract final class _Routes {}

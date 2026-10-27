@@ -214,13 +214,6 @@ final class ClashRequest {
     }
   }
 
-  void updateUnixSocket() {
-    BaseConfig.unixSockPath.value = join(
-      paths.appSupportPath,
-      'socket_${Random().nextInt(65556)}.sock',
-    );
-    _dio.httpClientAdapter = UnixSocketAdapter(unixSocketPath);
-  }
 
   FutureOr<void> getRules() async {
     final data = await gets('rules');

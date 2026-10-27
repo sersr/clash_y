@@ -237,7 +237,7 @@ class _NewConfigState extends State<_NewConfig> {
         }
         final uri = Uri.tryParse(url);
 
-        if (uri == null || !uri.hasScheme || uri.scheme.startsWith('http')) {
+        if (uri == null || !uri.hasScheme || !uri.scheme.startsWith('http')) {
           showMsg("$url is not the correct URL.");
           return;
         }

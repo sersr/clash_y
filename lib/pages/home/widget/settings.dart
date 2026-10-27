@@ -34,6 +34,12 @@ class _SettingsState extends State<Settings> {
                   controller.uninstall();
                 },
               ),
+              const SettingDiv(),
+
+              SettingItem(
+                label: "Clash Settings",
+                onTap: () => NavRoutes.clashSettings().go(),
+              ),
             ],
           ),
         ),
@@ -50,13 +56,11 @@ class _SettingsState extends State<Settings> {
     return SystemUI(
       child: Scaffold(
         backgroundColor: const Color(0xFFF0F0F0),
-        body: SafeUI(
-          child: Column(
-            children: [
-              appbar,
-              Expanded(child: body),
-            ],
-          ),
+        body: Column(
+          children: [
+            appbar,
+            Expanded(child: body),
+          ],
         ),
       ),
     );

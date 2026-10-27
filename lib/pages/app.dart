@@ -15,6 +15,7 @@ class _ClashAppState extends State<ClashApp> {
       routerConfig: router,
       restorationScopeId: 'clashy',
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
     );
   }
 }

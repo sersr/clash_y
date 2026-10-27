@@ -45,6 +45,10 @@ extension type StorageTransformDef<T>._(StorageTransform<T> target)
     return .base(defaultValue);
   }
 
+  static StorageTransformDef<bool> boolean(bool defaultValue) {
+    return .base(defaultValue);
+  }
+
   static StorageTransformDef<int> nInt(int defaultValue) {
     return .base(defaultValue);
   }
@@ -88,6 +92,8 @@ final class StorageTransform<T> {
   }
 
   static StorageTransform<String> string([String? defaultValue]) =>
+      .base(defaultValue);
+  static StorageTransform<bool> boolean([bool? defaultValue]) =>
       .base(defaultValue);
 
   static StorageTransform<int> nInt([int? defaultValue]) => .base(defaultValue);

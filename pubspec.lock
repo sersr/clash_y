@@ -239,7 +239,7 @@ packages:
     source: hosted
     version: "1.1.4"
   dart_ipc:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: dart_ipc
       sha256: "3b372078dcc542b97189da4df2b08c1fc5ab0123ecdce37d400ce85ab651b273"

@@ -29,8 +29,7 @@ class ApplicationListController with NopLifecycle {
   final _showSystemApps = false.al;
   bool get showSystemApps => _showSystemApps.value;
 
-  final _isAllowList = false.al;
-  bool get isAllowList => _isAllowList.value;
+  bool get isAllowList => SettingsHive.applicationListMode.value == .whiteList;
 
   final _loading = true.al;
   bool get loading => _loading.value;
@@ -48,7 +47,6 @@ class ApplicationListController with NopLifecycle {
   }
 
   void _initializeSelection() {
-    _isAllowList.value = SettingsHive.applicationListMode.value == 'whitelist';
     _selectedPackages.value = [
       ...(isAllowList
           ? SettingsHive.allowApplications.value
@@ -122,15 +120,15 @@ class ApplicationListController with NopLifecycle {
 
   void switchMode(bool allowList) {
     if (isAllowList == allowList) return;
-    _isAllowList.value = allowList;
+
     _selectedPackages.value = [
       ...(allowList
           ? SettingsHive.allowApplications.value
           : SettingsHive.disAllowApplications.value),
     ];
     SettingsHive.applicationListMode.value = allowList
-        ? 'whitelist'
-        : 'blacklist';
+        ? .whiteList
+        : .blackList;
   }
 
   void toggleApplication(String packageName) {
