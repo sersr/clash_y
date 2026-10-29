@@ -15,7 +15,7 @@ class ClashConnections extends StatefulWidget {
 class _ClashConnectionsState extends State<ClashConnections> {
   late ClashConnectionController clashConnectionsNotifier;
   late ScrollController controller;
-
+  final searchController = TextEditingController();
   @override
   void initState() {
     super.initState();
@@ -31,23 +31,75 @@ class _ClashConnectionsState extends State<ClashConnections> {
   @override
   void dispose() {
     controller.dispose();
+    searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final border = ShapedInputBorder(
+      borderSide: .new(color: Color.fromARGB(255, 46, 102, 255), width: 2.r),
+      shape: StadiumBorder(),
+    );
+    final borderNone = ShapedInputBorder(
+      borderSide: .new(color: Color.fromARGB(255, 80, 80, 80), width: 1.5.r),
+      shape: StadiumBorder(),
+    );
+
+    final search = TextField(
+      controller: searchController,
+      style: .new(color: Color(0xFF333333), fontSize: 16.sp, fontWeight: .w500),
+      textAlignVertical: TextAlignVertical.center,
+      decoration: .new(
+        isCollapsed: true,
+        hintText: 'Search',
+        hintStyle: .new(
+          color: Color(0xFF999999),
+          fontSize: 16.sp,
+          fontWeight: .w500,
+        ),
+        border: border,
+        enabledBorder: borderNone,
+        focusedBorder: border,
+        isDense: true,
+        contentPadding: .symmetric(vertical: 12.h, horizontal: 12.w),
+        suffixIcon: Cs(
+          () => searchController.al.value.text.isEmpty
+              ? const SizedBox()
+              : Container(
+                  padding: .only(right: 6.w),
+                  child: GestureDetector(
+                    onTap: () {
+                      searchController.clear();
+                    },
+                    child: Icon(Icons.clear, size: 20, color: Colors.grey),
+                  ),
+                ),
+        ),
+      ),
+    );
+
     return Column(
       children: [
-        BaseAppBar(
-          center: Text(
-            'Connections',
-            style: .new(fontSize: 18.sp, fontWeight: .w500),
-          ),
+        Container(
+          padding: .symmetric(horizontal: 12.w, vertical: 8.h),
+          child: SafeArea(bottom: false, child: search),
         ),
         Expanded(
           child: ((context) {
             final data = clashConnectionsNotifier.connections;
-            final connections = data?.connections ?? const [];
+            final search = searchController.al.value.text.trim();
+            var connections = data?.connections ?? const [];
+            if (search.isNotEmpty) {
+              connections = connections.where((item) {
+                if (item == null) return false;
+                final metadata = item.metadata;
+                final destination = metadata?.host?.isNotEmpty == true
+                    ? metadata!.host!
+                    : metadata?.destinationIP ?? 'Unknown destination';
+                return destination.contains(search);
+              }).toList();
+            }
 
             final body = SliverList.builder(
               itemCount: connections.length,
@@ -135,12 +187,13 @@ class _ClashConnectionsState extends State<ClashConnections> {
   ) {
     showCenterDialog<void>(
       context,
+      alignment: .new(0, -0.3),
       BaseDialog(
         title: 'Connection details',
         center: ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 360),
           child: Container(
-            padding: .symmetric(horizontal: 12.w),
+            padding: .symmetric(horizontal: 32.w),
             alignment: .centerLeft,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

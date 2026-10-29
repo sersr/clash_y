@@ -122,7 +122,12 @@ class _ClashSettingsState extends State<ClashSettings> {
                 return SettingItem(
                   label: "Mixed Port",
                   value: '$mixedPort',
-                  onTap: () {},
+                  onTap: () async {
+                    final port = await _inputEdit("Mixed Port", '$mixedPort');
+                    if (int.tryParse(port) case var port?) {
+                      SettingsHive.mixedProt.value = port;
+                    }
+                  },
                 );
               }),
               SettingDiv(),
@@ -171,5 +176,159 @@ class _ClashSettingsState extends State<ClashSettings> {
         ),
       ),
     );
+  }
+}
+
+Future<String> _inputEdit(String label, String initValue) async {
+  final res = await showCenterDialog(
+    currentContext!,
+    alignment: .new(0, -0.3),
+    _Dialog(initValue: initValue),
+  );
+
+  if (res case String v) {
+    return v;
+  }
+  return '';
+}
+
+class _Dialog extends StatefulWidget {
+  const new({required this.initValue});
+  final String initValue;
+  @override
+  State<_Dialog> createState() => __DialogState();
+}
+
+class __DialogState extends State<_Dialog> {
+  final editController = TextEditingController();
+
+  @override
+  void initState() {
+    editController.text = widget.initValue;
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    editController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final border = ShapedInputBorder(
+      shape: RoundedRectangleBorder(borderRadius: .circular(8)),
+      borderSide: .new(
+        color: const Color.fromARGB(255, 23, 145, 245),
+        width: 2.r,
+      ),
+    );
+    final borderNone = ShapedInputBorder(
+      shape: RoundedRectangleBorder(borderRadius: .circular(8)),
+      borderSide: .new(
+        color: const Color.fromARGB(255, 208, 208, 208),
+        width: 2.r,
+      ),
+    );
+
+    final editW = TextField(
+      controller: editController,
+      style: .new(color: Color(0xFF333333), fontSize: 14.sp, fontWeight: .w400),
+      inputFormatters: const [IntPrefixFormater(prefix: '', iPrefix: '')],
+      decoration: .new(
+        isCollapsed: true,
+        hintText: '',
+        contentPadding: .symmetric(vertical: 16, horizontal: 6),
+        border: .none,
+        focusedBorder: border,
+        disabledBorder: borderNone,
+        enabledBorder: borderNone,
+      ),
+    );
+
+    final title = BaseAppBar(
+      removeTop: false,
+      center: Text(
+        'Mixed Port',
+        style: .new(
+          fontSize: 18.sp,
+          fontWeight: .w500,
+          color: Color(0xFF333333),
+        ),
+      ),
+    );
+
+    final cancleW = InkButton(
+      onPressed: () {
+        Nav.back();
+      },
+      padding: .symmetric(vertical: 14),
+      backgroundColor: Colors.transparent,
+      side: .new(color: Color.fromARGB(59, 153, 153, 153), width: 1.2.r),
+      borderRadius: .circular(12),
+      overlayColor: const Color.fromARGB(87, 191, 191, 191),
+      child: Center(
+        child: Text(
+          "Cancel",
+          style: .new(
+            fontSize: 13.sp,
+            fontWeight: .w400,
+            color: Color.fromARGB(255, 77, 76, 76),
+          ),
+        ),
+      ),
+    );
+
+    final confirmW = InkButton(
+      onPressed: () {
+        Nav.back(editController.text.trim());
+      },
+      padding: .symmetric(vertical: 14),
+      backgroundColor: const Color.fromARGB(255, 17, 130, 251),
+      borderRadius: .circular(12),
+      overlayColor: const Color.fromARGB(42, 253, 253, 253),
+      child: Center(
+        child: Text(
+          "Confirm",
+          style: .new(
+            fontSize: 13.sp,
+            fontWeight: .w400,
+            color: Color.fromARGB(255, 251, 248, 248),
+          ),
+        ),
+      ),
+    );
+
+    Widget body = Column(
+      mainAxisSize: .min,
+      children: [
+        title,
+        22.verticalSpace,
+        editW,
+        32.verticalSpace,
+        Row(
+          spacing: 20,
+          children: [
+            Expanded(child: cancleW),
+            Expanded(child: confirmW),
+          ],
+        ),
+        14.verticalSpace,
+      ],
+    );
+
+    body = Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: .circular(16.r),
+      ),
+      margin: .symmetric(horizontal: 34.w),
+      padding: .symmetric(horizontal: 14.w),
+      child: body,
+    );
+
+    body = Material(color: Colors.transparent, child: body);
+
+    return body;
   }
 }
