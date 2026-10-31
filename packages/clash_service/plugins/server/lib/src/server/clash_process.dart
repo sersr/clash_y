@@ -31,8 +31,7 @@ abstract final class ClashProcess {
   static const _wakeNetworkSettleDelay = Duration(seconds: 5);
   static const _stateFilePath =
       '/Library/Application Support/Clashy/clash-state.json';
-  static const _wakeMonitorLibraryPath =
-      '/Library/PrivilegedHelperTools/com.aote.clashy.helper.wake';
+  static String? _wakeMonitorLibraryPath;
 
   static final _sockets = <WebSocketChannel>[];
   static final _sockets2 = <StreamSink<List<int>>>[];
@@ -45,6 +44,13 @@ abstract final class ClashProcess {
 
   static ClashProfile? _profile;
   static Timer? _profileTimer;
+
+  static void configureWakeMonitorLibraryPath(String path) {
+    if (path.isEmpty) {
+      throw ArgumentError.value(path, 'path', 'cannot be empty');
+    }
+    _wakeMonitorLibraryPath = path;
+  }
 
   static Future<void> restorePersistedClash() async {
     if (!Platform.isMacOS || !await _stateFile.exists()) return;
@@ -116,8 +122,12 @@ abstract final class ClashProcess {
         _wakeSubscription != null) {
       return;
     }
-    if (!await File(_wakeMonitorLibraryPath).exists()) {
-      throw StateError('wake monitor library is not installed');
+    final libraryPath = _wakeMonitorLibraryPath;
+    if (libraryPath == null) {
+      throw StateError('wake monitor library path has not been configured');
+    }
+    if (!await File(libraryPath).exists()) {
+      throw StateError('wake monitor library is missing: $libraryPath');
     }
 
     final events = ReceivePort();
@@ -129,17 +139,17 @@ abstract final class ClashProcess {
         Log.e('macOS wake monitor failed: ${message['error']}');
       }
     });
-    _wakeMonitor = await Isolate.spawn(
-      _watchMacOSWake,
+    _wakeMonitor = await Isolate.spawn(_watchMacOSWake, (
       events.sendPort,
-      debugName: 'clashy-macos-wake-monitor',
-    );
+      libraryPath,
+    ), debugName: 'clashy-macos-wake-monitor');
   }
 
   @pragma('vm:entry-point')
-  static void _watchMacOSWake(SendPort sendPort) {
+  static void _watchMacOSWake((SendPort, String) args) {
+    final (sendPort, libraryPath) = args;
     try {
-      final library = DynamicLibrary.open(_wakeMonitorLibraryPath);
+      final library = DynamicLibrary.open(libraryPath);
       final start = library.lookupFunction<Int32 Function(), int Function()>(
         'clashy_wake_monitor_start',
       );

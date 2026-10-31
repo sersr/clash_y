@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 class HelperInstaller {
   static const _serviceId = 'com.aote.clashy.helper';
   static const _plistPath =
@@ -12,6 +14,8 @@ class HelperInstaller {
   static const _helperWakeMonitorDst =
       '/Library/PrivilegedHelperTools/com.aote.clashy.helper.wake';
   static const _logFile = '/var/log/clashy-install.log';
+  static const _serviceLogFile = '/var/log/clashy-service.log';
+  static const _serviceErrorLogFile = '/var/log/clashy-service-error.log';
 
   /// bundle 内源文件相对路径（相对于 .app 根目录）
   static const _helperRel =
@@ -90,48 +94,117 @@ class HelperInstaller {
     });
   }
 
-  /// 已安装文件是否与 bundle 内文件完全一致（且 plist 存在）
-  static Future<bool> _isUpToDate() async {
+  /// LaunchDaemon 当前配置是否与 bundle 资源生成的 plist 一致。
+  static Future<bool> _isUpToDate(String expectedPlist) async {
     try {
-      final helperSrc = File(_helperSrc);
-      final helperDst = File(_helperDst);
-      final clashSrc = File(_clashSrc);
-      final clashDst = File(_helperClashlibDst);
-      final wakeMonitorSrc = File(_wakeMonitorSrc);
-      final wakeMonitorDst = File(_helperWakeMonitorDst);
-
-      if (!await helperSrc.exists() || !await helperDst.exists()) return false;
-      if (!await clashSrc.exists() || !await clashDst.exists()) return false;
-      if (!await wakeMonitorSrc.exists() || !await wakeMonitorDst.exists()) {
-        return false;
-      }
-      if (!await File(_plistPath).exists()) return false;
-
-      return await _identical(helperSrc, helperDst) &&
-          await _identical(clashSrc, clashDst) &&
-          await _identical(wakeMonitorSrc, wakeMonitorDst);
+      final plist = File(_plistPath);
+      return await plist.exists() &&
+          await plist.readAsString() == expectedPlist;
     } on FileSystemException {
       return false;
     }
   }
 
-  static Future<bool> _identical(File a, File b) async {
-    if (await a.length() != await b.length()) return false;
-    final r = await Process.run('cmp', ['-s', a.path, b.path]);
-    return r.exitCode == 0;
+  static Future<void> _validateBundleAssets() async {
+    final bundlePath = p.normalize(p.absolute(_bundlePath));
+    if (!p.basename(bundlePath).endsWith('.app')) {
+      throw StateError(
+        'macOS service requires an app bundle in a system-protected location',
+      );
+    }
+
+    final assets = <(String, FileSystemEntityType)>[
+      (_helperSrc, FileSystemEntityType.file),
+      (_clashSrc, FileSystemEntityType.file),
+      (_wakeMonitorSrc, FileSystemEntityType.file),
+    ];
+    final checkedModes = <String, int>{};
+    for (final (assetPath, expectedType) in assets) {
+      final path = p.normalize(p.absolute(assetPath));
+      if (!p.isWithin(bundlePath, path)) {
+        throw StateError(
+          'macOS service asset is outside the app bundle: $path',
+        );
+      }
+
+      var current = '/';
+      for (final component in p.relative(path, from: '/').split('/')) {
+        current = p.join(current, component);
+        final type = await FileSystemEntity.type(current, followLinks: false);
+        if (type == FileSystemEntityType.link ||
+            type == FileSystemEntityType.notFound) {
+          throw StateError(
+            'macOS service path is missing or contains a symlink: $current',
+          );
+        }
+        final mode = checkedModes[current] ?? await _readMode(current);
+        checkedModes[current] = mode;
+        if ((current == bundlePath || p.isWithin(bundlePath, current)) &&
+            (mode & 0x12) != 0) {
+          throw StateError(
+            'macOS service path must not be writable by other users: '
+            '$current',
+          );
+        }
+        if (assetPath == _helperSrc && current == path && (mode & 0x40) == 0) {
+          throw StateError('macOS service helper is not executable: $path');
+        }
+      }
+
+      if (await FileSystemEntity.type(path, followLinks: false) !=
+          expectedType) {
+        throw StateError('macOS service asset is missing: $path');
+      }
+    }
+  }
+
+  static Future<int> _readMode(String path) async {
+    final result = await Process.run('/usr/bin/stat', ['-f', '%Lp', path]);
+    if (result.exitCode != 0) {
+      throw ProcessException(
+        '/usr/bin/stat',
+        ['-f', '%Lp', path],
+        '${result.stderr}',
+        result.exitCode,
+      );
+    }
+    final permissions = (result.stdout as String).trim();
+    if (!RegExp(r'^[0-7]{3,4}$').hasMatch(permissions)) {
+      throw FormatException(
+        'Unexpected stat output for $path: ${result.stdout}',
+      );
+    }
+    return int.parse(permissions, radix: 8);
   }
 
   /// 安装 helper（弹系统密码框）。
   ///
-  /// 已安装文件与 bundle 内文件一致时跳过复制：服务在运行则直接返回，
-  /// 未运行则仅启动服务。
+  /// LaunchDaemon 直接运行受保护 app bundle 中的 helper；plist 未变化时
+  /// 不重新注册，服务未运行时只启动服务。
   static Future<void> install() async {
-    if (await _isUpToDate()) {
-      if (await isRunning()) return;
-      await _runPrivileged(_buildStartScript());
-      return;
+    await _validateBundleAssets();
+    final plist = await _launchDaemonPlist();
+    if (await _isUpToDate(plist)) {
+      if (!await isRunning()) {
+        await _runPrivileged(_buildStartScript());
+      }
+    } else {
+      await _runPrivileged(_buildInstallScript(plist));
     }
-    await _runPrivileged(_buildInstallScript());
+    await _waitUntilRunning();
+  }
+
+  static Future<void> _waitUntilRunning() async {
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
+    while (DateTime.now().isBefore(deadline)) {
+      if (await isRunning()) return;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+
+    throw StateError(
+      'macOS helper did not enter the running state. '
+      'See $_serviceLogFile and $_serviceErrorLogFile.',
+    );
   }
 
   /// 停止 helper（弹系统密码框），仅停止 daemon，保留已安装文件
@@ -153,18 +226,14 @@ class HelperInstaller {
 
   // ==================== 脚本内容 ====================
 
-  static String _buildInstallScript() {
+  static String _buildInstallScript(String plistContents) {
+    final plistBase64 = base64.encode(utf8.encode(plistContents));
     return '''
 #!/bin/bash
 
 log() { echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$*" | tee -a "$_logFile"; }
 
 log "========== install-helper 开始 =========="
-
-if [ ! -f "$_helperSrc" ]; then
-    log "❌ 找不到源二进制: $_helperSrc"
-    exit 1
-fi
 
 if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
     log "停止并卸载旧实例..."
@@ -175,58 +244,22 @@ if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
     sleep 1
 fi
 
-mkdir -p /Library/PrivilegedHelperTools
-cp -f "$_helperSrc" "$_helperDst"
-chown root:wheel "$_helperDst"
-chmod 755 "$_helperDst"
-xattr -cr "$_helperDst" 2>/dev/null || true
-log "helper 已安装到 $_helperDst"
-
-if [ ! -f "$_clashSrc" ]; then
-    log "❌ 找不到 libclash.dylib: $_clashSrc"
+printf '%s' '$plistBase64' | /usr/bin/base64 -D > "$_plistPath"
+if [ \$? -ne 0 ]; then
+    log "❌ 生成 LaunchDaemon plist 失败"
     exit 1
 fi
 
-cp -f "$_clashSrc" "$_helperClashlibDst"
-chown root:wheel "$_helperClashlibDst"
-chmod 755 "$_helperClashlibDst"
-xattr -cr "$_helperClashlibDst" 2>/dev/null || true
-log "libclash.dylib 已安装到 $_helperClashlibDst"
-
-if [ ! -f "$_wakeMonitorSrc" ]; then
-    log "❌ 找不到系统唤醒监听库: $_wakeMonitorSrc"
+if ! plutil -lint "$_plistPath" >/dev/null; then
+    log "❌ LaunchDaemon plist 无效"
     exit 1
 fi
-
-cp -f "$_wakeMonitorSrc" "$_helperWakeMonitorDst"
-chown root:wheel "$_helperWakeMonitorDst"
-chmod 755 "$_helperWakeMonitorDst"
-xattr -cr "$_helperWakeMonitorDst" 2>/dev/null || true
-log "系统唤醒监听库已安装到 $_helperWakeMonitorDst"
-
-cat > "$_plistPath" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>$_serviceId</string>
-    <key>Program</key>
-    <string>$_helperDst</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
-</dict>
-</plist>
-PLIST
 
 chown root:wheel "$_plistPath"
 chmod 644 "$_plistPath"
 log "plist 已写入 $_plistPath"
+
+rm -f "$_helperDst" "$_helperClashlibDst" "$_helperWakeMonitorDst"
 
 launchctl bootstrap system "$_plistPath" || log "bootstrap 失败，退出码 \$?"
 launchctl enable "system/$_serviceId" 2>/dev/null || true
@@ -234,13 +267,94 @@ launchctl kickstart -kp "system/$_serviceId" 2>/dev/null || log "kickstart 失�
 
 if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
     log "✅ 服务已加载"
-    exit 0
 else
     log "❌ 服务未加载"
     exit 1
 fi
+
+i=0
+while [ \$i -lt 30 ]; do
+    if launchctl print "system/$_serviceId" 2>/dev/null | grep -q "state = running"; then
+        log "✅ 服务已进入运行状态"
+        exit 0
+    fi
+    sleep 1
+    i=\$((i + 1))
+done
+
+log "❌ 服务未能进入运行状态"
+launchctl print "system/$_serviceId" 2>&1 | tee -a "$_logFile"
+tail -50 "$_serviceErrorLogFile" "$_serviceLogFile" 2>/dev/null | tee -a "$_logFile"
+exit 1
 ''';
   }
+
+  static Future<String> _launchDaemonPlist() async {
+    final assetHashes = await Future.wait([
+      _sha256(_helperSrc),
+      _sha256(_clashSrc),
+      _sha256(_wakeMonitorSrc),
+    ]);
+    final arguments = [
+      _helperSrc,
+      '--clash-library',
+      _clashSrc,
+      '--wake-monitor-library',
+      _wakeMonitorSrc,
+    ];
+    final programArguments = arguments
+        .map((argument) => '<string>${_escapeXml(argument)}</string>')
+        .join();
+    return '''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$_serviceId</string>
+    <!-- Bundle asset SHA-256: ${assetHashes.join(' ')} -->
+    <key>ProgramArguments</key>
+    <array>$programArguments</array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$_serviceLogFile</string>
+    <key>StandardErrorPath</key>
+    <string>$_serviceErrorLogFile</string>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+</dict>
+</plist>
+''';
+  }
+
+  static Future<String> _sha256(String path) async {
+    final result = await Process.run('/usr/bin/shasum', ['-a', '256', path]);
+    if (result.exitCode != 0) {
+      throw ProcessException(
+        '/usr/bin/shasum',
+        ['-a', '256', path],
+        '${result.stderr}',
+        result.exitCode,
+      );
+    }
+    final digest = (result.stdout as String).trim().split(RegExp(r'\s+')).first;
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(digest)) {
+      throw FormatException(
+        'Unexpected SHA-256 output for $path: ${result.stdout}',
+      );
+    }
+    return digest;
+  }
+
+  static String _escapeXml(String value) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
 
   /// 文件已一致时仅启动服务，不复制
   static String _buildStartScript() {
@@ -268,17 +382,24 @@ else
 fi
 launchctl enable "system/$_serviceId" 2>/dev/null || true
 
-if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
-    log "✅ 服务已启动"
-    exit 0
-else
-    log "❌ 服务未启动"
-    exit 1
-fi
+i=0
+while [ \$i -lt 30 ]; do
+    if launchctl print "system/$_serviceId" 2>/dev/null | grep -q "state = running"; then
+        log "✅ 服务已进入运行状态"
+        exit 0
+    fi
+    sleep 1
+    i=\$((i + 1))
+done
+
+log "❌ 服务未能进入运行状态"
+launchctl print "system/$_serviceId" 2>&1 | tee -a "$_logFile"
+tail -50 "$_serviceErrorLogFile" "$_serviceLogFile" 2>/dev/null | tee -a "$_logFile"
+exit 1
 ''';
   }
 
-  /// 仅停止 daemon，保留 plist 与已安装文件
+  /// 仅停止 daemon，保留 plist 与 app bundle 资源
   static String _buildStopScript() {
     return '''
 #!/bin/bash

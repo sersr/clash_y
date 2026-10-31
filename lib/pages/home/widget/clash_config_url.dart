@@ -75,9 +75,9 @@ class _ClashProfilesState extends State<ClashProfiles> {
         child: Text(
           'Empty',
           style: .new(
-            fontSize: 14.sp,
-            fontWeight: .w300,
-            color: .new(0x3D818181),
+            color: Color(0xFF333333),
+            fontSize: 15.sp,
+            fontWeight: .w500,
           ),
         ),
       ),

@@ -1,16 +1,13 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:dart_ipc/dart_ipc.dart' show connect;
 import 'package:server/server.dart' as service_server show clashSocket;
 
 import '../tray_asset.dart';
 
-/// 把 app bundle 内的状态栏程序路径交给 clashyService 保存并启动。
-///
-/// 状态栏图标必须运行在用户的 Aqua 会话里，root 的 LaunchDaemon 无法创建
-/// NSStatusItem。service 负责在登录用户的 GUI 会话启动 tray 子进程。
+/// 保存状态栏程序配置，并从当前用户的图形会话启动 Tray。
 abstract final class TrayInstaller {
+  static const _launchAgentLabel = 'com.aote.clashy.tray';
+
   static String get serviceSocket => service_server.clashSocket;
 
   /// bundle 内源文件相对路径（相对于 .app 根目录）
@@ -25,64 +22,99 @@ abstract final class TrayInstaller {
 
   static String get _traySrc => '$_bundlePath/$_trayRel';
 
-  /// 将 Tray 可执行文件路径和启动参数交给 clashyService 保存并启动。
-  static Future<void> configure({required String clashSocket}) async {
-    if (!Platform.isMacOS) return;
-
-    await _sendRequest('/tray/configure', {
-      'path': _traySrc,
-      'serviceSocket': serviceSocket,
-      'clashSocket': clashSocket,
-      'appPath': _bundlePath,
-    });
+  static String get _launchAgentPath {
+    final home = Platform.environment['HOME'];
+    if (home == null) throw StateError('无法获取当前用户的 HOME 目录');
+    return '$home/Library/LaunchAgents/$_launchAgentLabel.plist';
   }
 
-  static Future<void> _sendRequest(
-    String path,
-    Map<String, Object?> data,
-  ) async {
-    final client = HttpClient()
-      ..connectionFactory = (uri, proxyHost, proxyPort) async {
-        final socketFuture = connect(serviceSocket);
-        final socket = await socketFuture;
-        return ConnectionTask.fromSocket(socketFuture, socket.destroy);
-      }
-      ..findProxy = (_) => 'DIRECT';
-    try {
-      SocketException? lastSocketError;
-      for (var attempt = 0; attempt < 5; attempt++) {
-        try {
-          final request = await client.postUrl(
-            Uri.parse('http://localhost$path'),
-          );
-          request.headers.set(
-            HttpHeaders.contentTypeHeader,
-            'application/json',
-          );
-          request.write(jsonEncode(data));
-          final response = await request.close();
-          final body = await response.transform(utf8.decoder).join();
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            throw HttpException(
-              'Tray server returned HTTP ${response.statusCode}: $body',
-            );
-          }
-          final decoded = jsonDecode(body);
-          if (decoded is! Map || decoded['code'] != 0) {
-            throw StateError('Tray server rejected the request: $body');
-          }
-          return;
-        } on SocketException catch (error) {
-          lastSocketError = error;
-          if (attempt < 4) {
-            await Future<void>.delayed(const Duration(seconds: 2));
-          }
-        }
-      }
-      throw lastSocketError ??
-          StateError('Unable to connect to the clashyService tray endpoint');
-    } finally {
-      client.close(force: true);
+  /// 确保 Tray 的当前用户 LaunchAgent 已配置并运行。
+  static Future<void> ensureConfigured({required String clashSocket}) async {
+    if (!Platform.isMacOS) return;
+
+    final appPath = _bundlePath;
+    final trayPath = _traySrc;
+    final arguments = [
+      trayPath,
+      '--app',
+      appPath,
+      '--service-socket',
+      serviceSocket,
+      '--clash-socket',
+      clashSocket,
+    ];
+    final contents = _launchAgentPlist(arguments);
+    final plist = File(_launchAgentPath);
+    await plist.parent.create(recursive: true);
+
+    final userId = await _currentUserId();
+    final domain = 'gui/$userId';
+    final service = '$domain/$_launchAgentLabel';
+    final existing = await Process.run('launchctl', ['print', service]);
+    final isConfigured =
+        await plist.exists() && await plist.readAsString() == contents;
+
+    if (isConfigured && existing.exitCode == 0) {
+      if ((existing.stdout as String).contains('state = running')) return;
+      await _runLaunchctl(['kickstart', service]);
+      return;
+    }
+
+    if (!isConfigured) {
+      await plist.writeAsString(contents, flush: true);
+    }
+    if (existing.exitCode == 0) {
+      await _runLaunchctl(['bootout', service]);
+    }
+    await _runLaunchctl(['bootstrap', domain, plist.path]);
+  }
+
+  static Future<String> _currentUserId() async {
+    final result = await Process.run('id', ['-u']);
+    if (result.exitCode != 0) {
+      throw ProcessException('id', ['-u'], '${result.stderr}', result.exitCode);
+    }
+    return (result.stdout as String).trim();
+  }
+
+  static String _launchAgentPlist(List<String> arguments) {
+    final programArguments = arguments
+        .map((argument) => '<string>${_escapeXml(argument)}</string>')
+        .join();
+    return '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$_launchAgentLabel</string>
+  <key>ProgramArguments</key>
+  <array>$programArguments</array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+</dict>
+</plist>
+''';
+  }
+
+  static String _escapeXml(String value) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
+
+  static Future<void> _runLaunchctl(List<String> arguments) async {
+    final result = await Process.run('launchctl', arguments);
+    if (result.exitCode != 0) {
+      throw ProcessException(
+        'launchctl',
+        arguments,
+        '${result.stderr}',
+        result.exitCode,
+      );
     }
   }
 }

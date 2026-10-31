@@ -77,9 +77,12 @@ class ClashController with NopLifecycle {
 
   final _queue = TaskQueue();
   Future<void> start() async {
-    if (isRunning || isStarting) return;
+    if (isStarting) return;
     _isStarting.value = true;
     try {
+      if (isRunning && await _queryRunningState()) return;
+      _isRunning.value = false;
+
       await _queue.run(() async {
         final isAllowList =
             SettingsHive.applicationListMode.value == .whiteList;
@@ -100,7 +103,9 @@ class ClashController with NopLifecycle {
               : null,
         );
         if (success == false) {
-          Log.e('start vpn failed');
+          const message = 'Start VPN failed.';
+          Log.e(message);
+          showMsg(message);
           return;
         }
 
@@ -120,10 +125,15 @@ class ClashController with NopLifecycle {
 
         if (defaultTargetPlatform.isDesktop) {
           if (!await ClashService.isInstalled()) {
-            Log.e('desktop service is not installed');
+            const message = 'Clash service is not installed.';
+            Log.e(message);
+            showMsg(message);
             return;
           }
-          if (!await _run(profile)) return;
+          if (!await _run(profile)) {
+            _isRunning.value = false;
+            return;
+          }
         }
         _isRunning.value = true;
 
@@ -137,6 +147,10 @@ class ClashController with NopLifecycle {
         }
         await _refreshData();
       });
+    } catch (e) {
+      _isRunning.value = false;
+      Log.e('start Clash failed: $e');
+      showMsg('Start Clash failed: $e');
     } finally {
       _isStarting.value = false;
     }
@@ -148,12 +162,21 @@ class ClashController with NopLifecycle {
     try {
       final response = await ClashServiceApi.startClash(profile);
       if (!response.success) {
-        Log.e('start Clash failed: ${response.data}');
+        final message = 'Start Clash failed: ${response.data}';
+        Log.e(message);
+        showMsg(message);
         return false;
       }
-      return await ClashServiceApi.isClashRunning();
+      if (!await ClashServiceApi.isClashRunning()) {
+        const message = 'Clash service did not start.';
+        Log.e(message);
+        showMsg(message);
+        return false;
+      }
+      return true;
     } catch (e) {
       Log.e(e);
+      showMsg('Start Clash failed: $e');
       return false;
     }
   }
@@ -272,6 +295,9 @@ class ClashController with NopLifecycle {
 
   Future<void> uninstall() async {
     final success = await ClashService.uninstall();
+    if (success) {
+      _isRunning.value = false;
+    }
     Log.w('close vpn: $success');
   }
 

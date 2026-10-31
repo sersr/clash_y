@@ -6,6 +6,13 @@ import 'src/clash_core_macos.dart' as macos;
 
 bool get _useDynamicLibrary => Platform.isMacOS;
 
+void configureMacOSLibraryPath(String path) {
+  if (!_useDynamicLibrary) {
+    throw UnsupportedError('The macOS Clash library is only used on macOS');
+  }
+  macos.configureLibraryPath(path);
+}
+
 /// Starts the core with the configuration found in configDir, mirroring
 /// `mihomo -d configDir`. TUN follows whatever the config file declares.
 ffi.Pointer<ffi.Char> start(ffi.Pointer<ffi.Char> configDir) =>

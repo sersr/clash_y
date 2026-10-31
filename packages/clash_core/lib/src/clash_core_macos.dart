@@ -4,9 +4,24 @@
 // ignore_for_file: type=lint, unused_import
 import 'dart:ffi' as ffi;
 
-final ffi.DynamicLibrary _lib = ffi.DynamicLibrary.open(
-  'com.aote.clashy.helper.clash',
-);
+String? _libraryPath;
+ffi.DynamicLibrary? _loadedLibrary;
+
+ffi.DynamicLibrary get _lib {
+  final path = _libraryPath;
+  if (path == null) {
+    throw StateError('Clash library path has not been configured');
+  }
+  return _loadedLibrary ??= ffi.DynamicLibrary.open(path);
+}
+
+void configureLibraryPath(String path) {
+  if (path.isEmpty) throw ArgumentError.value(path, 'path', 'cannot be empty');
+  if (_loadedLibrary != null) {
+    throw StateError('Clash library has already been loaded');
+  }
+  _libraryPath = path;
+}
 
 /// Starts the core with the configuration found in configDir, mirroring
 /// `mihomo -d configDir`. TUN follows whatever the config file declares.

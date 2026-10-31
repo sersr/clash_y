@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:clash_service/clash_service.dart' show ClashService;
 import 'package:clashy/app_window.dart';
 import 'package:clashy/event/repository.dart';
 import 'package:clashy/pages/application_list/controller/application_list_controller.dart';
@@ -18,6 +19,15 @@ Future<bool> initMain() async {
     initLog();
     initController();
     await [G.init()].wait;
+    if (Platform.isMacOS) {
+      try {
+        await ClashService.ensureTrayStarted(
+          clashSocket: BaseConfig.unixSockPath.value,
+        );
+      } catch (e) {
+        Log.e('start macOS tray failed: $e');
+      }
+    }
     _registerMacOsShutdownHandler();
     return true;
   } catch (e) {

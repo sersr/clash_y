@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:clash_core/clash_core.dart' show configureMacOSLibraryPath;
 import 'package:dart_ipc/dart_ipc.dart';
 import 'package:nop/utils.dart';
 import 'package:shelf/shelf.dart';
@@ -10,21 +11,26 @@ import 'server.dart';
 import 'src/my_router.dart';
 import 'src/server/base_info.dart';
 import 'src/server/clash_process.dart';
-import 'src/server/clash_tray_process.dart';
 
 export 'src/server/models/models.dart';
 export 'src/server/response.dart';
 
 const version = '0.0.1';
 
+void configureMacOSRuntimeLibraries({
+  required String clashLibraryPath,
+  required String wakeMonitorLibraryPath,
+}) {
+  if (!Platform.isMacOS) {
+    throw UnsupportedError('macOS runtime libraries are only used on macOS');
+  }
+  configureMacOSLibraryPath(clashLibraryPath);
+  ClashProcess.configureWakeMonitorLibraryPath(wakeMonitorLibraryPath);
+}
+
 final router = MyRouter()
   ..get('/', (req) => .ok('Clash VPN!'))
   ..get('/version', (req) => .ok(version))
-  ..post(
-    '/tray/configure',
-    (request) async =>
-        .ok(await ClashTrayProcess.configure(request.context['clashy_data'])),
-  )
   ..mount('/baseInfo', BaseInfo.router.call)
   ..mount('/clash', ClashProcess.clash);
 
@@ -71,8 +77,6 @@ RespHandler jsonMiddleware(Handler handler) {
 
 Future<void> clashServer() async {
   Log.defaultLogger.logPathFn = (path) => path;
-  await ClashTrayProcess.startSaved();
-  await ClashProcess.initialize();
 
   final handler = const Pipeline()
       .addMiddleware(jsonMiddleware)
@@ -100,6 +104,8 @@ Future<void> clashServer() async {
     await Process.run('chown', ['root:wheel', clashSocket]);
     print('Serving at http://${server.address.host}:${server.port}');
   }
+
+  await ClashProcess.initialize();
 }
 
 String get clashSocket {

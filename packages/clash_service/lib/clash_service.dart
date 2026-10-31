@@ -16,6 +16,12 @@ export 'src/service/clash_service_windows.dart';
 const fs = f.LocalFileSystem();
 
 abstract final class ClashService {
+  /// 确保 macOS 状态栏 Tray 已在当前用户的图形会话中启动。
+  static Future<void> ensureTrayStarted({required String clashSocket}) async {
+    if (!Platform.isMacOS) return;
+    await TrayInstaller.ensureConfigured(clashSocket: clashSocket);
+  }
+
   /// 桌面端后台服务是否已安装。
   static Future<bool> isInstalled() async {
     if (Platform.isMacOS) return HelperInstaller.isInstalled();
@@ -38,8 +44,8 @@ abstract final class ClashService {
 
   /// Brings the VPN service up for [profile].
   ///
-  /// Android 使用 VPN 后端；macOS 安装并启动 privileged helper，同时配置
-  /// Tray；Linux 写入
+  /// Android 使用 VPN 后端；macOS 安装并启动 privileged helper，同时确保
+  /// Tray 运行；Linux 写入
   /// systemd unit 并启动（未提权时弹 pkexec 密码框）；Windows 安装并启动
   /// SCM 服务（未提权时弹 UAC 密码框）。
   ///
@@ -83,7 +89,7 @@ abstract final class ClashService {
           'is required on macOS',
         );
       }
-      await TrayInstaller.configure(clashSocket: clashSocket);
+      await TrayInstaller.ensureConfigured(clashSocket: clashSocket);
       return true;
     }
 

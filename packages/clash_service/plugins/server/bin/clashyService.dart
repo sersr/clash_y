@@ -5,8 +5,6 @@ import 'dart:isolate';
 
 import 'package:clash_service/src/service/clash_service_windows.dart';
 import 'package:server/server.dart';
-import 'package:server/src/server/clash_process.dart';
-import 'package:server/src/server/clash_tray_process.dart';
 
 // Future<void> _install() async {
 //   if (Platform.isLinux) {
@@ -31,13 +29,6 @@ import 'package:server/src/server/clash_tray_process.dart';
 // }
 
 Future<void> main(List<String> args) async {
-  if (Platform.isMacOS) {
-    ProcessSignal.sigterm.watch().listen((_) async {
-      await ClashTrayProcess.stop();
-      exit(0);
-    });
-  }
-
   // if (args case [var command, ...]) {
   //   switch (command) {
   //     case 'install':
@@ -53,6 +44,21 @@ Future<void> main(List<String> args) async {
     // 服务停止：强制退出，结束后台 clashServer isolate
     exit(0);
   }
+  if (Platform.isMacOS) {
+    configureMacOSRuntimeLibraries(
+      clashLibraryPath: _requiredArgument(args, '--clash-library'),
+      wakeMonitorLibraryPath: _requiredArgument(args, '--wake-monitor-library'),
+    );
+  }
   await clashServer();
-  ClashProcess.run('./te');
+}
+
+String _requiredArgument(List<String> args, String name) {
+  final index = args.indexOf(name);
+  if (index < 0 ||
+      index + 1 >= args.length ||
+      args[index + 1].startsWith('--')) {
+    throw FormatException('Missing value for $name');
+  }
+  return args[index + 1];
 }

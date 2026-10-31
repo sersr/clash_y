@@ -44,8 +44,9 @@ class _ClashHomeState extends State<ClashHome> {
                         child: Text(
                           "Empty",
                           style: .new(
-                            color: Colors.grey.shade200,
-                            fontSize: 13.sp,
+                            color: Color(0xFF333333),
+                            fontSize: 15.sp,
+                            fontWeight: .w500,
                           ),
                         ),
                       ),
