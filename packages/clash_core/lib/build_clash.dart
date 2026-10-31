@@ -9,6 +9,9 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
   final targetOs = code.targetOS;
   final isFlutter = input.userDefines['isFlutter'] == true;
 
+  // iOS runs the Go core in PacketTunnel, which links a device-only archive.
+  if (targetOs == OS.iOS) return;
+
   // 桌面端使用 clash_service 不直接使用， ffi
   if (isFlutter) {
     switch (targetOs) {

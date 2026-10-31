@@ -24,3 +24,9 @@
 ## 应用包名名单
 
 - 新增或修改包名时保持列表无重复项；保存时沿用列表格式。
+
+## Flutter Apple 平台依赖
+
+- Flutter iOS/macOS 工程优先使用 Swift Package Manager（SPM）集成原生依赖；Flutter 3.44 起默认启用 SPM。不要为应用新增 CocoaPods/Podfile 集成。
+- 项目内 Flutter 插件应提供平台对应的 `Package.swift`，并将源文件放在 SwiftPM package 的 `Sources/<target>/` 下；若插件还需兼容未迁移的 Flutter 工程，同时保留并维护 Podspec。
+- 修改原生依赖后运行 `flutter pub get`，并验证对应 Apple 平台构建；不要依赖 `pod install`。

@@ -5,6 +5,7 @@ import 'package:file/local.dart' as f;
 import 'package:server/server.dart' show ClashProfile;
 
 import 'src/service/clash_service_linux.dart';
+import 'src/service/clash_service_ios.dart';
 import 'src/service/clash_service_macos_cmd.dart';
 import 'src/service/clash_service_macos_tray.dart';
 import 'src/service/clash_service_windows.dart';
@@ -16,6 +17,10 @@ export 'src/service/clash_service_windows.dart';
 const fs = f.LocalFileSystem();
 
 abstract final class ClashService {
+  /// iOS control socket path shared with the Packet Tunnel extension.
+  static Future<String> get iosControlSocketPath =>
+      IOSVpnService.controlSocketPath;
+
   /// 确保 macOS 状态栏 Tray 已在当前用户的图形会话中启动。
   static Future<void> ensureTrayStarted({required String clashSocket}) async {
     if (!Platform.isMacOS) return;
@@ -28,6 +33,7 @@ abstract final class ClashService {
     if (Platform.isLinux) return isSystemdServiceInstalled();
     if (Platform.isWindows) return isServiceInstalled();
     if (Platform.isAndroid) return true;
+    if (Platform.isIOS) return IOSVpnService.isConfigured();
     return false;
   }
 
@@ -77,6 +83,10 @@ abstract final class ClashService {
       );
     }
 
+    if (Platform.isIOS) {
+      return IOSVpnService.start(profile);
+    }
+
     if (Platform.isMacOS) {
       await HelperInstaller.install();
       final running = await HelperInstaller.isRunning();
@@ -102,7 +112,6 @@ abstract final class ClashService {
       return startService();
     }
 
-    // iOS has no VPN backend wired up here.
     return false;
   }
 
@@ -119,6 +128,9 @@ abstract final class ClashService {
         updateTime: profile.updateTime,
       );
     }
+    if (Platform.isIOS) {
+      return IOSVpnService.updateProfile(profile);
+    }
     return false;
   }
 
@@ -129,6 +141,9 @@ abstract final class ClashService {
   static Future<bool> close() async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.close();
+    }
+    if (Platform.isIOS) {
+      return IOSVpnService.close();
     }
 
     if (Platform.isMacOS) {
@@ -155,6 +170,9 @@ abstract final class ClashService {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.close();
     }
+    if (Platform.isIOS) {
+      return IOSVpnService.close();
+    }
 
     return false;
   }
@@ -165,6 +183,9 @@ abstract final class ClashService {
   static Future<bool> uninstall() async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.close();
+    }
+    if (Platform.isIOS) {
+      return IOSVpnService.uninstall();
     }
 
     if (Platform.isMacOS) {

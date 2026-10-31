@@ -10,6 +10,9 @@
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
+		4A7618D72D3C4B8400F12A01 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A7618D62D3C4B8400F12A01 /* NetworkExtension.framework */; };
+		4A7618D92D3C4B8400F12A01 /* PacketTunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 4A7618D82D3C4B8400F12A01 /* PacketTunnel.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		4A7618F12D3C4B8400F12A01 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7618D42D3C4B8400F12A01 /* PacketTunnelProvider.swift */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
@@ -26,9 +29,27 @@
 			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
 			remoteInfo = Runner;
 		};
+		4A7618DB2D3C4B8400F12A01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4A7618E32D3C4B8400F12A01;
+			remoteInfo = PacketTunnel;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		4A7618DA2D3C4B8400F12A01 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				4A7618D92D3C4B8400F12A01 /* PacketTunnel.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		9705A1C41CF9048500538489 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -47,6 +68,13 @@
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
+		4A7618D42D3C4B8400F12A01 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		4A7618D52D3C4B8400F12A01 /* PacketTunnel-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PacketTunnel-Bridging-Header.h"; sourceTree = "<group>"; };
+		4A7618D62D3C4B8400F12A01 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
+		4A7618D82D3C4B8400F12A01 /* PacketTunnel.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PacketTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4A7618DF2D3C4B8400F12A01 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		4A7618E02D3C4B8400F12A01 /* PacketTunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PacketTunnel.entitlements; sourceTree = "<group>"; };
+		4A7618F22D3C4B8400F12A01 /* ClashCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ClashCore.h; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -62,6 +90,21 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		268BB43088BF0986376800E7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4A7618E12D3C4B8400F12A01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A7618D72D3C4B8400F12A01 /* NetworkExtension.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		97C146EB1CF9000F007C117D /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -81,6 +124,18 @@
 			path = RunnerTests;
 			sourceTree = "<group>";
 		};
+		4A7618DE2D3C4B8400F12A01 /* PacketTunnel */ = {
+			isa = PBXGroup;
+			children = (
+				4A7618D42D3C4B8400F12A01 /* PacketTunnelProvider.swift */,
+				4A7618D52D3C4B8400F12A01 /* PacketTunnel-Bridging-Header.h */,
+				4A7618F22D3C4B8400F12A01 /* ClashCore.h */,
+				4A7618DF2D3C4B8400F12A01 /* Info.plist */,
+				4A7618E02D3C4B8400F12A01 /* PacketTunnel.entitlements */,
+			);
+			path = PacketTunnel;
+			sourceTree = "<group>";
+		};
 		9740EEB11CF90186004384FC /* Flutter */ = {
 			isa = PBXGroup;
 			children = (
@@ -98,6 +153,7 @@
 			children = (
 				9740EEB11CF90186004384FC /* Flutter */,
 				97C146F01CF9000F007C117D /* Runner */,
+				4A7618DE2D3C4B8400F12A01 /* PacketTunnel */,
 				97C146EF1CF9000F007C117D /* Products */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
 			);
@@ -107,6 +163,7 @@
 			isa = PBXGroup;
 			children = (
 				97C146EE1CF9000F007C117D /* Runner.app */,
+				4A7618D82D3C4B8400F12A01 /* PacketTunnel.appex */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 			);
 			name = Products;
@@ -137,6 +194,7 @@
 			buildPhases = (
 				331C807D294A63A400263BE5 /* Sources */,
 				331C807F294A63A400263BE5 /* Resources */,
+				268BB43088BF0986376800E7 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -148,6 +206,24 @@
 			productReference = 331C8081294A63A400263BE5 /* RunnerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		4A7618E32D3C4B8400F12A01 /* PacketTunnel */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4A7618E92D3C4B8400F12A01 /* Build configuration list for PBXNativeTarget "PacketTunnel" */;
+			buildPhases = (
+				4A7618E52D3C4B8400F12A01 /* Build Clash Core */,
+				4A7618E62D3C4B8400F12A01 /* Sources */,
+				4A7618E12D3C4B8400F12A01 /* Frameworks */,
+				4A7618E72D3C4B8400F12A01 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PacketTunnel;
+			productName = PacketTunnel;
+			productReference = 4A7618D82D3C4B8400F12A01 /* PacketTunnel.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		97C146ED1CF9000F007C117D /* Runner */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
@@ -157,11 +233,13 @@
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
+				4A7618DA2D3C4B8400F12A01 /* Embed App Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4A7618E42D3C4B8400F12A01 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			packageProductDependencies = (
@@ -185,6 +263,9 @@
 						CreatedOnToolsVersion = 14.0;
 						TestTargetID = 97C146ED1CF9000F007C117D;
 					};
+					4A7618E32D3C4B8400F12A01 = {
+						CreatedOnToolsVersion = 27.2;
+					};
 					97C146ED1CF9000F007C117D = {
 						CreatedOnToolsVersion = 7.3.1;
 						LastSwiftMigration = 1100;
@@ -201,13 +282,14 @@
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
-				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */,
+				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */,
 			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				97C146ED1CF9000F007C117D /* Runner */,
+				4A7618E32D3C4B8400F12A01 /* PacketTunnel */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
 			);
 		};
@@ -215,6 +297,13 @@
 
 /* Begin PBXResourcesBuildPhase section */
 		331C807F294A63A400263BE5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4A7618E72D3C4B8400F12A01 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -251,6 +340,22 @@
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
 		};
+		4A7618E52D3C4B8400F12A01 /* Build Clash Core */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Build Clash Core";
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/libclash.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\ncase \"${SDK_NAME}\" in iphonesimulator*) exit 0 ;; esac\nCORE_DIR=\"${SRCROOT}/../packages/clash_core/core\"\nSDKROOT=\"$(xcrun --sdk \"${SDK_NAME}\" --show-sdk-path)\"\nCC=\"$(xcrun --sdk \"${SDK_NAME}\" --find clang)\"\nARCH_LIST=\"${CURRENT_ARCH}\"\nif [ \"${ARCH_LIST}\" = \"undefined_arch\" ] || [ -z \"${ARCH_LIST}\" ]; then ARCH_LIST=\"${ARCHS}\"; fi\nfor ARCH in ${ARCH_LIST}; do\n  case \"${ARCH}\" in\n    arm64) GOARCH=arm64 ;;\n    x86_64) GOARCH=amd64 ;;\n    *) echo \"Unsupported iOS architecture: ${ARCH}\" >&2; exit 1 ;;\n  esac\n  OUT_DIR=\"${DERIVED_FILE_DIR}/${ARCH}\"\n  mkdir -p \"${OUT_DIR}\"\n  CGO_CFLAGS=\"-isysroot ${SDKROOT}\" CGO_LDFLAGS=\"-isysroot ${SDKROOT}\" GOOS=ios GOARCH=\"${GOARCH}\" CGO_ENABLED=1 CC=\"${CC}\" SDKROOT=\"${SDKROOT}\" go -C \"${CORE_DIR}\" build -buildmode=c-archive -trimpath -tags with_gvisor -o \"${OUT_DIR}/libclash.a\" .\ndone\nif [ -f \"${DERIVED_FILE_DIR}/arm64/libclash.a\" ] && [ -f \"${DERIVED_FILE_DIR}/x86_64/libclash.a\" ]; then\n  xcrun lipo -create \"${DERIVED_FILE_DIR}/arm64/libclash.a\" \"${DERIVED_FILE_DIR}/x86_64/libclash.a\" -output \"${DERIVED_FILE_DIR}/libclash.a\"\nelif [ -f \"${DERIVED_FILE_DIR}/arm64/libclash.a\" ]; then\n  cp \"${DERIVED_FILE_DIR}/arm64/libclash.a\" \"${DERIVED_FILE_DIR}/libclash.a\"\nelif [ -f \"${DERIVED_FILE_DIR}/x86_64/libclash.a\" ]; then\n  cp \"${DERIVED_FILE_DIR}/x86_64/libclash.a\" \"${DERIVED_FILE_DIR}/libclash.a\"\nfi\n";
+		};
 		9740EEB61CF901F6004384FC /* Run Script */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -277,6 +382,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4A7618E62D3C4B8400F12A01 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A7618F12D3C4B8400F12A01 /* PacketTunnelProvider.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		97C146EA1CF9000F007C117D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -294,6 +407,11 @@
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
+		};
+		4A7618E42D3C4B8400F12A01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4A7618E32D3C4B8400F12A01 /* PacketTunnel */;
+			targetProxy = 4A7618DB2D3C4B8400F12A01 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -376,6 +494,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = 2GAZNWVGR5;
 				ENABLE_BITCODE = NO;
@@ -384,7 +503,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.clashy;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aote.clashy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -400,7 +519,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.clashy.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aote.clashy.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -417,7 +536,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.clashy.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aote.clashy.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -432,10 +551,124 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.clashy.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aote.clashy.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
+			};
+			name = Profile;
+		};
+		4A7618EA2D3C4B8400F12A01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = PacketTunnel/PacketTunnel.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2GAZNWVGR5;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(DERIVED_FILE_DIR)",
+				);
+				INFOPLIST_FILE = PacketTunnel/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(DERIVED_FILE_DIR)",
+				);
+				MARKETING_VERSION = 1.0.0;
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-lclash",
+					"-lresolv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aote.clashy.PacketTunnel;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "PacketTunnel/PacketTunnel-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4A7618EB2D3C4B8400F12A01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = PacketTunnel/PacketTunnel.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2GAZNWVGR5;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(DERIVED_FILE_DIR)",
+				);
+				INFOPLIST_FILE = PacketTunnel/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(DERIVED_FILE_DIR)",
+				);
+				MARKETING_VERSION = 1.0.0;
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-lclash",
+					"-lresolv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aote.clashy.PacketTunnel;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "PacketTunnel/PacketTunnel-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		4A7618EC2D3C4B8400F12A01 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = PacketTunnel/PacketTunnel.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2GAZNWVGR5;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(DERIVED_FILE_DIR)",
+				);
+				INFOPLIST_FILE = PacketTunnel/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(DERIVED_FILE_DIR)",
+				);
+				MARKETING_VERSION = 1.0.0;
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-lclash",
+					"-lresolv",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.aote.clashy.PacketTunnel;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "PacketTunnel/PacketTunnel-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Profile;
 		};
@@ -558,6 +791,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = 2GAZNWVGR5;
 				ENABLE_BITCODE = NO;
@@ -566,7 +800,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.clashy;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aote.clashy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -581,6 +815,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = 2GAZNWVGR5;
 				ENABLE_BITCODE = NO;
@@ -589,7 +824,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.clashy;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aote.clashy;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -606,6 +841,16 @@
 				331C8088294A63A400263BE5 /* Debug */,
 				331C8089294A63A400263BE5 /* Release */,
 				331C808A294A63A400263BE5 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4A7618E92D3C4B8400F12A01 /* Build configuration list for PBXNativeTarget "PacketTunnel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4A7618EA2D3C4B8400F12A01 /* Debug */,
+				4A7618EB2D3C4B8400F12A01 /* Release */,
+				4A7618EC2D3C4B8400F12A01 /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -633,7 +878,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */ = {
+		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage;
 		};

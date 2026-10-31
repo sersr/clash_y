@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub/executor"
 )
 
@@ -77,6 +78,63 @@ func TestApplyTunOptionsUsesFileDescriptor(t *testing.T) {
 	applyTunOptions(cfg, 0)
 	if cfg.General.Tun.FileDescriptor != 7 {
 		t.Fatalf("expected the config file fd to be preserved, got %d", cfg.General.Tun.FileDescriptor)
+	}
+}
+
+func TestBuildFdTunOptionsForIOS(t *testing.T) {
+	tests := []struct {
+		name      string
+		config    string
+		wantStack constant.TUNStack
+	}{
+		{
+			name:      "mips stack",
+			config:    "tun:\n  stack: mips\n",
+			wantStack: constant.TunMips,
+		},
+		{
+			name:      "gVisor stack",
+			config:    "tun:\n  stack: gvisor\n",
+			wantStack: constant.TunGvisor,
+		},
+		{
+			name:      "system stack",
+			config:    "tun:\n  stack: system\n",
+			wantStack: constant.TunSystem,
+		},
+		{
+			name:      "mixed stack",
+			config:    "tun:\n  stack: mixed\n",
+			wantStack: constant.TunMixed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, configFileName)
+			if err := os.WriteFile(cfgPath, []byte(tt.config), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			if err := setHomeDir(dir); err != nil {
+				t.Fatalf("setHomeDir: %v", err)
+			}
+
+			cfg, err := executor.Parse()
+			if err != nil {
+				t.Fatalf("parse config from configDir: %v", err)
+			}
+			options := buildFdTunOptions(cfg, 42, "ios")
+			if options.Stack != tt.wantStack {
+				t.Fatalf("expected iOS stack %s, got %s", tt.wantStack, options.Stack)
+			}
+			if options.MTU != 1500 {
+				t.Fatalf("expected iOS packet-flow MTU 1500, got %d", options.MTU)
+			}
+			if options.FileDescriptor != 42 {
+				t.Fatalf("expected packet-flow fd 42, got %d", options.FileDescriptor)
+			}
+		})
 	}
 }
 

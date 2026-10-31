@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"net/netip"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -154,7 +155,7 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 		return nil
 	}
 
-	options := buildAndroidTunOptions(cfg, int(fd))
+	options := buildFdTunOptions(cfg, int(fd), runtime.GOOS)
 	listener, err := sing_tun.New(options, tunnel.Tunnel)
 	if err != nil {
 		executor.Shutdown()
@@ -166,13 +167,17 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 	return nil
 }
 
-func buildAndroidTunOptions(cfg *config.Config, fd int) LC.Tun {
+func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
 	stack := cfg.General.Tun.Stack
 	if stack.String() == "unknown" {
 		stack = constant.TunGvisor
 	}
 
 	dnsHijack := []string{"172.19.0.2:53"}
+	mtu := uint32(9000)
+	if goos == "ios" {
+		mtu = 1500
+	}
 
 	device := cfg.General.Tun.Device
 	if device == "" {
@@ -192,7 +197,7 @@ func buildAndroidTunOptions(cfg *config.Config, fd int) LC.Tun {
 		Inet6Address: []netip.Prefix{
 			netip.MustParsePrefix("fdfe:dcba:9876::1/126"),
 		},
-		MTU:            9000,
+		MTU:            mtu,
 		FileDescriptor: fd,
 	}
 }

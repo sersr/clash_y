@@ -229,7 +229,8 @@ class ClashController with NopLifecycle {
   }
 
   Future<bool> _queryRunningState({bool? apiAvailable}) async {
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
       if (apiAvailable != null) return apiAvailable;
       return await repository.clashEvent.getProxies() != null;
     }
@@ -265,7 +266,7 @@ class ClashController with NopLifecycle {
     return _queue.run(() async {
       var success = false;
 
-      if (defaultTargetPlatform == .android) {
+      if (defaultTargetPlatform == .android || defaultTargetPlatform == .iOS) {
         success = await ClashService.stop();
         if (success) {
           _isRunning.value = false;

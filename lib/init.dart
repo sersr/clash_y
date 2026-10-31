@@ -17,8 +17,11 @@ import 'pages/home/controller/configs_controller.dart';
 Future<bool> initMain() async {
   try {
     initLog();
-    initController();
     await [G.init()].wait;
+    if (Platform.isIOS) {
+      BaseConfig.unixSockPath.value = await ClashService.iosControlSocketPath;
+    }
+    initController();
     if (Platform.isMacOS) {
       try {
         await ClashService.ensureTrayStarted(
