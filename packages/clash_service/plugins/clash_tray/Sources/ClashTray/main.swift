@@ -247,6 +247,182 @@ private struct ClashClient {
 
 // MARK: - App
 
+private func templateTrayImage(from image: NSImage, size: NSSize) -> NSImage? {
+    var proposedRect = CGRect(origin: .zero, size: image.size)
+    guard
+        let source = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil),
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+    else {
+        return nil
+    }
+
+    let width = source.width
+    let height = source.height
+    let bytesPerRow = width * 4
+    var sourcePixels = [UInt8](repeating: 0, count: height * bytesPerRow)
+    let didRenderSource = sourcePixels.withUnsafeMutableBytes { pixels -> Bool in
+        guard let context = CGContext(
+            data: pixels.baseAddress,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                | CGBitmapInfo.byteOrder32Big.rawValue
+        ) else {
+            return false
+        }
+        context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return true
+    }
+    guard didRenderSource else { return nil }
+
+    var maskPixels = [UInt8](repeating: 0, count: sourcePixels.count)
+    for offset in stride(from: 0, to: sourcePixels.count, by: 4) {
+        let sourceAlpha = Int(sourcePixels[offset + 3])
+        guard sourceAlpha > 0 else { continue }
+        let red = Int(sourcePixels[offset])
+        let green = Int(sourcePixels[offset + 1])
+        let blue = Int(sourcePixels[offset + 2])
+        let saturation = CGFloat(max(red, green, blue) - min(red, green, blue))
+            / CGFloat(sourceAlpha)
+        let opacity = min(max((saturation - 0.08) / 0.16, 0), 1)
+            * CGFloat(sourceAlpha) / 255
+        let alpha = UInt8((opacity * 255).rounded())
+        maskPixels[offset] = alpha
+        maskPixels[offset + 1] = alpha
+        maskPixels[offset + 2] = alpha
+        maskPixels[offset + 3] = alpha
+    }
+
+    guard
+        let provider = CGDataProvider(data: Data(maskPixels) as CFData),
+        let mask = CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGBitmapInfo(
+                rawValue: CGImageAlphaInfo.premultipliedLast.rawValue
+                    | CGBitmapInfo.byteOrder32Big.rawValue
+            ),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: true,
+            intent: .defaultIntent
+        )
+    else {
+        return nil
+    }
+
+    let result = NSImage(cgImage: mask, size: size)
+    result.isTemplate = true
+    return result
+}
+
+private final class TraySpeedView: NSView {
+    private static let minimumWidth: CGFloat = 42
+    private var titleWidth = TraySpeedView.minimumWidth
+    private var attributedTitle: NSAttributedString?
+
+    private let titleAttributes: [NSAttributedString.Key: Any] = {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.maximumLineHeight = 9
+        paragraphStyle.minimumLineHeight = 9
+        paragraphStyle.alignment = .right
+        paragraphStyle.lineBreakMode = .byClipping
+        return [
+            .paragraphStyle: paragraphStyle,
+            .font: NSFont.systemFont(ofSize: 8.75),
+            .foregroundColor: NSColor.labelColor,
+        ]
+    }()
+
+    override var isFlipped: Bool { true }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: titleWidth, height: NSView.noIntrinsicMetric)
+    }
+
+    @discardableResult
+    func setTitle(_ title: String) -> Bool {
+        let previousWidth = titleWidth
+        if title.isEmpty {
+            attributedTitle = nil
+            titleWidth = Self.minimumWidth
+        } else {
+            let text = NSAttributedString(string: title, attributes: titleAttributes)
+            attributedTitle = text
+            titleWidth = max(Self.minimumWidth, ceil(measure(text).width))
+        }
+        needsDisplay = true
+        let widthChanged = titleWidth != previousWidth
+        if widthChanged {
+            invalidateIntrinsicContentSize()
+        }
+        return widthChanged
+    }
+
+    private func measure(_ text: NSAttributedString) -> NSSize {
+        text.boundingRect(
+            with: NSSize(
+                width: CGFloat.greatestFiniteMagnitude,
+                height: CGFloat.greatestFiniteMagnitude
+            ),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        ).size
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let attributedTitle else { return }
+        let textBounds = attributedTitle.boundingRect(
+            with: NSSize(width: bounds.width, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let textHeight = ceil(textBounds.height)
+        let y = max((bounds.height - textHeight) / 2, 0)
+        attributedTitle.draw(in: NSRect(x: 0, y: y, width: bounds.width, height: textHeight))
+    }
+}
+
+private final class TrayContentView: NSView {
+    let speedView = TraySpeedView()
+
+    init(image: NSImage) {
+        super.init(frame: .zero)
+
+        let imageView = NSImageView(image: image)
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.contentTintColor = .labelColor
+        imageView.setContentHuggingPriority(.required, for: .horizontal)
+
+        speedView.setContentHuggingPriority(.required, for: .horizontal)
+        speedView.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let stackView = NSStackView(views: [imageView, speedView])
+        stackView.orientation = .horizontal
+        stackView.spacing = 6
+        stackView.distribution = .fill
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stackView)
+        NSLayoutConstraint.activate([
+            imageView.widthAnchor.constraint(equalToConstant: 18),
+            imageView.heightAnchor.constraint(equalToConstant: 18),
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            stackView.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
 private final class TrayController: NSObject, NSApplicationDelegate {
     private let options = Options.parse()
     private lazy var client = ClashClient(
@@ -255,6 +431,7 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     )
 
     private var statusItem: NSStatusItem!
+    private var contentView: TrayContentView!
     private var menu: NSMenu!
     private var vpnItem: NSMenuItem!
     private var clickWork: DispatchWorkItem?
@@ -269,13 +446,48 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            let image = NSImage(
-                systemSymbolName: "shield.lefthalf.filled",
-                accessibilityDescription: "Clashy"
+            let iconURL = options.appPath.map {
+                URL(fileURLWithPath: $0)
+                    .appendingPathComponent(
+                        "Contents/Frameworks/App.framework/Versions/A/Resources/"
+                            + "flutter_assets/assets/icons/clashy.png"
+                    )
+            }
+            let sourceImage = iconURL.flatMap { NSImage(contentsOf: $0) }
+            let iconImage = sourceImage.flatMap {
+                templateTrayImage(from: $0, size: NSSize(width: 18, height: 18))
+            }
+            if iconImage == nil {
+                fputs("Failed to load Clashy tray icon from app bundle\n", stderr)
+            }
+            let symbolConfiguration = NSImage.SymbolConfiguration(
+                pointSize: 17,
+                weight: .regular
             )
-            image?.isTemplate = true
-            button.image = image
-            button.imagePosition = .imageLeft
+            let displayedImage: NSImage
+            if let iconImage {
+                displayedImage = iconImage
+            } else {
+                let fallback = NSImage(
+                    systemSymbolName: "shield.lefthalf.filled",
+                    accessibilityDescription: "Clashy"
+                )
+                fallback?.isTemplate = true
+                displayedImage =
+                    fallback?.withSymbolConfiguration(symbolConfiguration) ?? NSImage()
+            }
+            contentView = TrayContentView(image: displayedImage)
+            contentView.translatesAutoresizingMaskIntoConstraints = false
+            button.addSubview(contentView)
+            NSLayoutConstraint.activate([
+                contentView.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+                contentView.trailingAnchor.constraint(equalTo: button.trailingAnchor),
+                contentView.topAnchor.constraint(equalTo: button.topAnchor),
+                contentView.bottomAnchor.constraint(equalTo: button.bottomAnchor),
+                contentView.heightAnchor.constraint(
+                    equalToConstant: NSStatusBar.system.thickness
+                ),
+            ])
             button.toolTip = "Clashy"
             button.target = self
             button.action = #selector(statusItemClicked)
@@ -393,15 +605,25 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     }
 
     private func updateSpeed(up: Int, down: Int) {
-        let title = "↑\(format(up)) ↓\(format(down))"
-        statusItem?.button?.title = title
+        let changed = contentView.speedView.setTitle(
+            "\(speedLine(up))\n\(speedLine(down))"
+        )
+        if changed {
+            statusItem?.button?.sizeToFit()
+        }
+    }
+
+    private func speedLine(_ bytes: Int) -> String {
+        "\(format(bytes))/s"
     }
 
     private func format(_ bytes: Int) -> String {
         let kb = 1024.0
         let mb = kb * 1024
         let gb = mb * 1024
+        let tb = gb * 1024
         let value = Double(bytes)
+        if value >= tb { return String(format: "%.1fT", value / tb) }
         if value >= gb { return String(format: "%.1fG", value / gb) }
         if value >= mb { return String(format: "%.1fM", value / mb) }
         if value >= kb { return String(format: "%.0fK", value / kb) }
