@@ -6,6 +6,7 @@ import 'dart:isolate';
 import 'package:clash_service/src/service/clash_service_windows.dart';
 import 'package:server/server.dart';
 import 'package:server/src/server/clash_process.dart';
+import 'package:server/src/server/clash_tray_process.dart';
 
 // Future<void> _install() async {
 //   if (Platform.isLinux) {
@@ -30,6 +31,13 @@ import 'package:server/src/server/clash_process.dart';
 // }
 
 Future<void> main(List<String> args) async {
+  if (Platform.isMacOS) {
+    ProcessSignal.sigterm.watch().listen((_) async {
+      await ClashTrayProcess.stop();
+      exit(0);
+    });
+  }
+
   // if (args case [var command, ...]) {
   //   switch (command) {
   //     case 'install':

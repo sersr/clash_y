@@ -10,6 +10,7 @@ import 'server.dart';
 import 'src/my_router.dart';
 import 'src/server/base_info.dart';
 import 'src/server/clash_process.dart';
+import 'src/server/clash_tray_process.dart';
 
 export 'src/server/models/models.dart';
 export 'src/server/response.dart';
@@ -19,6 +20,11 @@ const version = '0.0.1';
 final router = MyRouter()
   ..get('/', (req) => .ok('Clash VPN!'))
   ..get('/version', (req) => .ok(version))
+  ..post(
+    '/tray/configure',
+    (request) async =>
+        .ok(await ClashTrayProcess.configure(request.context['clashy_data'])),
+  )
   ..mount('/baseInfo', BaseInfo.router.call)
   ..mount('/clash', ClashProcess.clash);
 
@@ -65,6 +71,7 @@ RespHandler jsonMiddleware(Handler handler) {
 
 Future<void> clashServer() async {
   Log.defaultLogger.logPathFn = (path) => path;
+  await ClashTrayProcess.startSaved();
   await ClashProcess.initialize();
 
   final handler = const Pipeline()

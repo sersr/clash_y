@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:clashy/app_window.dart';
 import 'package:clashy/event/repository.dart';
 import 'package:clashy/pages/application_list/controller/application_list_controller.dart';
 import 'package:clashy/pages/home/controller/clash_controller.dart';
 import 'package:common/common.dart';
+import 'package:flutter/services.dart';
 import 'package:nop/nop.dart';
 
 import '_route/routes.dart';
@@ -15,6 +18,7 @@ Future<bool> initMain() async {
     initLog();
     initController();
     await [G.init()].wait;
+    _registerMacOsShutdownHandler();
     return true;
   } catch (e) {
     Log.e("init error: $e");
@@ -35,4 +39,13 @@ void initController() {
   router.put(() => ClashConnectionController());
   router.put(() => ConfigsController());
   router.put(() => ApplicationListController());
+}
+
+void _registerMacOsShutdownHandler() {
+  if (!Platform.isMacOS) return;
+
+  // 退出前先摘掉 nativeapi 的窗口事件监听，避免引擎销毁时回调崩溃。
+  const MethodChannel('clashy/app').setMethodCallHandler((call) async {
+    if (call.method == 'willTerminate') AppWindow.detachListeners();
+  });
 }

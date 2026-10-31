@@ -7,6 +7,7 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:nop/utils.dart';
 
+import 'app_window.dart';
 import 'init.dart';
 import 'pages/app.dart';
 
@@ -58,6 +59,7 @@ void main() async {
           switch (event) {
             case mw.WindowClosedEvent():
               mw.WindowManager.instance.removeListener(id);
+              AppWindow.listenerId = null;
               break;
             case mw.WindowMovedEvent():
             case mw.WindowResizedEvent():
@@ -74,6 +76,7 @@ void main() async {
       }
 
       id = mw.WindowManager.instance.addListener(onEvent);
+      AppWindow.listenerId = id;
     }
 
     return runWidget(

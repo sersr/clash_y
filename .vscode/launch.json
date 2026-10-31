@@ -63,6 +63,26 @@
       "target": "clash-service-exe",
       "configuration": "release",
       "preLaunchTask": "swift: Build Release clash-service-exe (packages/clash_service/plugins/clash_service_drawin)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:clash_y}/packages/clash_service/plugins/clash_tray",
+      "name": "Debug ClashTray (packages/clash_service/plugins/clash_tray)",
+      "target": "ClashTray",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug ClashTray (packages/clash_service/plugins/clash_tray)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:clash_y}/packages/clash_service/plugins/clash_tray",
+      "name": "Release ClashTray (packages/clash_service/plugins/clash_tray)",
+      "target": "ClashTray",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release ClashTray (packages/clash_service/plugins/clash_tray)"
     }
   ]
 }

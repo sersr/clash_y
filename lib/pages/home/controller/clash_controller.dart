@@ -95,6 +95,9 @@ class ClashController with NopLifecycle {
           disallowedApplications: isAllowList
               ? const []
               : SettingsHive.disAllowApplications.value,
+          trayClashSocket: defaultTargetPlatform == TargetPlatform.macOS
+              ? BaseConfig.unixSockPath.value
+              : null,
         );
         if (success == false) {
           Log.e('start vpn failed');

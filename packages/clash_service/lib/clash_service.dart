@@ -6,6 +6,7 @@ import 'package:server/server.dart' show ClashProfile;
 
 import 'src/service/clash_service_linux.dart';
 import 'src/service/clash_service_macos_cmd.dart';
+import 'src/service/clash_service_macos_tray.dart';
 import 'src/service/clash_service_windows.dart';
 
 export 'package:server/server.dart';
@@ -26,7 +27,8 @@ abstract final class ClashService {
 
   /// Brings the VPN service up for [profile].
   ///
-  /// Android 使用 VPN 后端；macOS 安装并启动 privileged helper；Linux 写入
+  /// Android 使用 VPN 后端；macOS 安装并启动 privileged helper，同时配置
+  /// Tray；Linux 写入
   /// systemd unit 并启动（未提权时弹 pkexec 密码框）；Windows 安装并启动
   /// SCM 服务（未提权时弹 UAC 密码框）。
   ///
@@ -44,6 +46,7 @@ abstract final class ClashService {
     bool allowList = false,
     List<String> allowedApplications = const [],
     List<String> disallowedApplications = const [],
+    String? trayClashSocket,
   }) async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.start(
@@ -59,7 +62,18 @@ abstract final class ClashService {
 
     if (Platform.isMacOS) {
       await HelperInstaller.install();
-      return HelperInstaller.isRunning();
+      final running = await HelperInstaller.isRunning();
+      if (!running) return false;
+      final clashSocket = trayClashSocket;
+      if (clashSocket == null) {
+        throw ArgumentError.value(
+          trayClashSocket,
+          'trayClashSocket',
+          'is required on macOS',
+        );
+      }
+      await TrayInstaller.configure(clashSocket: clashSocket);
+      return true;
     }
 
     if (Platform.isLinux) {

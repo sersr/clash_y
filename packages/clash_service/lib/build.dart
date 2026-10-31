@@ -7,6 +7,8 @@ import 'package:file/local.dart' as f;
 import 'package:hooks/hooks.dart';
 import 'package:path/path.dart';
 
+import 'src/tray_asset.dart';
+
 const fs = f.LocalFileSystem();
 
 extension on HookInputUserDefines {
@@ -186,6 +188,47 @@ Future<void> buildClashServer(
     }
     output.dependencies.add(
       Uri.file(wakeMonitorDir.childFile('Package.swift').absolute.path),
+    );
+
+    // 用户级状态栏程序：由 clashyService daemon 直接启动，app 退出后图标仍在。
+    final trayDir = fs.currentDirectory
+        .childDirectory(input.packageRoot.path)
+        .childDirectory('plugins')
+        .childDirectory('clash_tray');
+    final trayResult = await io.Process.run('swift', [
+      'build',
+      '--package-path',
+      trayDir.path,
+      '-c',
+      'release',
+      '--product',
+      'ClashTray',
+    ]);
+    if (trayResult.exitCode != 0) {
+      throw Exception('swift build failed: ClashTray.\n${trayResult.stderr}');
+    }
+
+    output.assets.data.add(
+      DataAsset(
+        package: packageName,
+        name: clashTrayAssetName,
+        file: Uri.file(
+          join(trayDir.path, '.build', 'release', 'ClashTray'),
+          windows: false,
+        ),
+      ),
+    );
+
+    final traySources = trayDir.childDirectory('Sources');
+    if (await traySources.exists()) {
+      for (final item in traySources.listSync(recursive: true)) {
+        if (item case File file) {
+          output.dependencies.add(Uri.file(file.absolute.path));
+        }
+      }
+    }
+    output.dependencies.add(
+      Uri.file(trayDir.childFile('Package.swift').absolute.path),
     );
   }
 }
