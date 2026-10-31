@@ -104,8 +104,15 @@ class ProxyCard extends StatelessWidget {
           clashMainNotifier.selectProxy(proxyGroupName, itemName);
         }
       },
-      backgroundColor: selected ? Colors.grey.shade400 : null,
-      overlayColor: const Color.from(alpha: 0.31, red: 0.467, green: 0.467, blue: 0.467),
+      backgroundColor: selected
+          ? const Color.fromARGB(255, 205, 205, 205)
+          : Colors.white,
+      overlayColor: const Color.from(
+        alpha: 0.31,
+        red: 0.467,
+        green: 0.467,
+        blue: 0.467,
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -79,105 +79,109 @@ class _ClashConnectionsState extends State<ClashConnections> {
       ),
     );
 
-    return Column(
-      children: [
-        Container(
-          padding: .symmetric(horizontal: 12.w, vertical: 8.h),
-          child: SafeArea(bottom: false, child: search),
-        ),
-        Expanded(
-          child: ((context) {
-            final data = clashConnectionsNotifier.connections;
-            final search = searchController.al.value.text.trim();
-            var connections = data?.connections ?? const [];
-            if (search.isNotEmpty) {
-              connections = connections.where((item) {
-                if (item == null) return false;
-                final metadata = item.metadata;
-                final destination = metadata?.host?.isNotEmpty == true
-                    ? metadata!.host!
-                    : metadata?.destinationIP ?? 'Unknown destination';
-                return destination.contains(search);
-              }).toList();
-            }
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F0F0),
+      body: Column(
+        children: [
+          Container(
+            color: Colors.white,
+            padding: .symmetric(horizontal: 12.w, vertical: 8.h),
+            child: SafeArea(bottom: false, child: search),
+          ),
+          Expanded(
+            child: ((context) {
+              final data = clashConnectionsNotifier.connections;
+              final search = searchController.al.value.text.trim();
+              var connections = data?.connections ?? const [];
+              if (search.isNotEmpty) {
+                connections = connections.where((item) {
+                  if (item == null) return false;
+                  final metadata = item.metadata;
+                  final destination = metadata?.host?.isNotEmpty == true
+                      ? metadata!.host!
+                      : metadata?.destinationIP ?? 'Unknown destination';
+                  return destination.contains(search);
+                }).toList();
+              }
 
-            final body = SliverList.builder(
-              itemCount: connections.length,
-              itemBuilder: (context, index) {
-                final item = connections[index];
-                if (item == null) return const SizedBox.shrink();
-                final metadata = item.metadata;
-                final destination = metadata?.host?.isNotEmpty == true
-                    ? metadata!.host!
-                    : metadata?.destinationIP ?? 'Unknown destination';
-                final chain = item.chains?.isNotEmpty == true
-                    ? item.chains!.first.toString()
-                    : 'Direct';
+              final body = SliverList.builder(
+                itemCount: connections.length,
+                itemBuilder: (context, index) {
+                  final item = connections[index];
+                  if (item == null) return const SizedBox.shrink();
+                  final metadata = item.metadata;
+                  final destination = metadata?.host?.isNotEmpty == true
+                      ? metadata!.host!
+                      : metadata?.destinationIP ?? 'Unknown destination';
+                  final chain = item.chains?.isNotEmpty == true
+                      ? item.chains!.first.toString()
+                      : 'Direct';
 
-                return Padding(
-                  padding: .symmetric(horizontal: 12.w, vertical: 5.h),
-                  child: InkButton(
-                    backgroundColor: const Color(0xFFD6D6D6),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                    overlayColor: const Color(0x2EA1A0A0),
-                    onPressed: () => _showConnectionDetails(context, item),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.public, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                destination,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 15),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                '${metadata?.network ?? '未知网络'} · $chain · ↓${_formatBytes(item.download)}  ↑${_formatBytes(item.upload)}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade700,
+                  return Padding(
+                    padding: .symmetric(horizontal: 12.w, vertical: 5.h),
+                    child: InkButton(
+                      backgroundColor: const Color.fromARGB(255, 226, 226, 226),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                      overlayColor: const Color(0x2EA1A0A0),
+                      onPressed: () => _showConnectionDetails(context, item),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.public, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  destination,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 15),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 3),
+                                Text(
+                                  '${metadata?.network ?? '未知网络'} · $chain · ↓${_formatBytes(item.download)}  ↑${_formatBytes(item.upload)}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const Icon(Icons.chevron_right, size: 20),
-                      ],
+                          const Icon(Icons.chevron_right, size: 20),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
-            );
+                  );
+                },
+              );
 
-            return Refresh(
-              scrollController: controller,
-              isEmpty: connections.isEmpty,
-              emptyWidget: Center(
-                child: Text(
-                  'Empty',
-                  style: .new(
-                    fontSize: 14.sp,
-                    fontWeight: .w300,
-                    color: .new(0x3D818181),
+              return Refresh(
+                scrollController: controller,
+                isEmpty: connections.isEmpty,
+                emptyWidget: Center(
+                  child: Text(
+                    'Empty',
+                    style: .new(
+                      fontSize: 14.sp,
+                      fontWeight: .w300,
+                      color: .new(0x3D818181),
+                    ),
                   ),
                 ),
-              ),
-              slivers: [body],
-            );
-          }).cs,
-        ),
-      ],
+                slivers: [body],
+              );
+            }).cs,
+          ),
+        ],
+      ),
     );
   }
 

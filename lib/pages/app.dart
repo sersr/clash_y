@@ -1,4 +1,5 @@
 import 'package:clashy/_route/routes.dart';
+import 'package:common/common.dart';
 import 'package:material_ui/material_ui.dart';
 
 class ClashApp extends StatefulWidget {
@@ -16,6 +17,9 @@ class _ClashAppState extends State<ClashApp> {
       restorationScopeId: 'clashy',
       debugShowCheckedModeBanner: false,
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      builder: (context, child) {
+        return UnFocus(child: child);
+      },
     );
   }
 }

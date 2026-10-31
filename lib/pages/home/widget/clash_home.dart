@@ -20,7 +20,7 @@ class _ClashHomeState extends State<ClashHome> {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: Colors.grey.shade300,
+      color: const Color(0xFFF0F0F0),
       child: SafeArea(
         child: Cs(() {
           final data = clashMainNotifier.data;

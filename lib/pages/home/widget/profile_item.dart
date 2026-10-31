@@ -86,11 +86,12 @@ class ProfileItem extends StatelessWidget {
         );
 
         return InkButton(
-          backgroundColor: const Color.fromARGB(255, 242, 242, 242),
+          backgroundColor: const Color.fromARGB(255, 255, 255, 255),
           overlayColor: const Color(0x2EA1A0A0),
           onPressed: () {
             clashConfigNotifier.reloadConfig(item);
           },
+          elevation: 0.9,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           side: clashConfigNotifier.isCurrent(item)
               ? .new(width: 1.5.r, color: Colors.blue)

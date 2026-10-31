@@ -47,11 +47,14 @@ class _ClashProfilesState extends State<ClashProfiles> {
       ),
     );
 
-    return Column(
-      children: [
-        appbar,
-        Expanded(child: _body.cs),
-      ],
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F0F0),
+      body: Column(
+        children: [
+          appbar,
+          Expanded(child: _body.cs),
+        ],
+      ),
     );
   }
 
