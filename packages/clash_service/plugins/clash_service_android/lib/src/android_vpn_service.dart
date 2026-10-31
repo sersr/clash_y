@@ -59,6 +59,9 @@ abstract final class AndroidVpnService {
   /// which deliberately keeps no runtime status object.
   static Future<bool> start(
     String configDir, {
+    String? profileUrl,
+    int? updateIntervalMinutes,
+    DateTime? updateTime,
     bool allowList = false,
     List<String> allowedApplications = const <String>[],
     List<String> disallowedApplications = const <String>[],
@@ -87,6 +90,7 @@ abstract final class AndroidVpnService {
       final intent = _serviceIntent(context, _Contract.actionStart);
       try {
         _putString(intent, _Contract.extraConfigDir, directory);
+        _putProfile(intent, profileUrl, updateIntervalMinutes, updateTime);
         _putBoolean(intent, _Contract.extraAllowList, allowList);
         _putStringList(
           intent,
@@ -107,6 +111,44 @@ abstract final class AndroidVpnService {
       return true;
     } catch (error, stackTrace) {
       _log('Failed to start the VPN service', error, stackTrace);
+      return false;
+    } finally {
+      context.release();
+    }
+  }
+
+  /// Tells the running service which profile to keep up to date.
+  ///
+  /// The core is left untouched, so switching profiles does not restart the
+  /// VPN. When the service is not running the call is a no-op, and the next
+  /// [start] carries the profile instead.
+  static Future<bool> updateProfile({
+    required String configDir,
+    String? profileUrl,
+    int? updateIntervalMinutes,
+    DateTime? updateTime,
+  }) async {
+    if (!isSupported) return false;
+
+    final directory = configDir.trim();
+    if (directory.isEmpty) return false;
+
+    final context = _applicationContext();
+    if (context == null) return false;
+
+    try {
+      final intent = _serviceIntent(context, _Contract.actionUpdateProfile);
+      try {
+        _putString(intent, _Contract.extraConfigDir, directory);
+        _putProfile(intent, profileUrl, updateIntervalMinutes, updateTime);
+        _startService(context, intent);
+      } finally {
+        intent.release();
+      }
+      _log('Asked ClashVpnService to update the profile for $directory');
+      return true;
+    } catch (error, stackTrace) {
+      _log('Failed to update the VPN profile', error, stackTrace);
       return false;
     } finally {
       context.release();
@@ -385,6 +427,31 @@ abstract final class AndroidVpnService {
     }
   }
 
+  /// Attaches the profile fields the service needs to refresh `config.yaml`.
+  ///
+  /// All three fields are always sent, so clearing the interval (a local
+  /// profile, or the user disabling updates) also reaches the service. Numbers
+  /// are strings because the intent contract only resolves
+  /// `putExtra(String, String)`.
+  static void _putProfile(
+    JObject intent,
+    String? url,
+    int? updateIntervalMinutes,
+    DateTime? updateTime,
+  ) {
+    _putString(intent, _Contract.extraProfileUrl, url ?? '');
+    _putString(
+      intent,
+      _Contract.extraUpdateInterval,
+      '${updateIntervalMinutes ?? 0}',
+    );
+    _putString(
+      intent,
+      _Contract.extraUpdateTime,
+      '${updateTime?.millisecondsSinceEpoch ?? 0}',
+    );
+  }
+
   static void _putBoolean(JObject intent, String name, bool value) {
     final jName = name.toJString();
     try {
@@ -463,7 +530,12 @@ abstract final class AndroidVpnService {
 abstract final class _Contract {
   static const String actionStart = 'io.aote.vpnService.action.START';
   static const String actionStop = 'io.aote.vpnService.action.STOP';
+  static const String actionUpdateProfile =
+      'io.aote.vpnService.action.UPDATE_PROFILE';
   static const String extraConfigDir = 'configDir';
+  static const String extraProfileUrl = 'profileUrl';
+  static const String extraUpdateInterval = 'updateInterval';
+  static const String extraUpdateTime = 'updateTime';
   static const String extraAllowList = 'allowList';
   static const String extraAllowedApplications = 'allowedApplications';
   static const String extraDisallowedApplications = 'disallowedApplications';

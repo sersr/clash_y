@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:clash_service_android/clash_service_android.dart' as android;
 import 'package:file/local.dart' as f;
+import 'package:server/server.dart' show ClashProfile;
 
 import 'src/service/clash_service_linux.dart';
 import 'src/service/clash_service_macos_cmd.dart';
@@ -23,11 +24,14 @@ abstract final class ClashService {
     return false;
   }
 
-  /// Brings the VPN service up for the configuration in [configDir].
+  /// Brings the VPN service up for [profile].
   ///
   /// Android 使用 VPN 后端；macOS 安装并启动 privileged helper；Linux 写入
   /// systemd unit 并启动（未提权时弹 pkexec 密码框）；Windows 安装并启动
   /// SCM 服务（未提权时弹 UAC 密码框）。
+  ///
+  /// [profile] carries the configuration directory plus the subscription the
+  /// service keeps refreshing while the app is not running.
   ///
   /// [allowList] 为 `true` 时仅将 [allowedApplications]（以及 Android VPN
   /// 自身包名）纳入 VPN；为 `false` 时使用全局路由和
@@ -36,14 +40,17 @@ abstract final class ClashService {
   /// 返回 `false` 表示平台没有 VPN 后端，或后端拒绝启动 —— 例如用户拒绝了
   /// Android VPN 授权对话框、提权被取消、或 Windows 非管理员运行。
   static Future<bool> start(
-    String configDir, {
+    ClashProfile profile, {
     bool allowList = false,
     List<String> allowedApplications = const [],
     List<String> disallowedApplications = const [],
   }) async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.start(
-        configDir,
+        profile.configDir,
+        profileUrl: profile.url,
+        updateIntervalMinutes: profile.updateInterval,
+        updateTime: profile.updateTime,
         allowList: allowList,
         allowedApplications: allowedApplications,
         disallowedApplications: disallowedApplications,
@@ -65,6 +72,22 @@ abstract final class ClashService {
     }
 
     // iOS has no VPN backend wired up here.
+    return false;
+  }
+
+  /// Updates the profile a running service refreshes itself from.
+  ///
+  /// Desktop services are driven through their IPC API instead; this only
+  /// covers Android, whose backend lives in the VPN process.
+  static Future<bool> updateProfile(ClashProfile profile) async {
+    if (Platform.isAndroid) {
+      return android.AndroidVpnService.updateProfile(
+        configDir: profile.configDir,
+        profileUrl: profile.url,
+        updateIntervalMinutes: profile.updateInterval,
+        updateTime: profile.updateTime,
+      );
+    }
     return false;
   }
 

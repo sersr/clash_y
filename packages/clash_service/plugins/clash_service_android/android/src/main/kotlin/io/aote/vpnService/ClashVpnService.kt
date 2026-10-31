@@ -53,6 +53,11 @@ class ClashVpnService : VpnService() {
         private const val KEY_ALLOWED_APPS = "allowedApplications"
         private const val KEY_DISALLOWED_APPS = "disallowedApplications"
 
+        /** 自动更新配置用的 Profile（App 未运行时由本进程刷新）。 */
+        private const val KEY_PROFILE_URL = "profileUrl"
+        private const val KEY_UPDATE_INTERVAL = "updateInterval"
+        private const val KEY_UPDATE_TIME = "updateTime"
+
         /** 上一次真正执行 `startCore` 的时刻（`System.currentTimeMillis()`）。 */
         private const val KEY_LAST_START_AT = "lastStartAt"
 
@@ -89,6 +94,13 @@ class ClashVpnService : VpnService() {
 
     /** 排队等待退避到期的自动恢复任务，同一时刻至多一个。 */
     private var pendingAutoStart: Runnable? = null
+
+    /** 已排队的下一次 Profile 刷新任务。 */
+    private var pendingProfileUpdate: Runnable? = null
+
+    /** 当前运行配置对应的 Profile；为空表示不做自动更新。 */
+    @Volatile
+    private var profileUpdate: ProfileUpdate? = null
 
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
 
@@ -137,6 +149,11 @@ class ClashVpnService : VpnService() {
                 START_NOT_STICKY
             }
 
+            VpnServiceContract.ACTION_UPDATE_PROFILE -> {
+                handleUpdateProfile(intent)
+                START_STICKY
+            }
+
             else -> {
                 sendResult(receiver, false, "Unknown VpnService action")
                 stopSelf()
@@ -149,6 +166,9 @@ class ClashVpnService : VpnService() {
         Log.i(TAG, "VPN permission revoked")
         // 授权被撤销：持久化开关同步关闭，避免 sticky 重启再拉起
         cancelPendingAutoStart()
+        cancelProfileUpdate()
+        profileUpdate = null
+        clearPersistedProfile()
         setEnabled(false)
         executor.execute {
             cleanup()
@@ -191,9 +211,33 @@ class ClashVpnService : VpnService() {
         // 先撤掉退避任务：executor 随后 shutdownNow，迟到的任务会抛
         // RejectedExecutionException 并在主线程崩溃
         cancelPendingAutoStart()
+        cancelProfileUpdate()
         cleanup()
         executor.shutdownNow()
         super.onDestroy()
+    }
+
+    /**
+     * App 切到别的 Profile 时只更新调度信息，不打断正在运行的 VPN。
+     * 服务没在运行时直接退出：下一次显式启动会带上新的 Profile。
+     */
+    private fun handleUpdateProfile(intent: Intent?) {
+        val receiver = intent?.getResultReceiver()
+        // 用持久化开关而不是 coreStarted 判断：内核重启（含配置更新）
+        // 期间 coreStarted 会短暂为 false。
+        if (!isVpnEnabled()) {
+            Log.i(TAG, "profile update ignored: VPN is not running")
+            sendResult(receiver, false, "VPN is not running")
+            stopForegroundCompat()
+            stopSelf()
+            return
+        }
+
+        profileUpdate = intent.readProfileUpdate()
+        persistProfile(profileUpdate)
+        scheduleProfileUpdate()
+        sendResult(receiver, true)
+        Log.i(TAG, "profile schedule updated: ${profileUpdate?.url ?: "none"}")
     }
 
     private fun handleStart(intent: Intent?) {
@@ -220,6 +264,8 @@ class ClashVpnService : VpnService() {
             stopSelf()
             return
         }
+
+        profileUpdate = intent.readProfileUpdate()
 
         val allowedApplications = intent?.getStringArrayListExtra(
             VpnServiceContract.EXTRA_ALLOWED_APPLICATIONS
@@ -341,6 +387,113 @@ class ClashVpnService : VpnService() {
         Log.i(TAG, "cancelled the pending backoff start")
     }
 
+    // ---------------------------------------------------------------------
+    // Profile auto update（App 未运行时由本进程刷新 config.yaml）
+    // ---------------------------------------------------------------------
+
+    private fun Intent?.readProfileUpdate(): ProfileUpdate? {
+        val url = this?.getStringExtra(VpnServiceContract.EXTRA_PROFILE_URL)
+            ?: prefs.getString(KEY_PROFILE_URL, null)
+        val interval = this?.getStringExtra(VpnServiceContract.EXTRA_UPDATE_INTERVAL)
+            ?: prefs.getString(KEY_UPDATE_INTERVAL, null)
+        val updateTime = this?.getStringExtra(VpnServiceContract.EXTRA_UPDATE_TIME)
+            ?: prefs.getString(KEY_UPDATE_TIME, null)
+        return ProfileUpdate.fromExtras(url, interval, updateTime)
+    }
+
+    private fun persistProfile(update: ProfileUpdate?) {
+        val editor = prefs.edit()
+        if (update == null) {
+            editor.remove(KEY_PROFILE_URL)
+                .remove(KEY_UPDATE_INTERVAL)
+                .remove(KEY_UPDATE_TIME)
+        } else {
+            editor.putString(KEY_PROFILE_URL, update.url)
+                .putString(KEY_UPDATE_INTERVAL, update.intervalMinutes.toString())
+                .putString(KEY_UPDATE_TIME, update.updateTimeMs.toString())
+        }
+        editor.apply()
+    }
+
+    private fun clearPersistedProfile() = persistProfile(null)
+
+    private fun scheduleProfileUpdate() {
+        cancelProfileUpdate()
+        val update = profileUpdate ?: return
+        val delay = update.nextDelayMs() ?: return
+
+        val task = Runnable { runProfileUpdate() }
+        pendingProfileUpdate = task
+        mainHandler.postDelayed(task, delay)
+        Log.i(TAG, "next profile update in ${delay}ms (${update.url})")
+    }
+
+    private fun cancelProfileUpdate() {
+        val task = pendingProfileUpdate ?: return
+        pendingProfileUpdate = null
+        mainHandler.removeCallbacks(task)
+    }
+
+    private fun runProfileUpdate() {
+        pendingProfileUpdate = null
+        executor.execute {
+            val configDir = prefs.getString(KEY_CONFIG_DIR, null)
+            val update = profileUpdate
+            if (update == null || configDir == null || !coreStarted) {
+                mainHandler.post { scheduleProfileUpdate() }
+                return@execute
+            }
+
+            try {
+                Log.i(TAG, "updating profile from ${update.url}")
+                val backup = ConfigUpdater.updateConfig(configDir, update.url)
+                if (restartForProfile(configDir, backup)) Log.i(TAG, "profile updated")
+                // 无论成败都从当前时刻重新计时：失败后按完整周期重试，
+                // 避免订阅地址不可达时反复下载。App 期间切换了 Profile
+                // 时不要覆盖新的调度。
+                if (profileUpdate == update) {
+                    profileUpdate = update.copy(updateTimeMs = System.currentTimeMillis())
+                    persistProfile(profileUpdate)
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "profile update failed", t)
+                profileUpdate = update.copy(updateTimeMs = System.currentTimeMillis())
+            } finally {
+                mainHandler.post { scheduleProfileUpdate() }
+            }
+        }
+    }
+
+    /** 重启内核加载磁盘上的新配置；失败时回滚到上一份配置。 */
+    private fun restartForProfile(configDir: String, backup: File): Boolean {
+        val allowList = prefs.getBoolean(KEY_ALLOW_LIST, false)
+        val allowed = prefs.getStringSet(KEY_ALLOWED_APPS, null)?.toList().orEmpty()
+        val disallowed = prefs.getStringSet(KEY_DISALLOWED_APPS, null)?.toList().orEmpty()
+
+        val error = startCoreInternal(configDir, allowList, allowed, disallowed)
+        if (error == null) {
+            backup.delete()
+            return true
+        }
+
+        Log.e(TAG, "restart with the updated config failed: $error; rolling back")
+        try {
+            ConfigUpdater.writeAtomically(
+                File(configDir, "config.yaml"),
+                backup.readText(),
+            )
+        } catch (t: Throwable) {
+            Log.e(TAG, "failed to restore the previous config", t)
+        }
+        backup.delete()
+
+        val rollbackError = startCoreInternal(configDir, allowList, allowed, disallowed)
+        if (rollbackError != null) {
+            Log.e(TAG, "rollback start failed: $rollbackError")
+        }
+        return false
+    }
+
     private fun startCore(
         configDir: String,
         receiver: ResultReceiver?,
@@ -348,11 +501,35 @@ class ClashVpnService : VpnService() {
         allowedApplications: List<String>,
         disallowedApplications: List<String>,
     ) {
+        val error = startCoreInternal(
+            configDir,
+            allowList,
+            allowedApplications,
+            disallowedApplications,
+        )
+        if (error == null) {
+            sendResult(receiver, true)
+            scheduleProfileUpdate()
+            return
+        }
+
+        sendResult(receiver, false, error)
+        stopForegroundCompat()
+        stopSelf()
+    }
+
+    /** Brings mihomo up and returns the failure message, or `null` on success. */
+    private fun startCoreInternal(
+        configDir: String,
+        allowList: Boolean,
+        allowedApplications: List<String>,
+        disallowedApplications: List<String>,
+    ): String? {
         Log.i(TAG, "startCore configDir=$configDir")
         // 真正的启动时刻是风暴检测的基准，必须在这里落盘
         prefs.edit().putLong(KEY_LAST_START_AT, System.currentTimeMillis()).apply()
         var detachedNativeFd = -1
-        try {
+        return try {
             // Replace any previous instance cleanly. This is a no-op on the
             // first start.
             stopCore()
@@ -393,16 +570,14 @@ class ClashVpnService : VpnService() {
                 disallowedApplications,
                 enabled = true,
             )
-            sendResult(receiver, true)
+            persistProfile(profileUpdate)
             Log.i(TAG, "mihomo started, configDir=$configDir nativeFd=$detachedNativeFd")
+            null
         } catch (t: Throwable) {
             releaseNativeTunFd(detachedNativeFd)
             closeTunDescriptor()
-            val message = t.message ?: t.javaClass.simpleName
             Log.e(TAG, "Failed to start VpnService", t)
-            sendResult(receiver, false, message)
-            stopForegroundCompat()
-            stopSelf()
+            t.message ?: t.javaClass.simpleName
         }
     }
 
@@ -410,6 +585,9 @@ class ClashVpnService : VpnService() {
         val receiver = intent?.getResultReceiver()
         // 手动停止是一次干净的收场：撤掉排队中的退避启动并清风暴计数
         cancelPendingAutoStart()
+        cancelProfileUpdate()
+        profileUpdate = null
+        clearPersistedProfile()
         prefs.edit().putInt(KEY_STORM_LEVEL, 0).apply()
         executor.execute {
             // 先关持久化开关：即使随后进程被杀，sticky 重启也不会再拉起

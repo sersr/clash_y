@@ -301,11 +301,25 @@ final class ClashRequest {
 
   final dlConfigDio = Dio();
 
+  /// The freshest copy of [profile] known to the store.
+  ///
+  /// Queued refreshes may have been started with a profile that has since been
+  /// updated (or just downloaded by another tick), so the queued task re-reads
+  /// it instead of trusting the captured snapshot.
+  Profile _latestProfile(Profile profile) {
+    final id = profile.id;
+    if (id == null) return profile;
+    return BaseConfig.profiles.value[id] ?? profile;
+  }
+
   FutureOr<bool> reloadConfigs(Profile profile, {bool update = false}) async {
-    final url = profile.url;
-    if (url == null) return false;
+    if (profile.url == null) return false;
 
     final res = await EventQueue.runOne(reloadConfigs, () async {
+      profile = _latestProfile(profile);
+      final url = profile.url;
+      if (url == null) return false;
+
       var file = getFile(url);
 
       try {

@@ -62,6 +62,9 @@ class ClashController with NopLifecycle {
           : null;
       _data.value = remoteData ?? const ProxiesData(history: [], proxies: []);
       removeProxyDelay();
+      if (_isRunning.value) {
+        await syncProfileWithService();
+      }
     } finally {}
   }
 
@@ -83,9 +86,10 @@ class ClashController with NopLifecycle {
         final allowedApplications = SettingsHive.allowApplications.value;
 
         final path = await initConfigPath();
+        final profile = BaseConfig.currentProfile.value.toClashProfile(path);
 
         final success = await ClashService.start(
-          path,
+          profile,
           allowList: isAllowList,
           allowedApplications: isAllowList ? allowedApplications : const [],
           disallowedApplications: isAllowList
@@ -102,7 +106,7 @@ class ClashController with NopLifecycle {
             Log.e('desktop service is not installed');
             return;
           }
-          if (!await _run(path)) return;
+          if (!await _run(profile)) return;
         }
         _isRunning.value = true;
 
@@ -121,11 +125,11 @@ class ClashController with NopLifecycle {
     }
   }
 
-  Future<bool> _run(String configPath) async {
+  Future<bool> _run(ClashProfile profile) async {
     if (!defaultTargetPlatform.isDesktop) return true;
 
     try {
-      final response = await ClashServiceApi.startClash(configPath);
+      final response = await ClashServiceApi.startClash(profile);
       if (!response.success) {
         Log.e('start Clash failed: ${response.data}');
         return false;
@@ -134,6 +138,25 @@ class ClashController with NopLifecycle {
     } catch (e) {
       Log.e(e);
       return false;
+    }
+  }
+
+  /// Pushes the profile the app currently uses to the running service so it
+  /// refreshes `config.yaml` from the right subscription while the app is in
+  /// the background.
+  Future<void> syncProfileWithService() async {
+    final profile = BaseConfig.currentProfile.value;
+    if (profile.url == null) return;
+
+    final clashProfile = profile.toClashProfile(configYaml.parent.path);
+    try {
+      if (defaultTargetPlatform.isDesktop) {
+        await ClashServiceApi.updateClashProfile(clashProfile);
+      } else {
+        await ClashService.updateProfile(clashProfile);
+      }
+    } catch (e) {
+      Log.e('sync profile with service failed: $e');
     }
   }
 

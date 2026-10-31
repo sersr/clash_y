@@ -8,12 +8,15 @@ import 'dart:math';
 import 'package:clash_core/clash_core.dart';
 import 'package:ffi/ffi.dart';
 import 'package:nop/nop.dart';
+import 'package:path/path.dart' as p;
 import 'package:shelf/shelf.dart';
 import 'package:shelf_web_socket/shelf_web_socket.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:yaml/yaml.dart';
 
 import '../my_router.dart';
+import 'config_overrides.dart';
+import 'models/models.dart';
 import 'response.dart';
 
 final _clashQueue = TaskQueue();
@@ -40,40 +43,59 @@ abstract final class ClashProcess {
   static bool _recoveringTunAfterWake = false;
   static String? _tunInterface;
 
+  static ClashProfile? _profile;
+  static Timer? _profileTimer;
+
   static Future<void> restorePersistedClash() async {
     if (!Platform.isMacOS || !await _stateFile.exists()) return;
 
     try {
       final state = jsonDecode(await _stateFile.readAsString());
-      if (state is! Map || state['configDir'] is! String) {
+      if (state is! Map) {
         Log.e('saved Clash state is invalid');
         return;
       }
 
-      final configDir = state['configDir'] as String;
+      final profile = switch (state['profile']) {
+        final Map<dynamic, dynamic> json => ClashProfile.fromJson(json),
+        _ => null,
+      };
+      final configDir = switch (state['configDir']) {
+        final String dir when dir.isNotEmpty => dir,
+        _ => profile?.configDir,
+      };
+      if (configDir == null || configDir.isEmpty) {
+        Log.e('saved Clash state has no configuration directory');
+        return;
+      }
+
       Log.w('restoring Clash from saved state');
       final error = await run(configDir);
       if (error != null) {
         Log.e('restore Clash from saved state failed: $error');
+        return;
+      }
+      if (profile != null) {
+        _setProfile(profile);
       }
     } catch (e) {
       Log.e('restore Clash from saved state failed: $e');
     }
   }
 
-  static Future<void> _persistConfigDir(String configDir) async {
+  static Future<void> _persistState(ClashProfile profile) async {
     if (!Platform.isMacOS) return;
 
     await _stateFile.parent.create(recursive: true);
     final temporaryFile = File('$_stateFilePath.tmp');
     await temporaryFile.writeAsString(
-      jsonEncode({'configDir': configDir}),
+      jsonEncode({'configDir': profile.configDir, 'profile': profile.toJson()}),
       flush: true,
     );
     await temporaryFile.rename(_stateFilePath);
   }
 
-  static Future<void> _clearPersistedConfigDir() async {
+  static Future<void> _clearPersistedState() async {
     if (!Platform.isMacOS || !await _stateFile.exists()) return;
     await _stateFile.delete();
   }
@@ -204,6 +226,7 @@ abstract final class ClashProcess {
       ..get('/', getClash)
       ..get('/status', getStatus)
       ..post('/', startClash)
+      ..post('/profile', updateProfile)
       ..post('/stop', stopClash);
 
     return router.call;
@@ -253,14 +276,32 @@ abstract final class ClashProcess {
   static Future<Resp> getStatus(Request request) async => .ok(_started);
 
   static Future<Resp> startClash(Request request) async {
-    final configDir = request.data as String;
+    final profile = ClashProfile.tryParse(request.data);
+    if (profile == null || profile.configDir.isEmpty) {
+      return .error(data: 'invalid profile');
+    }
 
-    final res = await run(configDir);
+    final res = await run(profile.configDir);
     if (res case String error when error.isNotEmpty) {
       return .error(data: error);
     }
-    await _persistConfigDir(configDir);
+    await _setProfile(profile);
     return .ok(res);
+  }
+
+  /// Updates the profile the running core refreshes itself from without
+  /// restarting it. Used when the user switches profiles from the app.
+  static Future<Resp> updateProfile(Request request) async {
+    final profile = ClashProfile.tryParse(request.data);
+    if (profile == null) return .error(data: 'invalid profile');
+
+    final current = _profile;
+    await _setProfile(
+      profile.configDir.isEmpty && current != null
+          ? profile.copyWith(configDir: current.configDir)
+          : profile,
+    );
+    return .ok();
   }
 
   static Future<String?> run(String configDir) async {
@@ -272,8 +313,125 @@ abstract final class ClashProcess {
     if (err case var err? when err.isNotEmpty) {
       return .error(data: err);
     }
-    await _clearPersistedConfigDir();
+    _profileTimer?.cancel();
+    _profileTimer = null;
+    _profile = null;
+    await _clearPersistedState();
     return .ok();
+  }
+
+  static Future<void> _setProfile(ClashProfile profile) async {
+    _profile = profile;
+    _scheduleProfileUpdate();
+    await _persistState(profile);
+  }
+
+  static void _scheduleProfileUpdate() {
+    _profileTimer?.cancel();
+    _profileTimer = null;
+
+    final delay = _profile?.nextUpdateDelay();
+    if (delay == null) return;
+    _profileTimer = Timer(delay, () => unawaited(_updateProfile()));
+  }
+
+  static Future<void> _updateProfile() async {
+    final profile = _profile;
+    if (profile == null || !profile.canAutoUpdate) return;
+
+    try {
+      final error = await _refreshConfig(profile);
+      // Stopped or switched while the config was downloading.
+      if (!identical(_profile, profile)) return;
+      if (error != null) {
+        Log.e('profile update failed: $error');
+      } else {
+        await _setProfile(profile.copyWith(updateTime: DateTime.now()));
+        Log.i('profile updated: ${profile.name ?? profile.id ?? profile.url}');
+        return;
+      }
+    } catch (e) {
+      Log.e('profile update failed: $e');
+    }
+    if (!identical(_profile, profile)) return;
+    // Retry after a full interval instead of hammering an unreachable server.
+    _profile = profile.copyWith(updateTime: DateTime.now());
+    _scheduleProfileUpdate();
+  }
+
+  /// Downloads the subscription and restarts the core with the merged config.
+  static Future<String?> _refreshConfig(ClashProfile profile) async {
+    final url = profile.url;
+    if (url == null || url.isEmpty) return 'profile url is empty';
+
+    final configFile = File(p.join(profile.configDir, 'config.yaml'));
+    if (!await configFile.exists()) {
+      return 'missing config file: ${configFile.path}';
+    }
+
+    final current = await configFile.readAsString();
+    final downloaded = await _downloadConfig(url);
+    final merged = applyConfigOverrides(downloaded, current);
+
+    final backupPath = '${configFile.path}.bak';
+    final backup = File(backupPath);
+    await configFile.copy(backupPath);
+    await _writeConfig(configFile, merged);
+
+    final error = await _clashQueue.run(() async {
+      if (!_started || !identical(_profile, profile)) return null;
+      final stopError = await _stopSingle();
+      if (stopError != null) return stopError;
+      return _runSingle(profile.configDir);
+    });
+    if (!identical(_profile, profile)) return null;
+    if (error == null) {
+      await backup.delete();
+      return null;
+    }
+
+    Log.e('restart with the updated config failed: $error');
+    await _writeConfig(configFile, await backup.readAsString());
+    await backup.delete();
+    final restoreError = await _clashQueue.run(() async {
+      if (!identical(_profile, profile)) return null;
+      await _stopSingle();
+      return _runSingle(profile.configDir);
+    });
+    if (restoreError != null) {
+      Log.e('restore previous config failed: $restoreError');
+    }
+    return error;
+  }
+
+  static Future<String> _downloadConfig(String url) async {
+    final uri = Uri.parse(url);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final request = await client.getUrl(uri);
+      request.headers.set(HttpHeaders.userAgentHeader, 'clash/mihomo');
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(
+          'unexpected status ${response.statusCode}',
+          uri: uri,
+        );
+      }
+      if (body.trim().isEmpty) {
+        throw HttpException('empty response', uri: uri);
+      }
+      return body;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static Future<void> _writeConfig(File file, String content) async {
+    final temporaryFile = File('${file.path}.tmp');
+    await temporaryFile.writeAsString(content, flush: true);
+    await temporaryFile.rename(file.path);
   }
 
   static String? _clashKey;

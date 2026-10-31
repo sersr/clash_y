@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:clash_service/clash_service.dart';
+import 'package:common/common.dart';
 import 'package:dio/dio.dart';
 import 'package:nop/nop.dart';
 
@@ -9,6 +10,7 @@ import 'dio/unix_socket_dio.dart';
 abstract final class _Apis {
   static const clashEnv = 'baseInfo/env';
   static const clashStart = 'clash';
+  static const clashProfile = 'clash/profile';
   static const clashStop = 'clash/stop';
   static const clashStatus = 'clash/status';
 }
@@ -23,8 +25,15 @@ abstract final class ClashServiceApi {
     return .transform(res.data);
   }
 
-  static Future<ApiResp> startClash(String configDir) async {
-    final res = await _dio.post(_Apis.clashStart, data: configDir);
+  static Future<ApiResp> startClash(ClashProfile profile) async {
+    final res = await _dio.post(_Apis.clashStart, data: profile.toJson());
+
+    return .transform(res.data);
+  }
+
+  /// Switches the profile a running service refreshes itself from.
+  static Future<ApiResp> updateClashProfile(ClashProfile profile) async {
+    final res = await _dio.post(_Apis.clashProfile, data: profile.toJson());
 
     return .transform(res.data);
   }
@@ -84,5 +93,19 @@ class _RetryInterceptor extends Interceptor {
     } else {
       handler.reject(DioException(requestOptions: options, error: error));
     }
+  }
+}
+
+extension ProfileServiceX on Profile {
+  /// Builds the service payload for this profile.
+  ClashProfile toClashProfile(String configDir) {
+    return ClashProfile(
+      configDir: configDir,
+      id: id,
+      name: showName,
+      url: url,
+      updateInterval: updateInterval,
+      updateTime: updateTime,
+    );
   }
 }

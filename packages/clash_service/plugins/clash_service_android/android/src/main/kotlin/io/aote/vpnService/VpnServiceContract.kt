@@ -3,7 +3,14 @@ package io.aote.vpnService
 internal object VpnServiceContract {
     const val ACTION_START = "io.aote.vpnService.action.START"
     const val ACTION_STOP = "io.aote.vpnService.action.STOP"
+
+    /** 只更新自动刷新用的 Profile，不重启内核。 */
+    const val ACTION_UPDATE_PROFILE = "io.aote.vpnService.action.UPDATE_PROFILE"
+
     const val EXTRA_CONFIG_DIR = "configDir"
+    const val EXTRA_PROFILE_URL = "profileUrl"
+    const val EXTRA_UPDATE_INTERVAL = "updateInterval"
+    const val EXTRA_UPDATE_TIME = "updateTime"
     const val EXTRA_RESULT_RECEIVER = "resultReceiver"
     const val EXTRA_ALLOW_LIST = "allowList"
     const val EXTRA_ALLOWED_APPLICATIONS = "allowedApplications"

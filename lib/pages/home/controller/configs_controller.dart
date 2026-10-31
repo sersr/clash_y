@@ -13,9 +13,77 @@ class ConfigsController with NopLifecycle {
   late final Repository repository = getType();
   late final ClashController clash = getType();
 
+  /// Periodic profile refreshes, keyed by profile id.
+  final _autoUpdates = <String, ({Timer timer, int minutes})>{};
+
   AMap<String, Profile> get profiles => BaseConfig.profiles;
   bool isCurrent(Profile profile) {
     return BaseConfig.currentProfile.value.isCurrent(profile);
+  }
+
+  @override
+  void nopInit() {
+    super.nopInit();
+    profiles.addListener(_syncAutoUpdates);
+    _syncAutoUpdates();
+  }
+
+  @override
+  void nopDispose() {
+    profiles.removeListener(_syncAutoUpdates);
+    for (final entry in _autoUpdates.values) {
+      entry.timer.cancel();
+    }
+    _autoUpdates.clear();
+    super.nopDispose();
+  }
+
+  /// Keeps one timer per profile that has an `updateInterval`.
+  void _syncAutoUpdates() {
+    final data = profiles.value;
+    final scheduled = <String>{};
+
+    for (final entry in data.entries) {
+      final minutes = entry.value.updateInterval;
+      if (minutes == null || minutes <= 0) continue;
+
+      final id = entry.key;
+      scheduled.add(id);
+      final running = _autoUpdates[id];
+      if (running != null && running.minutes == minutes) continue;
+
+      running?.timer.cancel();
+      _autoUpdates[id] = (
+        timer: Timer.periodic(
+          Duration(minutes: minutes),
+          (_) => _autoUpdate(id),
+        ),
+        minutes: minutes,
+      );
+      if (entry.value.shouldUpdate()) {
+        _autoUpdate(id);
+      }
+    }
+
+    _autoUpdates.removeWhere((id, value) {
+      if (scheduled.contains(id)) return false;
+      value.timer.cancel();
+      return true;
+    });
+  }
+
+  /// Downloads the profile into its cached file so it is ready the next time
+  /// the user switches to it.
+  ///
+  /// While the VPN is off the current profile's cache is also written to
+  /// `config.yaml`, so starting it later does not go back to an older
+  /// subscription. When the VPN is on the service owns that file.
+  Future<void> _autoUpdate(String id) async {
+    final profile = profiles.value[id];
+    if (profile == null || !profile.shouldUpdate()) return;
+
+    final apply = isCurrent(profile) && !clash.isRunning;
+    await repository.clashEvent.reloadConfigs(profile, update: apply);
   }
 
   Future<void> addNewConfigUrl(
@@ -45,6 +113,9 @@ class ConfigsController with NopLifecycle {
     if (await repository.clashEvent.reloadConfigs(profile, update: true)) {
       await release(const Duration(milliseconds: 300));
       clash.getData();
+      if (isCurrent(profile) && clash.isRunning) {
+        await clash.syncProfileWithService();
+      }
     }
   }
 
