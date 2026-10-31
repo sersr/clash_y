@@ -49,6 +49,47 @@ class HelperInstaller {
     return (r.stdout as String).contains('state = running');
   }
 
+  static Future<bool> hasOtherVpnConnection({
+    bool checkTunnelRoutes = true,
+  }) async {
+    final connections = await Process.run('/usr/sbin/scutil', ['--nc', 'list']);
+    if (connections.exitCode != 0) {
+      throw ProcessException(
+        '/usr/sbin/scutil',
+        const ['--nc', 'list'],
+        '${connections.stderr}',
+        connections.exitCode,
+      );
+    }
+    if (RegExp(
+      r'\(\s*Connected\s*\)',
+      caseSensitive: false,
+    ).hasMatch(connections.stdout as String)) {
+      return true;
+    }
+    if (!checkTunnelRoutes) return false;
+
+    final routes = await Process.run('/usr/sbin/netstat', [
+      '-rn',
+      '-f',
+      'inet',
+    ]);
+    if (routes.exitCode != 0) {
+      throw ProcessException(
+        '/usr/sbin/netstat',
+        const ['-rn', '-f', 'inet'],
+        '${routes.stderr}',
+        routes.exitCode,
+      );
+    }
+
+    return (routes.stdout as String).split('\n').any((line) {
+      final fields = line.trim().split(RegExp(r'\s+'));
+      return fields.length >= 4 &&
+          fields.any((field) => RegExp(r'^utun\d+$').hasMatch(field));
+    });
+  }
+
   /// 已安装文件是否与 bundle 内文件完全一致（且 plist 存在）
   static Future<bool> _isUpToDate() async {
     try {

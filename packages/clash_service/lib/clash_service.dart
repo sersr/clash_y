@@ -25,6 +25,17 @@ abstract final class ClashService {
     return false;
   }
 
+  /// Whether macOS has an active VPN connection or a route through a utun
+  /// interface that could conflict with Clashy.
+  static Future<bool> hasOtherVpnConnection({
+    bool clashyIsRunning = false,
+  }) async {
+    if (!Platform.isMacOS) return false;
+    return HelperInstaller.hasOtherVpnConnection(
+      checkTunnelRoutes: !clashyIsRunning,
+    );
+  }
+
   /// Brings the VPN service up for [profile].
   ///
   /// Android 使用 VPN 后端；macOS 安装并启动 privileged helper，同时配置

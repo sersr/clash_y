@@ -104,6 +104,20 @@ class ClashController with NopLifecycle {
           return;
         }
 
+        if (defaultTargetPlatform == TargetPlatform.macOS) {
+          final clashyIsRunning = await ClashServiceApi.isClashRunning();
+          if (await ClashService.hasOtherVpnConnection(
+            clashyIsRunning: clashyIsRunning,
+          )) {
+            const message =
+                'Another VPN connection or tunnel route is active. '
+                'Disconnect the other VPN and try again.';
+            Log.w(message);
+            showMsg(message);
+            return;
+          }
+        }
+
         if (defaultTargetPlatform.isDesktop) {
           if (!await ClashService.isInstalled()) {
             Log.e('desktop service is not installed');
