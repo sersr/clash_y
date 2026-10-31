@@ -214,7 +214,6 @@ final class ClashRequest {
     }
   }
 
-
   FutureOr<void> getRules() async {
     final data = await gets('rules');
     Log.i('all Rules: $data');
@@ -227,22 +226,21 @@ final class ClashRequest {
 
   FutureOr<void> updateConfig(String path) async {
     try {
-      final bytes = await fs.currentDirectory.childFile(path).readAsString();
+      if (path != configYaml.path) {
+        final currentFile = fs.currentDirectory.childFile(path);
 
-      final file = configYaml;
-      final text = await configYaml.readAsString();
+        await currentFile.copy(configYaml.path);
+      }
 
-      await file.create(recursive: true);
-      await file.writeAsString(bytes);
-      await _mergeAndroidTunConfig(file);
-      final text2 = await configYaml.readAsString();
+      final configPath = await initConfigPath();
+
       final response = await _dio.put(
         'configs',
-        data: {'path': file.path},
+        data: {'path': configPath},
         queryParameters: {'force': true},
       );
-      Log.w(text);
-      Log.w(text2);
+      // Log.w(text);
+      // Log.w(text2);
       Log.i(response.data);
     } catch (e) {
       Log.i(e);
@@ -261,47 +259,12 @@ final class ClashRequest {
       }
     } on DioException catch (_) {
       // if (e.response case var res?) {
-        // Log.w(res.data);
-        // return null;
+      // Log.w(res.data);
+      // return null;
       // }
       // Log.w('${e.response?.data}\n$s');
     }
     return null;
-  }
-
-  /// mihomo disables runtime config update on Android by default. The core
-  /// enables PUT /configs again, but the new config must keep the current TUN
-  /// file descriptor. Otherwise ReCreateTun would close the VpnService fd and
-  /// try to create a new TUN device without root.
-  Future<void> _mergeAndroidTunConfig(File file) async {
-    if (io.Platform.isAndroid == false) {
-      return;
-    }
-
-    final current = await gets('configs');
-    if (current.isEmpty) {
-      return;
-    }
-
-    try {
-      final decoded = jsonDecode(current);
-      if (decoded is Map) {
-        final tun = decoded['tun'];
-        if (tun is Map) {
-          final fd = tun['file-descriptor'];
-          if (fd is int && fd > 0) {
-            final normalized = Map<String, Object?>.from(tun);
-            normalized.remove('inet4-address');
-            normalized['enable'] = true;
-            final editor = YamlUtils.edit(await file.readAsString());
-            editor.update(['tun'], normalized);
-            await file.writeAsString(editor.toString());
-          }
-        }
-      }
-    } catch (e) {
-      Log.w('merge Android TUN config failed: $e');
-    }
   }
 
   String get appCachePath => join(paths.appPath, 'caches');

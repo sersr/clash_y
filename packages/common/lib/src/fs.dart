@@ -9,5 +9,5 @@ File get configYaml {
   final configDir = fs.currentDirectory
       .childDirectory(G.appSubPath)
       .childDirectory('clash_config');
-  return configDir.childFile('config.yaml');
+  return configDir.childFile('config.yaml').absolute;
 }

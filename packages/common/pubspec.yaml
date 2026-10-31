@@ -44,6 +44,7 @@ dependencies:
   overlays:
     git:
       url: https://github.com/sersr/overlays.git
+  equatable: ^2.1.0
 
 dev_dependencies:
   flutter_test:

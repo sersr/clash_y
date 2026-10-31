@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:collection/collection.dart';
 import 'package:json_annotation/json_annotation.dart';
-
+import 'package:equatable/equatable.dart';
 part '_g.g.dart';
 part 'all_configs.dart';
 part 'all_rules.dart';

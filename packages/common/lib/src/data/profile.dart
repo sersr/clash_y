@@ -1,17 +1,7 @@
 part of '_g.dart';
 
-// @JsonSerializable(explicitToJson: true)
-// class Profiles {
-//   const Profiles({this.map = const {}});
-//   final Map<String, Profile> map;
-
-//   factory Profiles.fromJson(Map<String, dynamic> json) =>
-//       _$ProfilesFromJson(json);
-//   Map<String, dynamic> toJson() => _$ProfilesToJson(this);
-// }
-
 @JsonSerializable(explicitToJson: true)
-class Profile {
+class Profile with Equatable {
   Profile({
     this.id,
     this.name,
@@ -59,6 +49,7 @@ class Profile {
     if (identical(this, profile)) return true;
     return id == profile.id;
   }
+
   String get used {
     final quota = total;
     if (quota == null) return '';
@@ -99,4 +90,18 @@ class Profile {
   Map<String, dynamic> toJson() {
     return _$ProfileToJson(this);
   }
+
+  @override
+  List<Object?> get props => [
+    id,
+    name,
+    url,
+    rawName,
+    updateInterval,
+    updateTime,
+    upload,
+    download,
+    total,
+    expire,
+  ];
 }

@@ -16,10 +16,8 @@ Map<String, Object?> defaultDnsConfig() {
 }
 
 Future<String> initConfigPath() async {
-  final configDir = fs.currentDirectory
-      .childDirectory(G.appSubPath)
-      .childDirectory('clash_config');
-  final file = configDir.childFile('config.yaml');
+  final file = configYaml;
+  final configDir = file.parent;
   final unixSocketPath = BaseConfig.unixSockPath.value;
 
   var data = {};
