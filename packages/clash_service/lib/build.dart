@@ -141,6 +141,53 @@ Future<void> buildClashServer(
       file: Uri.file(clashPath, windows: targetOs == .windows),
     ),
   );
+
+  if (targetOs == .macOS) {
+    final wakeMonitorDir = fs.currentDirectory
+        .childDirectory(input.packageRoot.path)
+        .childDirectory('plugins')
+        .childDirectory('clash_wake_monitor');
+    final swiftResult = await io.Process.run('swift', [
+      'build',
+      '--package-path',
+      wakeMonitorDir.path,
+      '-c',
+      'release',
+      '--product',
+      'ClashWakeMonitor',
+    ]);
+    if (swiftResult.exitCode != 0) {
+      throw Exception(
+        'swift build failed: ClashWakeMonitor.\n${swiftResult.stderr}',
+      );
+    }
+
+    final wakeMonitorPath = join(
+      wakeMonitorDir.path,
+      '.build',
+      'release',
+      'libClashWakeMonitor.dylib',
+    );
+    output.assets.data.add(
+      DataAsset(
+        package: packageName,
+        name: 'lib/clash_wake_monitor.dylib',
+        file: Uri.file(wakeMonitorPath, windows: false),
+      ),
+    );
+
+    final swiftSources = wakeMonitorDir.childDirectory('Sources');
+    if (await swiftSources.exists()) {
+      for (final item in swiftSources.listSync(recursive: true)) {
+        if (item case File file) {
+          output.dependencies.add(Uri.file(file.absolute.path));
+        }
+      }
+    }
+    output.dependencies.add(
+      Uri.file(wakeMonitorDir.childFile('Package.swift').absolute.path),
+    );
+  }
 }
 
 Future<void> directoryCopy(Directory from, Directory to) async {

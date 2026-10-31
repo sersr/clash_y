@@ -9,6 +9,8 @@ class HelperInstaller {
       '/Library/PrivilegedHelperTools/com.aote.clashy.helper';
   static const _helperClashlibDst =
       '/Library/PrivilegedHelperTools/com.aote.clashy.helper.clash';
+  static const _helperWakeMonitorDst =
+      '/Library/PrivilegedHelperTools/com.aote.clashy.helper.wake';
   static const _logFile = '/var/log/clashy-install.log';
 
   /// bundle 内源文件相对路径（相对于 .app 根目录）
@@ -18,6 +20,9 @@ class HelperInstaller {
   static const _clashRel =
       'Contents/Frameworks/App.framework/Versions/A/Resources/flutter_assets/'
       'packages/clash_service/lib/libclash.dylib';
+  static const _wakeMonitorRel =
+      'Contents/Frameworks/App.framework/Versions/A/Resources/flutter_assets/'
+      'packages/clash_service/lib/clash_wake_monitor.dylib';
 
   /// 当前 .app bundle 的绝对路径
   static String get _bundlePath {
@@ -29,6 +34,7 @@ class HelperInstaller {
 
   static String get _helperSrc => '$_bundlePath/$_helperRel';
   static String get _clashSrc => '$_bundlePath/$_clashRel';
+  static String get _wakeMonitorSrc => '$_bundlePath/$_wakeMonitorRel';
 
   /// helper 是否已安装并运行
   static Future<bool> isInstalled() async {
@@ -50,13 +56,19 @@ class HelperInstaller {
       final helperDst = File(_helperDst);
       final clashSrc = File(_clashSrc);
       final clashDst = File(_helperClashlibDst);
+      final wakeMonitorSrc = File(_wakeMonitorSrc);
+      final wakeMonitorDst = File(_helperWakeMonitorDst);
 
       if (!await helperSrc.exists() || !await helperDst.exists()) return false;
       if (!await clashSrc.exists() || !await clashDst.exists()) return false;
+      if (!await wakeMonitorSrc.exists() || !await wakeMonitorDst.exists()) {
+        return false;
+      }
       if (!await File(_plistPath).exists()) return false;
 
       return await _identical(helperSrc, helperDst) &&
-          await _identical(clashSrc, clashDst);
+          await _identical(clashSrc, clashDst) &&
+          await _identical(wakeMonitorSrc, wakeMonitorDst);
     } on FileSystemException {
       return false;
     }
@@ -113,6 +125,15 @@ if [ ! -f "$_helperSrc" ]; then
     exit 1
 fi
 
+if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
+    log "停止并卸载旧实例..."
+    if ! launchctl bootout "system/$_serviceId"; then
+        log "❌ bootout 旧实例失败，取消覆盖安装"
+        exit 1
+    fi
+    sleep 1
+fi
+
 mkdir -p /Library/PrivilegedHelperTools
 cp -f "$_helperSrc" "$_helperDst"
 chown root:wheel "$_helperDst"
@@ -130,6 +151,17 @@ chown root:wheel "$_helperClashlibDst"
 chmod 755 "$_helperClashlibDst"
 xattr -cr "$_helperClashlibDst" 2>/dev/null || true
 log "libclash.dylib 已安装到 $_helperClashlibDst"
+
+if [ ! -f "$_wakeMonitorSrc" ]; then
+    log "❌ 找不到系统唤醒监听库: $_wakeMonitorSrc"
+    exit 1
+fi
+
+cp -f "$_wakeMonitorSrc" "$_helperWakeMonitorDst"
+chown root:wheel "$_helperWakeMonitorDst"
+chmod 755 "$_helperWakeMonitorDst"
+xattr -cr "$_helperWakeMonitorDst" 2>/dev/null || true
+log "系统唤醒监听库已安装到 $_helperWakeMonitorDst"
 
 cat > "$_plistPath" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -154,12 +186,6 @@ PLIST
 chown root:wheel "$_plistPath"
 chmod 644 "$_plistPath"
 log "plist 已写入 $_plistPath"
-
-if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
-    log "卸载旧实例..."
-    launchctl bootout "system/$_serviceId" 2>/dev/null || true
-    sleep 1
-fi
 
 launchctl bootstrap system "$_plistPath" || log "bootstrap 失败，退出码 \$?"
 launchctl enable "system/$_serviceId" 2>/dev/null || true
@@ -242,7 +268,7 @@ if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
     launchctl bootout "system/$_serviceId" 2>/dev/null || true
 fi
 
-rm -f "$_plistPath" "$_helperDst" "$_helperClashlibDst"
+rm -f "$_plistPath" "$_helperDst" "$_helperClashlibDst" "$_helperWakeMonitorDst"
 echo "已卸载 $_serviceId"
 ''';
   }
