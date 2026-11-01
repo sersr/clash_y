@@ -34,7 +34,7 @@ Future<String> initConfigPath() async {
   }
 
   data['log-level'] = SettingsHive.logLevel.value.name;
-  data['mixed-port'] = SettingsHive.mixedProt.value;
+  data['mixed-port'] = SettingsHive.mixedPort.value;
   data['mode'] = SettingsHive.mode.value.name;
   data['ipv6'] = SettingsHive.ipv6.value;
   data['allow-lan'] = SettingsHive.allowLan.value;

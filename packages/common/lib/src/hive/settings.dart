@@ -1,54 +1,48 @@
 part of '../hive.dart';
 
-enum _Settings with StorageEnum {
-  allowApplications,
-  disAllowApplications,
+enum SettingsHive<T> with StorageEnum<T> {
+  allowApplications<List<String>>(),
+  disAllowApplications<List<String>>(),
 
-  mixedPort,
-  allowLan,
-  mode,
-  ipv6,
-  logLevel,
+  mixedPort<int>(),
+  allowLan<bool>(),
+  mode<SettingMode>(),
+  ipv6<bool>(),
+  logLevel<ClashLogLevel>(),
 
   /// tun
-  tunEnabled,
-  tunStack,
+  tunEnabled<bool>(),
+  tunStack<ClashTunStack>(),
 
   ///
 
-  applicationListMode;
+  applicationListMode<ApplicationListMode>();
+
+  @override
+  StorageTransform get transform {
+    switch (this) {
+      case .allowApplications:
+      case .disAllowApplications:
+        return .list(<String>[]);
+      case .applicationListMode:
+        return .new(ApplicationListMode.fromJson, ApplicationListMode.none);
+      case .mixedPort:
+        return .base(7890);
+      case .allowLan:
+        return .base(false);
+      case .mode:
+        return .new(SettingMode.fromJson, SettingMode.direct);
+      case .ipv6:
+        return .base(true);
+      case .logLevel:
+        return .new(ClashLogLevel.fromJson, ClashLogLevel.info);
+      case .tunEnabled:
+        return .base(false);
+      case .tunStack:
+        return .new(ClashTunStack.fromJson, ClashTunStack.mixed);
+    }
+  }
 
   @override
   StorageMixin get target => Hives.settings;
-}
-
-abstract final class SettingsHive {
-  static final allowApplications = _Settings.allowApplications.readDef(
-    .list(<String>[]),
-  );
-  static final disAllowApplications = _Settings.disAllowApplications.readDef(
-    .list(<String>[]),
-  );
-
-  static final applicationListMode = _Settings.applicationListMode.readDef(
-    .def(ApplicationListMode.fromJson, ApplicationListMode.none),
-  );
-
-  /// clash
-  static final mixedProt = _Settings.mixedPort.readDef(.nInt(7890));
-  static final allowLan = _Settings.allowLan.readDef(.boolean(false));
-  static final mode = _Settings.mode.readDef(
-    .def(SettingMode.fromJson, SettingMode.direct),
-  );
-
-  static final ipv6 = _Settings.ipv6.readDef(.boolean(true));
-  static final logLevel = _Settings.logLevel.readDef(
-    .def(ClashLogLevel.fromJson, ClashLogLevel.info),
-  );
-
-  /// tun
-  static final tunEnabled = _Settings.tunEnabled.readDef(.boolean(false));
-  static final tunStack = _Settings.tunStack.readDef(
-    .def(ClashTunStack.fromJson, ClashTunStack.mixed),
-  );
 }

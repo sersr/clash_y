@@ -7,6 +7,7 @@ private enum IOSVpnError: LocalizedError {
   case invalidArguments
   case tunnelNotConfigured
   case startTimedOut
+  case simulatorUnsupported
 
   var errorDescription: String? {
     switch self {
@@ -18,6 +19,8 @@ private enum IOSVpnError: LocalizedError {
       return "The iOS Packet Tunnel is not configured."
     case .startTimedOut:
       return "The iOS VPN did not connect before the timeout."
+    case .simulatorUnsupported:
+      return "The iOS VPN data plane can only run on a physical device; iOS Simulator is not supported."
     }
   }
 }
@@ -172,6 +175,9 @@ public final class ClashServicePlugin: NSObject, FlutterPlugin {
   }
 
   private static func start(configDirectory: String) async throws -> Bool {
+    #if targetEnvironment(simulator)
+    throw IOSVpnError.simulatorUnsupported
+    #else
     let manager = try await configuredManager(configDirectory: configDirectory)
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
@@ -189,6 +195,7 @@ public final class ClashServicePlugin: NSObject, FlutterPlugin {
     }
     manager.connection.stopVPNTunnel()
     throw IOSVpnError.startTimedOut
+    #endif
   }
 
   private static func updateProfile(configDirectory: String) async throws -> Bool {

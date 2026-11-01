@@ -8,6 +8,7 @@ import 'package:clashy/event/repository.dart';
 import 'package:common/common.dart';
 import 'package:dio/dio.dart';
 import 'package:file/file.dart';
+import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart';
 
@@ -356,7 +357,7 @@ final class ClashRequest {
             updateTime: DateTime.now(),
           );
           if (profile.id case var id?) {
-            BaseConfig.profiles[id] = profile;
+            BaseConfig.profiles.al.al[id] = profile;
           }
 
           final baseName = file.path;

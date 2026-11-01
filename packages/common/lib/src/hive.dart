@@ -1,16 +1,28 @@
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_nop/flutter_nop.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart';
 
-part 'hive/settings.dart';
 part 'hive/model.dart';
+part 'hive/settings.dart';
 
 enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
   settings,
   config,
   window;
+
+  static Iterable<StorageEnum> get items sync* {
+    for (var item in values) {
+      switch (item) {
+        case Hives.settings:
+          yield* SettingsHive.values;
+        case Hives.config:
+          yield* BaseConfig.values;
+        case Hives.window:
+          yield* WindowHive.values;
+      }
+    }
+  }
 
   static Iterable<Future<Box>> _openAll() =>
       values.map((e) => Hive.openBox(e.name));
@@ -21,47 +33,45 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
   }
 }
 
-enum ConfigKey with StorageEnum {
-  currentProfile,
-  profiles,
-  baseConfig,
-  unixSockPath;
+enum BaseConfig<T> with StorageEnum<T> {
+  currentProfile<Profile>(),
+  profiles<Map<String, Profile>>(),
+  baseConfig<MihomoRootConfig>(),
+  unixSockPath<String>();
 
   @override
   StorageMixin get target => Hives.config;
+
+  @override
+  StorageTransform get transform {
+    switch (this) {
+      case .currentProfile:
+        return .new(Profile.fromJson, Profile());
+      case .profiles:
+        return .map(Profile.fromJson, <String, Profile>{});
+      case .baseConfig:
+        return .new(MihomoRootConfig.fromJson, MihomoRootConfig());
+      case .unixSockPath:
+        return .base(
+          defaultTargetPlatform == .windows
+              ? r"\\.\pipe\clashy.pipe"
+              : join(G.appCachePath, 'clash_config', 'socket_clash.sock'),
+        );
+    }
+  }
 }
 
-abstract final class BaseConfig {
-  static final currentProfile = ConfigKey.currentProfile.readDef(
-    .fromJson(Profile.fromJson, Profile()),
-  );
-
-  static final profiles = ConfigKey.profiles
-      .readDef(.map(Profile.fromJson, <String, Profile>{}))
-      .al;
-
-  static final unixSockPath = ConfigKey.unixSockPath.readDef(
-    .string(
-      defaultTargetPlatform == .windows
-          ? r"\\.\pipe\clashy.pipe"
-          : join(G.appCachePath, 'clash_config', 'socket_clash.sock'),
-    ),
-  );
-
-  static final baseConfig = ConfigKey.baseConfig.readDef(
-    .fromJson(MihomoRootConfig.fromJson, MihomoRootConfig()),
-  );
-}
-
-enum _Window with StorageEnum {
-  windowRect;
+enum WindowHive<T> with StorageEnum<T> {
+  windowRect<WindowRect>();
 
   @override
   StorageMixin get target => Hives.window;
-}
 
-abstract final class WindowHive {
-  static final windowRect = _Window.windowRect.readDef(
-    .fromJson(WindowRect.fromJson, WindowRect.zero),
-  );
+  @override
+  StorageTransform get transform {
+    switch (this) {
+      case WindowHive.windowRect:
+        return .new(WindowRect.fromJson, WindowRect.zero);
+    }
+  }
 }

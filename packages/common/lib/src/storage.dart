@@ -1,106 +1,40 @@
 import 'dart:convert';
-import 'dart:ffi';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:nop/utils.dart';
 
-typedef StorageTransformFn<T> = T Function(dynamic data);
-typedef StorageTransformJsonFn<T> = T Function(Map<String, dynamic> data);
-
-extension type StorageTransformDef<T>._(StorageTransform<T> target)
-    implements StorageTransform<T> {
-  factory def(StorageTransformFn<T> fn, T defaultValue) {
-    return ._(.new(fn, defaultValue));
-  }
-
-  factory fromJson(StorageTransformJsonFn<T> fn, T defaultValue) {
-    return ._(.fromJson(fn, defaultValue));
-  }
-
-  factory base(T defaultValue) {
-    return ._(.base(defaultValue));
-  }
-
-  static StorageTransformDef<List<E>> list<E>(List<E> defaultValue) {
-    return ._(._(StorageTransform._list<E>, defaultValue));
-  }
-
-  static StorageTransformDef<List<E>> listDy<E>(
-    Function fn,
-    List<E> defaultValue,
-  ) {
-    return ._(.listDy<E>(fn, defaultValue));
-  }
-
-  static StorageTransformDef<Map<K, V>> map<K, V>(
-    Function fn,
-    Map<K, V> defaultValue,
-  ) {
-    return ._(.map<K, V>(fn, defaultValue));
-  }
-
-  static StorageTransformDef<String> string(String defaultValue) {
-    return .base(defaultValue);
-  }
-
-  static StorageTransformDef<bool> boolean(bool defaultValue) {
-    return .base(defaultValue);
-  }
-
-  static StorageTransformDef<int> nInt(int defaultValue) {
-    return .base(defaultValue);
-  }
-
-  static StorageTransformDef<Double> nDouble(Double defaultValue) {
-    return .base(defaultValue);
-  }
-
-  static StorageTransformDef<num> nNum(num defaultValue) {
-    return .base(defaultValue);
-  }
-}
-
-final class StorageTransform<T> {
+final class StorageTransform {
   final Function fn;
-  final T? defaultValue;
-  const new(StorageTransformFn<T> this.fn, [this.defaultValue]);
-  const new fromJson(StorageTransformJsonFn<T> this.fn, [this.defaultValue]);
-  const new _(this.fn, this.defaultValue);
-  const new base([this.defaultValue]) : fn = _base;
+  final dynamic defaultValue;
 
-  static StorageTransform<List<E>> list<E>([List<E>? defaultValue]) {
-    return ._(_list<E>, defaultValue);
+  final ValueNotifier Function(dynamic v)? createN;
+  const new(this.fn, [this.defaultValue, this.createN]);
+  const new base([this.defaultValue, this.createN]) : fn = _base;
+
+  ValueNotifier? createNotifier(dynamic value) {
+    if (createN case var create?) {
+      return create(value);
+    }
+
+    return null;
   }
 
-  static StorageTransform<List<E>> listDy<E>(
-    Function fn, [
-    List<E>? defaultValue,
-  ]) {
-    return ._((List list) => list.map((e) => fn(e)).toList(), defaultValue);
+  static StorageTransform list<E>([List<E>? defaultValue]) {
+    return .new(_list<E>, defaultValue, (value) => AList<E>(value ?? <E>[]));
   }
 
-  static StorageTransform<Map<K, E>> map<K, E>(
-    Function fn, [
-    Map<K, E>? defaultValue,
-  ]) {
-    return ._(
+  static List Function(List list) listDy(Function fn) =>
+      (List list) => list.map((e) => fn(e)).toList();
+
+  static StorageTransform map<K, E>(Function fn, [Map<K, E>? defaultValue]) {
+    return .new(
       (Map map) => map.map<K, E>((k, v) => MapEntry(k, fn(v))),
       defaultValue,
+      (value) => AMap<K, E>(value ?? <K, E>{}),
     );
   }
-
-  static StorageTransform<String> string([String? defaultValue]) =>
-      .base(defaultValue);
-  static StorageTransform<bool> boolean([bool? defaultValue]) =>
-      .base(defaultValue);
-
-  static StorageTransform<int> nInt([int? defaultValue]) => .base(defaultValue);
-  static StorageTransform<Double> nDouble([Double? defaultValue]) =>
-      .base(defaultValue);
-
-  static StorageTransform<num> nNum([num? defaultValue]) => .base(defaultValue);
 
   static dynamic _base(dynamic v) => v;
   static List<E> _list<E>(List v) => v.cast();
@@ -136,15 +70,24 @@ mixin StorageMixinHive on StorageMixin {
   }
 }
 
-mixin StorageEnum on Enum {
+mixin StorageEnum<D> on Enum {
   StorageMixin get target;
-  AV<T> readDef<T>(StorageTransformDef<T> transform) {
-    return target.read(this, transform) as AV<T>;
+
+  D get value {
+    return al.value;
   }
 
-  AV<T?> read<T>(StorageTransform<T> transform) {
-    return target.read(this, transform);
+  AutoValueNotifier<D> get al {
+    return target.readLate<D>(this, _transform) as AutoValueNotifier<D>;
   }
+
+  StorageTransform _transform() => transform;
+
+  set value(D value) {
+    al.value = value;
+  }
+
+  StorageTransform get transform;
 }
 
 mixin StorageMixin {
@@ -178,34 +121,43 @@ mixin StorageMixin {
     return null;
   }
 
-  AV<T> readDef<T>(Object key, StorageTransformDef<T> transform) {
-    return read(key, transform) as AV<T>;
+  AV<T> readDef<T>(Object key, StorageTransform transform) {
+    return read<T>(key, transform) as AV<T>;
   }
 
-  AV<T?> read<T>(Object key, StorageTransform<T> transform) {
+  AV<T?> read<T>(Object key, StorageTransform transform) {
+    return readLate<T>(key, () => transform);
+  }
+
+  AV<T?> readLate<T>(Object key, StorageTransform Function() transform) {
     if (StorageMixin._weekRef[key] case _Wrapper(
       value: WeakReference(target: ValueNotifier<T?> target),
     )) {
       return target.al;
     }
 
-    final v = _read<T>(key, transform) ?? transform.defaultValue;
-    ValueNotifier<T?> obx;
-    if (v != null) {
-      obx = ValueNotifier<T>(v);
-    } else {
-      obx = .new(v);
+    final t = transform();
+
+    final v = _read<T>(key, t) ?? t.defaultValue;
+    var obx = t.createNotifier(v) as ValueNotifier<T?>?;
+    if (obx == null) {
+      if (v != null) {
+        obx = ValueNotifier<T>(v);
+      } else {
+        obx = .new(v);
+      }
     }
 
-    obx.addListener(() {
-      _saveData(key, obx.value);
+    final o = obx;
+    o.addListener(() {
+      _saveData(key, o.value);
     });
-    StorageMixin._wrap(key, obx);
+    StorageMixin._wrap(key, o);
 
-    return obx.al;
+    return o.al;
   }
 
-  T? _read<T>(Object key, StorageTransform<T> transform) {
+  T? _read<T>(Object key, StorageTransform transform) {
     return wrapSync(() {
       final data = get(key);
       if (data == null) {

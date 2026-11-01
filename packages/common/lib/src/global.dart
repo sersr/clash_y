@@ -1,4 +1,5 @@
 import 'package:common/src/hive.dart';
+import 'package:meta/meta.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -22,6 +23,19 @@ abstract final class G {
         _appCachePath = join(cache.path, 'clashy');
       }),
     ].wait;
+
+    return Hives.init(join(appSubPath, 'hives'));
+  }
+
+  @visibleForTesting
+  static Future<void> initTest() async {
+    final docDir = './.testData/doc';
+    final dir = './.testData/dir';
+    final cache = './.testData/cache';
+    _appPath = join(docDir, 'clashy');
+
+    _appSubPath = join(dir, 'clashy');
+    _appCachePath = join(cache, 'clashy');
 
     return Hives.init(join(appSubPath, 'hives'));
   }

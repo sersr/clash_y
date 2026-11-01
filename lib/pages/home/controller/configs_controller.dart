@@ -16,7 +16,7 @@ class ConfigsController with NopLifecycle {
   /// Periodic profile refreshes, keyed by profile id.
   final _autoUpdates = <String, ({Timer timer, int minutes})>{};
 
-  AMap<String, Profile> get profiles => BaseConfig.profiles;
+  AMap<String, Profile> get profiles => BaseConfig.profiles.al.al;
   bool isCurrent(Profile profile) {
     return BaseConfig.currentProfile.value.isCurrent(profile);
   }

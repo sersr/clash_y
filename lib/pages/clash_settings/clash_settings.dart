@@ -118,14 +118,14 @@ class _ClashSettingsState extends State<ClashSettings> {
           child: Column(
             children: [
               Cs(() {
-                final mixedPort = SettingsHive.mixedProt.value;
+                final mixedPort = SettingsHive.mixedPort.value;
                 return SettingItem(
                   label: "Mixed Port",
                   value: '$mixedPort',
                   onTap: () async {
                     final port = await _inputEdit("Mixed Port", '$mixedPort');
                     if (int.tryParse(port) case var port?) {
-                      SettingsHive.mixedProt.value = port;
+                      SettingsHive.mixedPort.value = port;
                     }
                   },
                 );
