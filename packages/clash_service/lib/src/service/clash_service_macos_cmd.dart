@@ -94,12 +94,19 @@ class HelperInstaller {
     });
   }
 
-  /// LaunchDaemon 当前配置是否与 bundle 资源生成的 plist 一致。
+  /// LaunchDaemon 当前配置是否与 app bundle 路径生成的 plist 一致。
   static Future<bool> _isUpToDate(String expectedPlist) async {
     try {
       final plist = File(_plistPath);
-      return await plist.exists() &&
-          await plist.readAsString() == expectedPlist;
+      if (!await plist.exists()) return false;
+      final installedPlist = (await plist.readAsString()).replaceAll(
+        RegExp(
+          r'^[ \t]*<!-- Bundle asset SHA-256: (?:[0-9a-f]{64})(?: [0-9a-f]{64})* -->\r?\n',
+          multiLine: true,
+        ),
+        '',
+      );
+      return installedPlist == expectedPlist;
     } on FileSystemException {
       return false;
     }
@@ -179,8 +186,8 @@ class HelperInstaller {
 
   /// 安装 helper（弹系统密码框）。
   ///
-  /// LaunchDaemon 直接运行受保护 app bundle 中的 helper；plist 未变化时
-  /// 不重新注册，服务未运行时只启动服务。
+  /// LaunchDaemon 直接运行 app bundle 中的 helper。配置只依赖 bundle 路径，
+  /// 避免 clean 后重编译的二进制哈希变化导致重复请求管理员授权。
   static Future<void> install() async {
     await _validateBundleAssets();
     final plist = await _launchDaemonPlist();
@@ -290,11 +297,6 @@ exit 1
   }
 
   static Future<String> _launchDaemonPlist() async {
-    final assetHashes = await Future.wait([
-      _sha256(_helperSrc),
-      _sha256(_clashSrc),
-      _sha256(_wakeMonitorSrc),
-    ]);
     final arguments = [
       _helperSrc,
       '--clash-library',
@@ -311,7 +313,6 @@ exit 1
 <dict>
     <key>Label</key>
     <string>$_serviceId</string>
-    <!-- Bundle asset SHA-256: ${assetHashes.join(' ')} -->
     <key>ProgramArguments</key>
     <array>$programArguments</array>
     <key>RunAtLoad</key>
@@ -328,25 +329,6 @@ exit 1
 </dict>
 </plist>
 ''';
-  }
-
-  static Future<String> _sha256(String path) async {
-    final result = await Process.run('/usr/bin/shasum', ['-a', '256', path]);
-    if (result.exitCode != 0) {
-      throw ProcessException(
-        '/usr/bin/shasum',
-        ['-a', '256', path],
-        '${result.stderr}',
-        result.exitCode,
-      );
-    }
-    final digest = (result.stdout as String).trim().split(RegExp(r'\s+')).first;
-    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(digest)) {
-      throw FormatException(
-        'Unexpected SHA-256 output for $path: ${result.stdout}',
-      );
-    }
-    return digest;
   }
 
   static String _escapeXml(String value) => value
