@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:clashy/pages/home/controller/configs_controller.dart';
+import 'package:clashy/pages/home/widget/clash_config_url.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
@@ -47,13 +50,21 @@ class ProfileItem extends StatelessWidget {
               ),
             ),
             6.verticalSpace,
-            Text(
-              updateTime.difference(DateTime.now()).ago,
-              style: .new(
-                color: Color(0xFF666666),
-                fontSize: 13.sp,
-                fontWeight: .w400,
-              ),
+            _RefreshTime(
+              start: updateTime,
+              onRefrsh: () {
+                clashConfigNotifier.updateConfigData(item);
+              },
+              builder: (context) {
+                return Text(
+                  updateTime.difference(DateTime.now()).ago,
+                  style: .new(
+                    color: Color(0xFF666666),
+                    fontSize: 13.sp,
+                    fontWeight: .w400,
+                  ),
+                );
+              },
             ),
           ],
         );
@@ -135,6 +146,20 @@ class _MenuState extends State<_Menu> {
         custom(Icons.sync, "Update", () {
           configs.updateConfigData(widget.item);
         }),
+        custom(Icons.edit_note_outlined, "Edit", () async {
+          final controller = getType<ConfigsController>();
+          await Future.delayed(.new(milliseconds: 300));
+          final res = await updateOrCreateProfile(true, widget.item);
+          if (res == null) return;
+
+          controller.profiles.update(widget.item.id!, (profile) {
+            return profile.copyWith(
+              url: res.url,
+              name: res.name,
+              updateInterval: res.interval,
+            );
+          });
+        }),
         custom(Icons.copy, "Copy Url", () {
           copy(widget.item.url ?? '');
         }),
@@ -214,5 +239,61 @@ class _MenuState extends State<_Menu> {
         ],
       ),
     );
+  }
+}
+
+class _RefreshTime extends StatefulWidget {
+  const new({required this.builder, required this.start, this.onRefrsh});
+  final WidgetBuilder builder;
+  final DateTime start;
+  final VoidCallback? onRefrsh;
+  @override
+  State<_RefreshTime> createState() => __RefreshTimeState();
+}
+
+class __RefreshTimeState extends State<_RefreshTime> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    _setTimer();
+    super.initState();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RefreshTime oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.start != oldWidget.start) {
+      _setTimer();
+    }
+  }
+
+  void _setTimer() {
+    _timer?.cancel();
+    final now = DateTime.now();
+    final start = widget.start;
+    final diff = now.difference(start);
+    Duration delay;
+    if (diff.inDays > 0) {
+      delay = Duration(days: 1);
+    } else if (diff.inHours > 0) {
+      delay = Duration(hours: 1);
+    } else {
+      delay = Duration(minutes: 1);
+    }
+
+    _timer = Timer(delay, refresh);
+  }
+
+  void refresh() {
+    if (!mounted) return;
+    setState(() {});
+    _setTimer();
+    widget.onRefrsh?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(context);
   }
 }

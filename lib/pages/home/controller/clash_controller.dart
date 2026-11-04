@@ -90,7 +90,7 @@ class ClashController with NopLifecycle {
 
         final path = await initConfigPath();
         final profile = BaseConfig.currentProfile.value.toClashProfile(path);
-
+  
         final success = await ClashService.start(
           profile,
           allowList: isAllowList,

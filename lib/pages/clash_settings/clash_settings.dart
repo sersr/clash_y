@@ -181,7 +181,7 @@ class _ClashSettingsState extends State<ClashSettings> {
 
 Future<String> _inputEdit(String label, String initValue) async {
   final res = await showCenterDialog(
-    currentContext!,
+    currentContext,
     alignment: .new(0, -0.3),
     _Dialog(initValue: initValue),
   );

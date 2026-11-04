@@ -240,8 +240,6 @@ final class ClashRequest {
         data: {'path': configPath},
         queryParameters: {'force': true},
       );
-      // Log.w(text);
-      // Log.w(text2);
       Log.i(response.data);
     } catch (e) {
       Log.i(e);
@@ -280,26 +278,6 @@ final class ClashRequest {
     );
   }
 
-  Map<String, int> _parseSubscriptionUserInfo(String info) {
-    final values = <String, int>{};
-    for (final part in info.split(';')) {
-      final separator = part.indexOf('=');
-      if (separator < 0) continue;
-
-      final key = part.substring(0, separator).trim().toLowerCase();
-      if (key != 'upload' &&
-          key != 'download' &&
-          key != 'total' &&
-          key != 'expire') {
-        continue;
-      }
-
-      final value = int.tryParse(part.substring(separator + 1).trim());
-      if (value != null) values[key] = value;
-    }
-    return values;
-  }
-
   final dlConfigDio = Dio();
 
   /// The freshest copy of [profile] known to the store.
@@ -324,58 +302,56 @@ final class ClashRequest {
       var file = getFile(url);
 
       try {
-        final fileExists = file.existsSync();
-        final config = profile;
+        final fileExists = await file.exists();
+        if (fileExists && !profile.shouldUpdate()) return false;
 
-        if (!fileExists || config.shouldUpdate()) {
-          Log.w('update: $url');
+        Log.w('update: $url');
 
-          final responseFile = await dlConfigDio.get<String>(
-            url,
-            options: .new(
-              responseType: ResponseType.plain,
-              headers: {'User-Agent': 'clash/mihomo'},
-            ),
-          );
-          final fileData = responseFile.data;
-          final info =
-              responseFile.headers['subscription-userinfo']?.firstOrNull ?? '';
-          Log.w("header: $info");
-          final disposition = responseFile.headers['content-disposition'];
+        final responseFile = await dlConfigDio.get<String>(
+          url,
+          options: .new(
+            responseType: ResponseType.plain,
+            headers: {'User-Agent': 'clash/mihomo'},
+          ),
+        );
+        final fileData = responseFile.data;
+        final info =
+            responseFile.headers['subscription-userinfo']?.firstOrNull ?? '';
 
-          final fileName = getFilenameFromContentDisposition(
-            disposition?.join(''),
-          );
-          final userInfo = _parseSubscriptionUserInfo(info);
+        final disposition = responseFile.headers['content-disposition'];
 
-          profile = profile.copyWith(
-            rawName: fileName,
-            upload: userInfo['upload'],
-            download: userInfo['download'],
-            total: userInfo['total'],
-            expire: userInfo['expire'],
-            updateTime: DateTime.now(),
-          );
-          if (profile.id case var id?) {
-            BaseConfig.profiles.al.al[id] = profile;
+        final fileName = _getFilenameFromContentDisposition(
+          disposition?.join(''),
+        );
+        final userInfo = _parseSubscriptionUserInfo(info);
+
+        profile = profile.copyWith(
+          rawName: fileName,
+          upload: userInfo['upload'],
+          download: userInfo['download'],
+          total: userInfo['total'],
+          expire: userInfo['expire'],
+          updateTime: DateTime.now(),
+        );
+
+        if (profile.id case var id?) {
+          BaseConfig.profiles.al.al[id] = profile;
+        }
+
+        final baseName = file.path;
+
+        if (fileData != null) {
+          final fileTemp = file.parent.childFile('$baseName.temp');
+          if (!await fileTemp.exists()) {
+            await fileTemp.create(recursive: true);
           }
 
-          final baseName = file.path;
-
-          if (fileData != null) {
-            final editor = YamlUtils.edit(fileData);
-
-            updateDelegateConfig(editor);
-            final fileTemp = file.parent.childFile('$baseName.temp');
-            if (!await fileTemp.exists()) {
-              await fileTemp.create(recursive: true);
-            }
-            fileTemp.writeAsStringSync(editor.toString());
-            if (!fileExists) {
-              file.createSync(recursive: true);
-            }
-            fileTemp.renameSync(file.path);
+          await fileTemp.writeAsString(fileData);
+          if (!await file.exists()) {
+            await file.create(recursive: true);
           }
+
+          await fileTemp.rename(file.path);
         }
       } catch (e) {
         Log.e(e);
@@ -395,32 +371,9 @@ final class ClashRequest {
 
     return res ?? false;
   }
-
-  void updateDelegateConfig(YamlEditor editor) {
-    Log.w(editor.toString());
-    editor
-      ..update([
-        'log-level',
-      ], const bool.fromEnvironment('dart.vm.product') ? 'warning' : 'debug')
-      ..update(['mode'], 'rule')
-      ..update(['mixed-port'], 7890)
-      ..update(['allow-lan'], false)
-      ..update(['dns'], defaultDnsConfig());
-    // ipv6:
-    // ntp:
-    // geodata-mode:
-    // geox-url:
-    // geo-auto-update:
-    // geo-update-interval: 24
-    // rule-providers:
-    //
-    //
-    // 'dns':
-    // 'rules':
-  }
 }
 
-String? getFilenameFromContentDisposition(String? header) {
+String? _getFilenameFromContentDisposition(String? header) {
   if (header == null || header.isEmpty) return null;
 
   // 1) 优先解析 RFC 5987 的 filename*=charset'lang'encoded
@@ -469,4 +422,24 @@ String? getFilenameFromContentDisposition(String? header) {
   }
 
   return null;
+}
+
+Map<String, int> _parseSubscriptionUserInfo(String info) {
+  final values = <String, int>{};
+  for (final part in info.split(';')) {
+    final separator = part.indexOf('=');
+    if (separator < 0) continue;
+
+    final key = part.substring(0, separator).trim().toLowerCase();
+    if (key != 'upload' &&
+        key != 'download' &&
+        key != 'total' &&
+        key != 'expire') {
+      continue;
+    }
+
+    final value = int.tryParse(part.substring(separator + 1).trim());
+    if (value != null) values[key] = value;
+  }
+  return values;
 }

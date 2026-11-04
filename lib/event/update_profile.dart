@@ -1,61 +1,53 @@
 import 'dart:async';
 
-import 'package:clashy/event/repository.dart';
 import 'package:common/common.dart';
-import 'package:flutter_nop/flutter_nop.dart';
+import 'package:nop/nop.dart';
 
-final class UpdateProfileData {
-  final String id;
-  final int? updateIntervalM;
-
-  new(this.id, this.updateIntervalM);
-  new from(Profile data)
-    : id = data.id ?? '',
-      updateIntervalM = data.updateInterval;
-
-  Duration? get updateInterval {
-    if (updateIntervalM == null) return null;
-    if (updateIntervalM case var u? when u <= 0) return null;
-    return Duration(minutes: updateIntervalM ?? 0);
+final class AutoUpdateProfile {
+  AutoUpdateProfile(this.data, this.refresh) {
+    autoUpdateProfile();
   }
-
-  @override
-  int get hashCode => Object.hash(id, updateIntervalM);
-
-  @override
-  bool operator ==(Object other) {
-    if (other is! UpdateProfileData) return false;
-    return runtimeType == other.runtimeType &&
-        id == other.id &&
-        updateIntervalM == other.updateIntervalM;
-  }
-}
-
-extension on Profile {
-  UpdateProfileData get data => .from(this);
-}
-
-mixin AutoUpdateProfileMixin on NopLifecycle {
   Timer? _timer;
-  Profile? _data;
+  final Profile data;
+  final Future<void> Function() refresh;
 
-  late final repo = getType<Repository>();
-  void autoUpdateProfile(Profile data) {
-    if (_data == data) return;
-    final lastData = _data?.data;
-    final currentData = data.data;
-    _data = data;
-    if (lastData == currentData) return;
+  var _closed = false;
+
+  void close() {
     _timer?.cancel();
-
-    final interval = currentData.updateInterval;
-    if (interval == null) return;
-    _timer = Timer.periodic(interval, _onUpdate);
+    _closed = true;
   }
 
-  void _onUpdate(Timer timer) {
-    if (_data case var data?) {
-      repo.clashEvent.reloadConfigs(data);
+  void autoUpdateProfile() {
+    _timer?.cancel();
+    if (_closed) return;
+
+    var interval = data.updateInterval;
+    final lastUpdate = data.updateTime;
+    if (interval == null) return;
+    final rawInt = interval;
+    if (rawInt <= 0) return;
+
+    if (lastUpdate == null) {
+      interval = 0;
+    } else {
+      final now = DateTime.now();
+      interval = interval - now.difference(lastUpdate).inMinutes;
     }
+
+    interval = interval.clamp(0, rawInt);
+
+    var delay = Duration(minutes: interval);
+    _timer = Timer(delay, _onUpdate);
+  }
+
+  void _onUpdate() async {
+    if (_closed) return;
+    try {
+      await refresh();
+    } catch (e) {
+      Log.e(e);
+    }
+    autoUpdateProfile();
   }
 }

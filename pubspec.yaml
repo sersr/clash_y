@@ -70,6 +70,7 @@ dependency_overrides:
     path: packages/clash_core
   overlays:
     path: ../packages/overlays
+  image_gallery_saver_plus: ^5.1.1
 
 flutter:
   uses-material-design: true

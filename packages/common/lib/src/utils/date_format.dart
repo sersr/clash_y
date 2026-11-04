@@ -1,8 +1,8 @@
 import 'dart:math' as math;
 
-
-import 'package:common/src/navigator_observer.dart';
 import 'package:intl/intl.dart';
+
+import '../../common.dart';
 
 String formatDate(DateTime date, {String format = 'yyyy-MM-dd'}) {
   try {
@@ -176,8 +176,9 @@ String formatLocalNum(String source) {
       }
     }
   }
-  final intPart =
-      source.replaceAllMapped(RegExp(r'(?<=\d)(?=(\d{3})+$)'), (match) {
+  final intPart = source.replaceAllMapped(RegExp(r'(?<=\d)(?=(\d{3})+$)'), (
+    match,
+  ) {
     return ',';
   });
   assert(() {

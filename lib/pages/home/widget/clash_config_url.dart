@@ -37,7 +37,7 @@ class _ClashProfilesState extends State<ClashProfiles> {
       ),
       trailing: InkButton(
         onPressed: () {
-          _addNewConfig();
+          _newProfile();
         },
         backgroundColor: Colors.transparent,
         shape: CircleBorder(),
@@ -85,22 +85,38 @@ class _ClashProfilesState extends State<ClashProfiles> {
     );
   }
 
-  Future<void> _addNewConfig() async {
-    final res = await showCenterDialog(currentContext!, _NewConfig());
+  Future<void> _newProfile() async {
+    final res = await updateOrCreateProfile(false, null);
 
-    if (res case (
-      url: String url,
-      name: String name,
-      interval: int? interval,
-    )) {
-      await clashConfigNotifier.addNewConfigUrl(url, name, interval);
+    if (res != null) {
+      await clashConfigNotifier.addNewConfigUrl(
+        res.url,
+        res.name,
+        res.interval,
+      );
     }
   }
 }
 
-class _NewConfig extends StatefulWidget {
-  const new();
+Future<({String url, String name, int? interval})?> updateOrCreateProfile(
+  bool isEdit,
+  Profile? profile,
+) async {
+  final res = await showCenterDialog(
+    currentContext,
+    _NewConfig(isEdit: isEdit, profile: profile),
+  );
 
+  if (res case (url: String _, name: String _, interval: int? _)) {
+    return res;
+  }
+  return null;
+}
+
+class _NewConfig extends StatefulWidget {
+  const new({required this.isEdit, required this.profile});
+  final bool isEdit;
+  final Profile? profile;
   @override
   State<_NewConfig> createState() => _NewConfigState();
 }
@@ -109,6 +125,14 @@ class _NewConfigState extends State<_NewConfig> {
   final editName = TextEditingController();
   final editUrl = TextEditingController();
   final editInterval = TextEditingController();
+
+  @override
+  void initState() {
+    editName.text = widget.profile?.name ?? '';
+    editUrl.text = widget.profile?.url ?? '';
+    editInterval.text = widget.profile?.updateInterval?.toString() ?? '';
+    super.initState();
+  }
 
   @override
   void dispose() {
@@ -121,14 +145,14 @@ class _NewConfigState extends State<_NewConfig> {
   @override
   Widget build(BuildContext context) {
     final title = Text(
-      "New Profile",
+      widget.isEdit ? "Update Profile" : "New Profile",
       style: .new(fontSize: 15.sp, fontWeight: .w400),
     );
 
     final editNameW = TextField(
       controller: editName,
       style: .new(
-        color: ColorM.list(.color(.new(0xFF333333))),
+        color: CT.color(.new(0xFF333333)).color,
         fontSize: 14.sp,
         fontWeight: .w400,
       ),
@@ -136,24 +160,25 @@ class _NewConfigState extends State<_NewConfig> {
       decoration: .new(
         isCollapsed: true,
         contentPadding: .symmetric(vertical: 16.h, horizontal: 8.w),
-        hintText: "Profile name (Optional)",
+        hintText: widget.profile?.rawName ?? "Profile name (Optional)",
         hintStyle: .new(
-          color: ColorM.list(
-            .new(light: .new(0xFF434343), dark: .fromARGB(100, 100, 100, 100)),
-          ),
+          color: CT(
+            light: .fromARGB(255, 160, 160, 160),
+            dark: .fromARGB(100, 100, 100, 100),
+          ).color,
           fontSize: 14.sp,
           fontWeight: .w400,
         ),
         border: .none,
         focusedBorder: ShapedInputBorder(
           borderSide: .new(
-            color: ColorM.textFieldBorderColorFocus(),
+            color: CT.textFieldBorderColorFocus.color,
             width: 2.r,
           ),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
         enabledBorder: ShapedInputBorder(
-          borderSide: .new(color: ColorM.textFieldBorderColor(), width: 1.6.r),
+          borderSide: .new(color: CT.textFieldBorderColor.color, width: 1.6.r),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
       ),
@@ -162,7 +187,7 @@ class _NewConfigState extends State<_NewConfig> {
     final editUrlW = TextField(
       controller: editUrl,
       style: .new(
-        color: ColorM.list(.color(.new(0xFF333333))),
+        color: CT.color(.new(0xFF333333)).color,
         fontSize: 14.sp,
         fontWeight: .w400,
       ),
@@ -172,22 +197,23 @@ class _NewConfigState extends State<_NewConfig> {
         contentPadding: .symmetric(vertical: 16.h, horizontal: 8.w),
         hintText: "Subscribe URL (Required)",
         hintStyle: .new(
-          color: ColorM.list(
-            .new(light: .new(0xFF434343), dark: .fromARGB(100, 100, 100, 100)),
-          ),
+          color: CT(
+            light: .fromARGB(255, 160, 160, 160),
+            dark: .fromARGB(100, 100, 100, 100),
+          ).color,
           fontSize: 14.sp,
           fontWeight: .w400,
         ),
         border: .none,
         focusedBorder: ShapedInputBorder(
           borderSide: .new(
-            color: ColorM.textFieldBorderColorFocus(),
+            color: CT.textFieldBorderColorFocus.color,
             width: 2.r,
           ),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
         enabledBorder: ShapedInputBorder(
-          borderSide: .new(color: ColorM.textFieldBorderColor(), width: 1.6.r),
+          borderSide: .new(color: CT.textFieldBorderColor.color, width: 1.6.r),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
       ),
@@ -195,7 +221,7 @@ class _NewConfigState extends State<_NewConfig> {
     final editIntervalW = TextField(
       controller: editInterval,
       style: .new(
-        color: ColorM.list(.color(.new(0xFF333333))),
+        color: CT.color(.new(0xFF333333)).color,
         fontSize: 14.sp,
         fontWeight: .w400,
       ),
@@ -207,22 +233,23 @@ class _NewConfigState extends State<_NewConfig> {
         contentPadding: .symmetric(vertical: 16.h, horizontal: 8.w),
         hintText: "Update interval (Minutes)",
         hintStyle: .new(
-          color: ColorM.list(
-            .new(light: .new(0xFF434343), dark: .fromARGB(100, 100, 100, 100)),
-          ),
+          color: CT(
+            light: .fromARGB(255, 160, 160, 160),
+            dark: .fromARGB(100, 100, 100, 100),
+          ).color,
           fontSize: 14.sp,
           fontWeight: .w400,
         ),
         border: .none,
         focusedBorder: ShapedInputBorder(
           borderSide: .new(
-            color: ColorM.textFieldBorderColorFocus(),
+            color: CT.textFieldBorderColorFocus.color,
             width: 2.r,
           ),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
         enabledBorder: ShapedInputBorder(
-          borderSide: .new(color: ColorM.textFieldBorderColor(), width: 1.6.r),
+          borderSide: .new(color: CT.textFieldBorderColor.color, width: 1.6.r),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
       ),
@@ -253,17 +280,17 @@ class _NewConfigState extends State<_NewConfig> {
         Nav.back((url: url, name: name, interval: intervalM));
       },
       padding: .symmetric(vertical: 10.h, horizontal: 32.w),
-      overlayColor: ColorM.list(
-        .new(light: const Color(0x35FFFFFF), dark: const Color(0x35FFFFFF)),
-      ),
+      overlayColor: CT(
+        light: const Color(0x35FFFFFF),
+        dark: const Color(0x35FFFFFF),
+      ).color,
       borderRadius: .circular(12.r),
-      backgroundColor: ColorM.list(.new(light: Colors.blue, dark: Colors.blue)),
+      backgroundColor: CT(light: Colors.blue, dark: Colors.blue).color,
+
       child: Text(
-        "Add",
+        widget.isEdit ? 'Update' : "Add",
         style: .new(
-          color: ColorM.list(
-            .new(light: .new(0xFFFFFFFF), dark: .new(0xFF333333)),
-          ),
+          color: CT(light: .new(0xFFFFFFFF), dark: .new(0xFF333333)).color,
         ),
       ),
     );
@@ -272,25 +299,27 @@ class _NewConfigState extends State<_NewConfig> {
         Nav.back();
       },
       padding: .symmetric(vertical: 10.h, horizontal: 32.w),
-      overlayColor: ColorM.list(
-        .new(light: const Color(0x35A0A0A0), dark: const Color(0x35A0A0A0)),
-      ),
+      overlayColor: CT(
+        light: const Color(0x35A0A0A0),
+        dark: const Color(0x35A0A0A0),
+      ).color,
       borderRadius: .circular(12.r),
-      backgroundColor: ColorM.list(
-        .new(light: Colors.transparent, dark: Colors.transparent),
-      ),
+      backgroundColor: CT(
+        light: Colors.transparent,
+        dark: Colors.transparent,
+      ).color,
+
       side: .new(
-        color: ColorM.list(
-          .new(light: const Color(0x488A8A8A), dark: const Color(0x488A8A8A)),
-        ),
+        color: CT(
+          light: const Color(0x488A8A8A),
+          dark: const Color(0x488A8A8A),
+        ).color,
         width: 1.5.r,
       ),
       child: Text(
         "Cancel",
         style: .new(
-          color: ColorM.list(
-            .new(light: .new(0xFF3A3A3A), dark: .new(0xFF3A3A3A)),
-          ),
+          color: CT(light: .new(0xFF3A3A3A), dark: .new(0xFF3A3A3A)).color,
         ),
       ),
     );
@@ -323,7 +352,7 @@ class _NewConfigState extends State<_NewConfig> {
         borderRadius: .circular(12.r),
       ),
       padding: .symmetric(vertical: 14.h, horizontal: 14.w),
-      margin: .symmetric(horizontal: 16.w),
+      margin: .symmetric(horizontal: 32.w),
       child: body,
     );
 

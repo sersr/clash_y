@@ -46,7 +46,7 @@ void initLog() {
 }
 
 void initController() {
-  Routes.init(observers: [globalObserver, Overlays]);
+  Routes.init(observers: [GlobalContext.globalObserver, Overlays]);
   router.put(() => Repository());
   router.put(() => ClashController());
   router.put(() => ClashConnectionController());

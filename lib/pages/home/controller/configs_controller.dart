@@ -6,6 +6,7 @@ import 'package:nop/nop.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../event/repository.dart';
+import '../../../event/update_profile.dart';
 import 'clash_controller.dart';
 
 class ConfigsController with NopLifecycle {
@@ -14,7 +15,7 @@ class ConfigsController with NopLifecycle {
   late final ClashController clash = getType();
 
   /// Periodic profile refreshes, keyed by profile id.
-  final _autoUpdates = <String, ({Timer timer, int minutes})>{};
+  final _autoUpdates = <String, AutoUpdateProfile>{};
 
   AMap<String, Profile> get profiles => BaseConfig.profiles.al.al;
   bool isCurrent(Profile profile) {
@@ -32,7 +33,7 @@ class ConfigsController with NopLifecycle {
   void nopDispose() {
     profiles.removeListener(_syncAutoUpdates);
     for (final entry in _autoUpdates.values) {
-      entry.timer.cancel();
+      entry.close();
     }
     _autoUpdates.clear();
     super.nopDispose();
@@ -49,25 +50,14 @@ class ConfigsController with NopLifecycle {
 
       final id = entry.key;
       scheduled.add(id);
-      final running = _autoUpdates[id];
-      if (running != null && running.minutes == minutes) continue;
+      _autoUpdates.remove(id)?.close();
 
-      running?.timer.cancel();
-      _autoUpdates[id] = (
-        timer: Timer.periodic(
-          Duration(minutes: minutes),
-          (_) => _autoUpdate(id),
-        ),
-        minutes: minutes,
-      );
-      if (entry.value.shouldUpdate()) {
-        _autoUpdate(id);
-      }
+      _autoUpdates[id] = .new(entry.value, () => _autoUpdate(id));
     }
 
     _autoUpdates.removeWhere((id, value) {
       if (scheduled.contains(id)) return false;
-      value.timer.cancel();
+      value.close();
       return true;
     });
   }
