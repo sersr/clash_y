@@ -87,7 +87,7 @@ class ConfigsController with NopLifecycle {
     final apply = isCurrent(profile) && !clash.isRunning;
     final res = await repository.clashEvent.reloadConfigs(
       profile,
-      update: apply,
+      updateCurrent: apply,
     );
     if (res == null) {
       return false;
@@ -113,13 +113,26 @@ class ConfigsController with NopLifecycle {
     updateConfigData(profile);
   }
 
-  Future<void> updateConfigUrl(Profile profile) async {
-    final data = BaseConfig.profiles.value;
-    data[profile.id!] = profile;
+  void updateProfile(Profile profile) {
+    final newProfile = profiles.update(profile.id!, (v) {
+      return v.copyWith(
+        url: profile.url,
+        name: profile.name,
+        updateInterval: profile.updateInterval,
+      );
+    });
+
+    if (isCurrent(newProfile)) {
+      BaseConfig.currentProfile.value = newProfile;
+      clash.syncProfileWithService();
+    }
   }
 
   Future<void> reloadConfig(Profile profile) async {
-    if (await repository.clashEvent.reloadConfigs(profile, update: true) ==
+    if (await repository.clashEvent.reloadConfigs(
+          profile,
+          updateCurrent: true,
+        ) ==
         true) {
       await release(const Duration(milliseconds: 300));
       clash.getData();
@@ -130,7 +143,11 @@ class ConfigsController with NopLifecycle {
   }
 
   Future<void> updateConfigData(Profile profile) async {
-    await repository.clashEvent.reloadConfigs(profile, update: false);
+    await repository.clashEvent.reloadConfigs(
+      profile,
+      updateCurrent: false,
+      refresh: true,
+    );
     await release(const Duration(milliseconds: 300));
     if (isCurrent(profile)) {
       clash.getData();

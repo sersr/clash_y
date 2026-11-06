@@ -31,13 +31,13 @@ enum SettingsHive<T> with StorageEnum<T> {
       case .allowLan:
         return .base(false);
       case .mode:
-        return .new(SettingMode.fromJson, SettingMode.direct);
+        return .new(SettingMode.fromJson, SettingMode.rule);
       case .ipv6:
         return .base(true);
       case .logLevel:
         return .new(ClashLogLevel.fromJson, ClashLogLevel.info);
       case .tunEnabled:
-        return .base(false);
+        return .base(true);
       case .tunStack:
         return .new(ClashTunStack.fromJson, ClashTunStack.mixed);
     }

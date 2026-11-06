@@ -40,7 +40,9 @@ class Profile with Equatable {
     final lastUpdateTime = updateTime;
     if (lastUpdateTime == null) return true;
     final interval = updateInterval;
-    if (interval == null) return true;
+    if (interval == null || interval <= 0) {
+      return false;
+    }
 
     return DateTime.now().difference(lastUpdateTime).inMinutes >= interval;
   }
@@ -62,11 +64,10 @@ class Profile with Equatable {
   factory fromJson(Map<String, dynamic> json) => _$ProfileFromJson(json);
 
   Profile copyWith({
-    String? id,
-    String? url,
-    String? name,
+    required String? url,
+    required String? name,
+    required int? updateInterval,
     String? rawName,
-    int? updateInterval,
     DateTime? updateTime,
     int? upload,
     int? download,
@@ -74,11 +75,11 @@ class Profile with Equatable {
     int? expire,
   }) {
     return Profile(
-      id: id ?? this.id,
-      url: url ?? this.url,
-      name: name ?? this.name,
+      id: id,
+      url: url,
+      name: name,
+      updateInterval: updateInterval,
       rawName: rawName ?? this.rawName,
-      updateInterval: updateInterval ?? this.updateInterval,
       updateTime: updateTime ?? this.updateTime,
       upload: upload ?? this.upload,
       download: download ?? this.download,

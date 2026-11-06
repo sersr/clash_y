@@ -203,7 +203,6 @@ final class ClashRequest {
 
   Future<void> selectProxy(String selector, String proxy) async {
     try {
-      await getConfigs();
       Log.i('$selector : $proxy');
       await _dio.put(
         'proxies/${Uri.encodeComponent(selector)}',
@@ -226,21 +225,8 @@ final class ClashRequest {
 
   FutureOr<void> updateConfig(String path) async {
     try {
-      final data = await getConfigMap(path);
-      await updateConfigMap(data);
-    } catch (e) {
-      Log.i(e);
-    }
-  }
-
-  FutureOr<void> updateConfigMap(Map<String, dynamic> data) async {
-    try {
-      final response = await _dio.patch(
-        'configs',
-        data: {'payload': jsonEncode(data)},
-        queryParameters: {'force': true},
-      );
-      Log.i(response.data);
+      await saveConfigPath(path);
+      await reloadCurrentConfig();
     } catch (e) {
       Log.i(e);
     }
@@ -297,82 +283,92 @@ final class ClashRequest {
     return BaseConfig.profiles.value[id] ?? profile;
   }
 
-  FutureOr<bool?> reloadConfigs(Profile profile, {bool update = false}) async {
+  FutureOr<bool?> reloadConfigs(
+    Profile profile, {
+    bool updateCurrent = false,
+    bool refresh = false,
+  }) async {
     if (profile.url == null) return false;
 
-    final res = await EventQueue.runOne(reloadConfigs, () async {
+    final res = await EventQueue.run(reloadConfigs, () async {
       profile = _latestProfile(profile);
       final url = profile.url;
       if (url == null) return false;
 
       var file = getFile(url);
+      var isError = false;
+      final fileExists = await file.exists();
+      if (!fileExists || profile.shouldUpdate() || refresh) {
+        try {
+          Log.w('update: $url');
 
-      try {
-        final fileExists = await file.exists();
-        if (fileExists && !profile.shouldUpdate() && !update) return false;
+          final responseFile = await dlConfigDio.get<String>(
+            url,
+            options: .new(
+              responseType: ResponseType.plain,
+              headers: {'User-Agent': 'clash/mihomo'},
+            ),
+          );
+          final fileData = responseFile.data;
+          final info =
+              responseFile.headers['subscription-userinfo']?.firstOrNull ?? '';
 
-        Log.w('update: $url');
+          final disposition = responseFile.headers['content-disposition'];
 
-        final responseFile = await dlConfigDio.get<String>(
-          url,
-          options: .new(
-            responseType: ResponseType.plain,
-            headers: {'User-Agent': 'clash/mihomo'},
-          ),
-        );
-        final fileData = responseFile.data;
-        final info =
-            responseFile.headers['subscription-userinfo']?.firstOrNull ?? '';
+          final fileName = _getFilenameFromContentDisposition(
+            disposition?.join(''),
+          );
+          final userInfo = _parseSubscriptionUserInfo(info);
 
-        final disposition = responseFile.headers['content-disposition'];
+          final baseName = file.path;
 
-        final fileName = _getFilenameFromContentDisposition(
-          disposition?.join(''),
-        );
-        final userInfo = _parseSubscriptionUserInfo(info);
+          if (fileData != null) {
+            final fileTemp = file.parent.childFile('$baseName.temp');
+            if (!await fileTemp.exists()) {
+              await fileTemp.create(recursive: true);
+            }
 
-        final baseName = file.path;
-
-        if (fileData != null) {
-          final fileTemp = file.parent.childFile('$baseName.temp');
-          if (!await fileTemp.exists()) {
-            await fileTemp.create(recursive: true);
+            await fileTemp.writeAsString(fileData);
+            final config = await getConfigMap(fileTemp.path);
+            await writeConfigMap(fileTemp.path, config);
+            if (!await file.exists()) {
+              await file.create(recursive: true);
+            }
+            await fileTemp.rename(file.path);
           }
 
-          await fileTemp.writeAsString(fileData);
-          final config = await getConfigMap(fileTemp.path);
-          await writeConfigMap(fileTemp.path, config);
-          if (!await file.exists()) {
-            await file.create(recursive: true);
+          profile = profile.copyWith(
+            rawName: fileName,
+            upload: userInfo['upload'],
+            download: userInfo['download'],
+            total: userInfo['total'],
+            expire: userInfo['expire'],
+            updateTime: DateTime.now(),
+            name: profile.name,
+            updateInterval: profile.updateInterval,
+            url: profile.url,
+          );
+
+          if (profile.id case var id?) {
+            BaseConfig.profiles.al.al[id] = profile;
           }
-          await fileTemp.rename(file.path);
+        } catch (e, s) {
+          Log.e('$e,$s');
+          isError = true;
         }
-
-        profile = profile.copyWith(
-          rawName: fileName,
-          upload: userInfo['upload'],
-          download: userInfo['download'],
-          total: userInfo['total'],
-          expire: userInfo['expire'],
-          updateTime: DateTime.now(),
-        );
-
-        if (profile.id case var id?) {
-          BaseConfig.profiles.al.al[id] = profile;
-        }
-      } catch (e) {
-        Log.e(e);
-        throw '';
       }
 
       final exists = await file.exists();
-      if (update) {
+      if (updateCurrent) {
         BaseConfig.currentProfile.value = profile;
         if (exists) {
           Log.w('$exists $file');
           await updateConfig(file.path);
           return true;
         }
+      }
+      if (isError) {
+        throw 'update url error.';
       }
       return false;
     });

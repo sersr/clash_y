@@ -52,9 +52,6 @@ class ProfileItem extends StatelessWidget {
             6.verticalSpace,
             _RefreshTime(
               start: updateTime,
-              onRefrsh: () {
-                clashConfigNotifier.updateConfigData(item);
-              },
               builder: (context) {
                 return Text(
                   updateTime.difference(DateTime.now()).ago,
@@ -151,14 +148,12 @@ class _MenuState extends State<_Menu> {
           await Future.delayed(.new(milliseconds: 300));
           final res = await updateOrCreateProfile(true, widget.item);
           if (res == null) return;
-
-          controller.profiles.update(widget.item.id!, (profile) {
-            return profile.copyWith(
+          controller.updateProfile(
+              widget.item.copyWith(
               url: res.url,
               name: res.name,
               updateInterval: res.interval,
-            );
-          });
+            ));
         }),
         custom(Icons.copy, "Copy Url", () {
           copy(widget.item.url ?? '');
@@ -243,6 +238,7 @@ class _MenuState extends State<_Menu> {
 }
 
 class _RefreshTime extends StatefulWidget {
+  // ignore: unused_element_parameter
   const new({required this.builder, required this.start, this.onRefrsh});
   final WidgetBuilder builder;
   final DateTime start;
