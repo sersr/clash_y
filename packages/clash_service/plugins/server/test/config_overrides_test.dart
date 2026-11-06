@@ -8,6 +8,9 @@ void main() {
       const current = '''
 mixed-port: 7891
 mode: global
+log-level: debug
+ipv6: false
+allow-lan: true
 dns:
   enable: true
   nameserver:
@@ -37,6 +40,9 @@ proxies:
 
       expect(merged['mixed-port'], 7891);
       expect(merged['mode'], 'global');
+      expect(merged['log-level'], 'debug');
+      expect(merged['ipv6'], false);
+      expect(merged['allow-lan'], true);
       expect((merged['dns'] as Map)['enable'], true);
       expect((merged['tun'] as Map)['stack'], 'system');
       // Provider content survives.

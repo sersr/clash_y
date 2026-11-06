@@ -123,3 +123,8 @@ Future<Map<String, dynamic>> getConfigMap(String path) async {
   // copy(v);
   return data;
 }
+
+Future<void> writeConfigMap(String path, Map<String, dynamic> data) async {
+  final file = fs.currentDirectory.childFile(path);
+  await file.writeAsString(YamlWriter().write(data), flush: true);
+}

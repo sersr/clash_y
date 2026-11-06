@@ -331,6 +331,23 @@ final class ClashRequest {
         );
         final userInfo = _parseSubscriptionUserInfo(info);
 
+        final baseName = file.path;
+
+        if (fileData != null) {
+          final fileTemp = file.parent.childFile('$baseName.temp');
+          if (!await fileTemp.exists()) {
+            await fileTemp.create(recursive: true);
+          }
+
+          await fileTemp.writeAsString(fileData);
+          final config = await getConfigMap(fileTemp.path);
+          await writeConfigMap(fileTemp.path, config);
+          if (!await file.exists()) {
+            await file.create(recursive: true);
+          }
+          await fileTemp.rename(file.path);
+        }
+
         profile = profile.copyWith(
           rawName: fileName,
           upload: userInfo['upload'],
@@ -342,22 +359,6 @@ final class ClashRequest {
 
         if (profile.id case var id?) {
           BaseConfig.profiles.al.al[id] = profile;
-        }
-
-        final baseName = file.path;
-
-        if (fileData != null) {
-          final fileTemp = file.parent.childFile('$baseName.temp');
-          if (!await fileTemp.exists()) {
-            await fileTemp.create(recursive: true);
-          }
-
-          await fileTemp.writeAsString(fileData);
-          if (!await file.exists()) {
-            await file.create(recursive: true);
-          }
-
-          await fileTemp.rename(file.path);
         }
       } catch (e) {
         Log.e(e);
