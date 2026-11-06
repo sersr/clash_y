@@ -1,6 +1,5 @@
+import 'package:install_apps/install_apps.dart';
 import 'package:material_ui/material_ui.dart';
-
-import '../controller/application_list_controller.dart';
 
 class ApplicationListItem extends StatelessWidget {
   const ApplicationListItem({
@@ -17,16 +16,15 @@ class ApplicationListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: application.icon == null
-          ? const CircleAvatar(child: Icon(Icons.android))
-          : Image.memory(
-              application.icon!,
-              width: 40,
-              height: 40,
-              fit: BoxFit.contain,
-            ),
+      leading: Image(
+        image: AppIconImageProvider(application.packageName),
+
+        width: 40,
+        height: 40,
+        fit: BoxFit.contain,
+      ),
       title: Text(
-        application.name,
+        application.appName,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),

@@ -13,6 +13,22 @@ enum ApplicationListMode {
   int toJson() {
     return index;
   }
+
+  String get tr {
+    return switch (this) {
+      none => 'none',
+      blackList =>  'Blacklist mode',
+      whiteList => "Whitelist mode",
+    };
+  }
+
+  String get label {
+    return switch (this) {
+      none => '',
+      blackList => 'Selected applications bypass the VPN.',
+      whiteList => 'Only selected applications use the VPN.',
+    };
+  }
 }
 
 enum SettingMode {

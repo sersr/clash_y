@@ -74,6 +74,9 @@ mixin StorageEnum<D> on Enum {
   StorageMixin get target;
 
   D get value {
+    if (al is D) {
+      return al as D;
+    }
     return al.value;
   }
 

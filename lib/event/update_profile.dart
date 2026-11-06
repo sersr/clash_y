@@ -9,7 +9,7 @@ final class AutoUpdateProfile {
   }
   Timer? _timer;
   final Profile data;
-  final Future<void> Function() refresh;
+  final Future<bool> Function() refresh;
 
   var _closed = false;
 
@@ -44,10 +44,12 @@ final class AutoUpdateProfile {
   void _onUpdate() async {
     if (_closed) return;
     try {
-      await refresh();
+      if (await refresh()) {
+        autoUpdateProfile();
+      }
     } catch (e) {
+      _closed = true;
       Log.e(e);
     }
-    autoUpdateProfile();
   }
 }

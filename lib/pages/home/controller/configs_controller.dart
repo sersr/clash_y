@@ -27,20 +27,32 @@ class ConfigsController with NopLifecycle {
     super.nopInit();
     profiles.addListener(_syncAutoUpdates);
     _syncAutoUpdates();
+
+    clash.isRunningRaw.addListener(_syncAutoUpdates);
   }
 
   @override
   void nopDispose() {
     profiles.removeListener(_syncAutoUpdates);
+    clash.isRunningRaw.removeListener(_syncAutoUpdates);
+    _closeTimer();
+    super.nopDispose();
+  }
+
+  void _closeTimer() {
     for (final entry in _autoUpdates.values) {
       entry.close();
     }
     _autoUpdates.clear();
-    super.nopDispose();
   }
 
   /// Keeps one timer per profile that has an `updateInterval`.
   void _syncAutoUpdates() {
+    if (!clash.isRunning) {
+      _closeTimer();
+      return;
+    }
+
     final data = profiles.value;
     final scheduled = <String>{};
 
@@ -68,12 +80,19 @@ class ConfigsController with NopLifecycle {
   /// While the VPN is off the current profile's cache is also written to
   /// `config.yaml`, so starting it later does not go back to an older
   /// subscription. When the VPN is on the service owns that file.
-  Future<void> _autoUpdate(String id) async {
+  Future<bool> _autoUpdate(String id) async {
     final profile = profiles.value[id];
-    if (profile == null || !profile.shouldUpdate()) return;
+    if (profile == null) return false;
 
     final apply = isCurrent(profile) && !clash.isRunning;
-    await repository.clashEvent.reloadConfigs(profile, update: apply);
+    final res = await repository.clashEvent.reloadConfigs(
+      profile,
+      update: apply,
+    );
+    if (res == null) {
+      return false;
+    }
+    return true;
   }
 
   Future<void> addNewConfigUrl(
@@ -100,7 +119,8 @@ class ConfigsController with NopLifecycle {
   }
 
   Future<void> reloadConfig(Profile profile) async {
-    if (await repository.clashEvent.reloadConfigs(profile, update: true)) {
+    if (await repository.clashEvent.reloadConfigs(profile, update: true) ==
+        true) {
       await release(const Duration(milliseconds: 300));
       clash.getData();
       if (isCurrent(profile) && clash.isRunning) {

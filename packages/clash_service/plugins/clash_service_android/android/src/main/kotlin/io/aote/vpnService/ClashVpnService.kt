@@ -651,9 +651,13 @@ class ClashVpnService : VpnService() {
             allowList = allowList,
             appPackageName = packageName,
         )
+        val effectiveDisallowed = effectiveDisallowedApplications(
+            selected = disallowedApplications,
+            appPackageName = packageName,
+        )
         Log.i(
             TAG,
-            "establishTun allowed=${effectiveAllowed.joinToString()} disallowed=${disallowedApplications.joinToString()}"
+            "establishTun allowed=${effectiveAllowed.joinToString()} disallowed=${effectiveDisallowed.joinToString()}"
         )
         effectiveAllowed.forEach { packageName ->
             try {
@@ -662,7 +666,7 @@ class ClashVpnService : VpnService() {
                 Log.w(TAG, "addAllowedApplication failed: $packageName", t)
             }
         }
-        disallowedApplications.forEach { packageName ->
+        effectiveDisallowed.forEach { packageName ->
             try {
                 builder.addDisallowedApplication(packageName)
             } catch (t: Throwable) {
@@ -814,3 +818,8 @@ internal fun selectedApplications(
     }
     return (selected + appPackageName).distinct()
 }
+
+internal fun effectiveDisallowedApplications(
+    selected: List<String>,
+    appPackageName: String,
+): List<String> = selected.filterNot { it == appPackageName }

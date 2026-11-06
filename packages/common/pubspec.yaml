@@ -49,6 +49,7 @@ dependencies:
   ui_widgets:
     git:
       url: https://github.com/sersr/ui_widgets
+  yaml_writer: ^2.1.0
 
 dev_dependencies:
   flutter_test:

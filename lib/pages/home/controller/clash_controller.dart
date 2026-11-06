@@ -32,6 +32,9 @@ class ClashController with NopLifecycle {
   DateTime? get lastRefreshTime => _lastRefreshTime.value;
   final _isRunning = false.al;
   bool get isRunning => _isRunning.value;
+
+  AV<bool> get isRunningRaw => _isRunning;
+
   final _isStarting = false.al;
   bool get isStarting => _isStarting.value;
 
@@ -76,21 +79,22 @@ class ClashController with NopLifecycle {
   }
 
   final _queue = TaskQueue();
-  Future<void> start() async {
-    if (isStarting) return;
-    _isStarting.value = true;
-    try {
+  Future<void> start() {
+    return _queue.run(() async {
       if (isRunning && await _queryRunningState()) return;
       _isRunning.value = false;
 
-      await _queue.run(() async {
+      if (isStarting) return;
+      _isStarting.value = true;
+
+      try {
         final isAllowList =
             SettingsHive.applicationListMode.value == .whiteList;
         final allowedApplications = SettingsHive.allowApplications.value;
 
         final path = await initConfigPath();
         final profile = BaseConfig.currentProfile.value.toClashProfile(path);
-  
+
         final success = await ClashService.start(
           profile,
           allowList: isAllowList,
@@ -146,14 +150,14 @@ class ClashController with NopLifecycle {
           await Future<void>.delayed(const Duration(milliseconds: 500));
         }
         await _refreshData();
-      });
-    } catch (e) {
-      _isRunning.value = false;
-      Log.e('start Clash failed: $e');
-      showMsg('Start Clash failed: $e');
-    } finally {
-      _isStarting.value = false;
-    }
+      } catch (e) {
+        _isRunning.value = false;
+        Log.e('start Clash failed: $e');
+        showMsg('Start Clash failed: $e');
+      } finally {
+        _isStarting.value = false;
+      }
+    });
   }
 
   Future<bool> _run(ClashProfile profile) async {
@@ -260,10 +264,9 @@ class ClashController with NopLifecycle {
     }
   }
 
-  Future<void> stop() async {
-    if (!isRunning) return;
-
+  Future<void> stop() {
     return _queue.run(() async {
+      if (!isRunning) return;
       var success = false;
 
       if (defaultTargetPlatform == .android || defaultTargetPlatform == .iOS) {
@@ -292,6 +295,15 @@ class ClashController with NopLifecycle {
 
       Log.w('close vpn: $success');
     });
+  }
+
+  Future<void> restart() async {
+    if (isRunning) {
+      await stop();
+      await start();
+    } else {
+      await start();
+    }
   }
 
   Future<void> uninstall() async {

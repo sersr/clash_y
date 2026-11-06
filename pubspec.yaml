@@ -37,11 +37,11 @@ dependencies:
   cupertino_ui: any
   web_socket_channel: ^3.0.3
   crypto: ^3.0.7
-  installed_apps: ^2.2.1
   tray_manager: ^0.5.3
   clash_service:
     path: packages/clash_service
-  native_assets_cli: ^0.18.0
+  install_apps:
+    path: packages/install_apps
   native_toolchain_c: ^0.19.5
   uuid: ^4.6.0
   dart_ipc: ^2.0.2

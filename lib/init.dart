@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:nop/nop.dart';
 
 import '_route/routes.dart';
+import 'pages/clash_settings/controller/clash_settings_controller.dart';
 import 'pages/home/controller/clash_connection_controller.dart';
 import 'pages/home/controller/configs_controller.dart';
 
@@ -52,6 +53,7 @@ void initController() {
   router.put(() => ClashConnectionController());
   router.put(() => ConfigsController());
   router.put(() => ApplicationListController());
+  router.put(() => ClashSettingsController());
 }
 
 void _registerMacOsShutdownHandler() {

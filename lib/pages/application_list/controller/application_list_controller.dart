@@ -1,35 +1,65 @@
 import 'dart:io' show Platform;
-import 'dart:typed_data';
 
+import 'package:clashy/pages/home/controller/clash_controller.dart';
 import 'package:common/common.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_nop/flutter_nop.dart';
-import 'package:installed_apps/installed_apps.dart';
+import 'package:install_apps/install_apps.dart';
+import 'package:nop/utils.dart';
 
-class InstalledApplication {
-  const InstalledApplication({
-    required this.packageName,
-    required this.name,
-    required this.isSystem,
-    required this.icon,
-  });
-
-  final String packageName;
-  final String name;
-  final bool isSystem;
-  final Uint8List? icon;
-}
-
-class ApplicationListController with NopLifecycle {
+class ApplicationListController with NopLifecycle, AlScopeManager {
   final _applications = <InstalledApplication>[].al;
   List<InstalledApplication> get applications => _applications.value;
 
-  final _selectedPackages = <String>[].al;
+  final whiteList = SettingsHive.allowApplications.value.toList().al;
+  final blackList = SettingsHive.disAllowApplications.value.toList().al;
+  final mode = SettingsHive.applicationListMode.value.al;
+
+  final showSystemApps = false.al;
+  final showNoInternetApps = false.al;
+
+  late final _isSellectAll = () {
+    final list = selectedPackages;
+    if (list.isEmpty) {
+      return false;
+    }
+    final va = _filtedApplications.value.every(
+      (e) => list.contains(e.packageName),
+    );
+    Log.w('..$va');
+    return va;
+  }.alManager(this);
+
+  bool get isSellectAll => _isSellectAll.value;
+
+  late final _selectedPackages = () {
+    final v = mode.value;
+    final list = switch (v) {
+      .none => const <String>[],
+      .blackList => blackList,
+      .whiteList => whiteList,
+    };
+
+    return list;
+  }.alManager(this);
+
   List<String> get selectedPackages => _selectedPackages.value;
 
-  final _showSystemApps = false.al;
-  bool get showSystemApps => _showSystemApps.value;
+  late final _filtedApplications = () {
+    final query = searchText.trim().toLowerCase();
+    return applications.where((application) {
+      if (!showSystemApps.value && application.systemApp) return false;
+      if (!showNoInternetApps.value && !application.hasInternetPermission) {
+        return false;
+      }
+      return query.isEmpty ||
+          application.appName.toLowerCase().contains(query) ||
+          application.packageName.toLowerCase().contains(query);
+    }).toList();
+  }.alManager(this);
 
-  bool get isAllowList => SettingsHive.applicationListMode.value == .whiteList;
+  List<InstalledApplication> get visibleApplications =>
+      _filtedApplications.value;
 
   final _loading = true.al;
   bool get loading => _loading.value;
@@ -40,34 +70,33 @@ class ApplicationListController with NopLifecycle {
   final AV<String?> _loadError = .val(null);
   String? get loadError => _loadError.value;
 
+  late final hasChanged = () {
+    final cacheBlack = SettingsHive.disAllowApplications.value;
+    if (!equal.equals(cacheBlack, blackList.value)) {
+      return true;
+    }
+    final cacheWhite = SettingsHive.allowApplications.value;
+    if (!equal.equals(cacheWhite, whiteList)) {
+      return true;
+    }
+    return mode.value != SettingsHive.applicationListMode.value;
+  }.alManager(this);
+
   int _loadGeneration = 0;
 
-  ApplicationListController() {
-    _initializeSelection();
-  }
-
-  void _initializeSelection() {
-    _selectedPackages.value = [
-      ...(isAllowList
-          ? SettingsHive.allowApplications.value
-          : SettingsHive.disAllowApplications.value),
-    ];
-  }
+  late final AppLifecycleListener listener;
 
   @override
   void nopInit() {
     super.nopInit();
+    listener = .new(
+      onResume: () {
+        if (applications.length < 2) {
+          loadApplications();
+        }
+      },
+    );
     loadApplications();
-  }
-
-  List<InstalledApplication> get visibleApplications {
-    final query = searchText.trim().toLowerCase();
-    return applications.where((application) {
-      if (!showSystemApps && application.isSystem) return false;
-      return query.isEmpty ||
-          application.name.toLowerCase().contains(query) ||
-          application.packageName.toLowerCase().contains(query);
-    }).toList();
   }
 
   Future<void> loadApplications() async {
@@ -83,23 +112,12 @@ class ApplicationListController with NopLifecycle {
     }
 
     try {
-      final result = await InstalledApps.getInstalledApps(
-        excludeSystemApps: !showSystemApps,
-        excludeNonLaunchableApps: true,
-        withIcon: true,
-        detectPlatformType: false,
+      final result = await InstallApps.getInstalledApps(
+        includeSystemApps: true,
       );
+
       if (generation != _loadGeneration) return;
-      _applications.value = result
-          .map(
-            (app) => InstalledApplication(
-              packageName: app.packageName,
-              name: app.name,
-              isSystem: app.isSystemApp,
-              icon: app.icon,
-            ),
-          )
-          .toList();
+      _applications.value = result.toList();
     } catch (_) {
       if (generation != _loadGeneration) return;
       _loadError.value = 'Could not load installed applications.';
@@ -108,48 +126,104 @@ class ApplicationListController with NopLifecycle {
     _loading.value = false;
   }
 
+  void selectAll() {
+    switch (mode.value) {
+      case .whiteList:
+        final list = whiteList.value;
+        final newList = {
+          ...list,
+          ...visibleApplications.map((e) => e.packageName),
+        }.toList();
+        newList.sort();
+        whiteList.value = newList;
+      case .blackList:
+        final list = blackList.value;
+        final newList = {
+          ...list,
+          ...visibleApplications.map((e) => e.packageName),
+        }.toList();
+        newList.sort();
+        blackList.value = newList;
+      case .none:
+    }
+  }
+
+  void saveAndReload() {
+    if (!hasChanged.value) return;
+    SettingsHive.allowApplications.value = whiteList.value.toList();
+    SettingsHive.disAllowApplications.value = blackList.value.toList();
+    SettingsHive.applicationListMode.value = mode.value;
+
+    final controller = getType<ClashController>();
+    controller.restart();
+  }
+
+  bool get _clearable {
+    return showSystemApps.value && showNoInternetApps.value;
+  }
+
+  void unSelectAll() {
+    // Log.w(visibleApplications);
+    Log.w('${mode.value}  ${blackList.value} $visibleApplications');
+    switch (mode.value) {
+      case .whiteList:
+        final list = whiteList;
+        if (searchText.trim().isEmpty && _clearable) {
+          list.clear();
+        } else {
+          final removed = visibleApplications.map((e) => e.packageName);
+          list.removeWhere((e) => removed.contains(e));
+        }
+        list.sort();
+      case .blackList:
+        final list = blackList;
+        if (searchText.trim().isEmpty && _clearable) {
+          list.clear();
+        } else {
+          final removed = visibleApplications.map((e) => e.packageName);
+          list.removeWhere((e) => removed.contains(e));
+        }
+        list.sort();
+      case .none:
+    }
+  }
+
   void setShowSystemApps(bool value) {
-    if (showSystemApps == value) return;
-    _showSystemApps.value = value;
-    loadApplications();
+    if (showSystemApps.value == value) return;
+    showSystemApps.value = value;
   }
 
   void setSearchText(String value) {
     _searchText.value = value;
   }
 
-  void switchMode(bool allowList) {
-    if (isAllowList == allowList) return;
-
-    _selectedPackages.value = [
-      ...(allowList
-          ? SettingsHive.allowApplications.value
-          : SettingsHive.disAllowApplications.value),
-    ];
-    SettingsHive.applicationListMode.value = allowList
-        ? .whiteList
-        : .blackList;
+  void switchMode(ApplicationListMode mode) {
+    this.mode.value = mode;
   }
 
   void toggleApplication(String packageName) {
-    final selected = [...selectedPackages];
-    if (selected.contains(packageName)) {
-      selected.remove(packageName);
-    } else {
-      selected.add(packageName);
-    }
-    _selectedPackages.value = selected;
-    final selectedList = selected..sort();
-    if (isAllowList) {
-      SettingsHive.allowApplications.value = selectedList;
-    } else {
-      SettingsHive.disAllowApplications.value = selectedList;
+    switch (mode.value) {
+      case .whiteList:
+        if (whiteList.contains(packageName)) {
+          whiteList.remove(packageName);
+        } else {
+          whiteList.add(packageName);
+        }
+      case .blackList:
+        if (blackList.contains(packageName)) {
+          blackList.remove(packageName);
+        } else {
+          blackList.add(packageName);
+        }
+      case .none:
     }
   }
 
   @override
   void nopDispose() {
     _loadGeneration++;
+    disposeScope();
+    listener.dispose();
     super.nopDispose();
   }
 }

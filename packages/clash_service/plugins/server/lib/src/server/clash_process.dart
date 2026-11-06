@@ -439,9 +439,7 @@ abstract final class ClashProcess {
   }
 
   static Future<void> _writeConfig(File file, String content) async {
-    final temporaryFile = File('${file.path}.tmp');
-    await temporaryFile.writeAsString(content, flush: true);
-    await temporaryFile.rename(file.path);
+    await file.writeAsString(content, flush: true);
   }
 
   static String? _clashKey;

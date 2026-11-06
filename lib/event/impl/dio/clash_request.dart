@@ -10,7 +10,6 @@ import 'package:dio/dio.dart';
 import 'package:file/file.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
-import 'package:path/path.dart';
 
 import '../../event.dart';
 import 'unix_socket_dio.dart';
@@ -227,17 +226,32 @@ final class ClashRequest {
 
   FutureOr<void> updateConfig(String path) async {
     try {
-      if (path != configYaml.path) {
-        final currentFile = fs.currentDirectory.childFile(path);
+      final data = await getConfigMap(path);
+      await updateConfigMap(data);
+    } catch (e) {
+      Log.i(e);
+    }
+  }
 
-        await currentFile.copy(configYaml.path);
-      }
+  FutureOr<void> updateConfigMap(Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.patch(
+        'configs',
+        data: {'payload': jsonEncode(data)},
+        queryParameters: {'force': true},
+      );
+      Log.i(response.data);
+    } catch (e) {
+      Log.i(e);
+    }
+  }
 
-      final configPath = await initConfigPath();
-
+  FutureOr<void> reloadCurrentConfig() async {
+    try {
+      await initConfigPath();
       final response = await _dio.put(
         'configs',
-        data: {'path': configPath},
+        data: {'path': configYaml.path},
         queryParameters: {'force': true},
       );
       Log.i(response.data);
@@ -266,16 +280,8 @@ final class ClashRequest {
     return null;
   }
 
-  String get appCachePath => join(paths.appPath, 'caches');
-
-  String getBaseNameFromUrl(String url) {
-    return basename(url);
-  }
-
   File getFile(String url) {
-    return fs.currentDirectory.childFile(
-      join(appCachePath, getBaseNameFromUrl(url)),
-    );
+    return paths.getCacheFile(url);
   }
 
   final dlConfigDio = Dio();
@@ -291,7 +297,7 @@ final class ClashRequest {
     return BaseConfig.profiles.value[id] ?? profile;
   }
 
-  FutureOr<bool> reloadConfigs(Profile profile, {bool update = false}) async {
+  FutureOr<bool?> reloadConfigs(Profile profile, {bool update = false}) async {
     if (profile.url == null) return false;
 
     final res = await EventQueue.runOne(reloadConfigs, () async {
@@ -303,7 +309,7 @@ final class ClashRequest {
 
       try {
         final fileExists = await file.exists();
-        if (fileExists && !profile.shouldUpdate()) return false;
+        if (fileExists && !profile.shouldUpdate() && !update) return false;
 
         Log.w('update: $url');
 
@@ -355,6 +361,7 @@ final class ClashRequest {
         }
       } catch (e) {
         Log.e(e);
+        throw '';
       }
 
       final exists = await file.exists();
@@ -369,7 +376,7 @@ final class ClashRequest {
       return false;
     });
 
-    return res ?? false;
+    return res;
   }
 }
 

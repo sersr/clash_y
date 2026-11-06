@@ -39,4 +39,15 @@ class ClashVpnServiceTest {
             ),
         )
     }
+
+    @Test
+    fun disallowListExcludesTheVpnPackage() {
+        assertEquals(
+            listOf("org.telegram.messenger"),
+            effectiveDisallowedApplications(
+                selected = listOf("org.telegram.messenger", "io.aote.clashy"),
+                appPackageName = "io.aote.clashy",
+            ),
+        )
+    }
 }

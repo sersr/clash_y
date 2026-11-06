@@ -8,10 +8,8 @@ import 'package:jni/jni.dart';
 /// first time it is touched, so importing this library on a platform without a
 /// JVM does nothing.
 ///
-/// JNIgen is not used here because the plugin exposes no Java/Kotlin class to
-/// bind: `ClashVpnService` is reached through an [android.content.Intent]
-/// rather than through JNI, and the framework classes below are stable,
-/// well-documented Android APIs.
+/// PackageManager access lives in `install_apps` and uses JNIgen-generated
+/// bindings. This class keeps the smaller VPN consent and service-intent API.
 abstract final class AndroidApi {
   // ---------------------------------------------------------------------------
   // Classes.

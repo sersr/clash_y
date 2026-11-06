@@ -28,6 +28,7 @@ export 'src/utils/local_notication.dart';
 export 'src/utils/number_format.dart';
 export 'src/utils/platform.dart';
 export 'src/utils/yaml.dart';
+export 'src/utils/equal.dart';
 
 /// widget
 export 'src/widget/base_dialog.dart';

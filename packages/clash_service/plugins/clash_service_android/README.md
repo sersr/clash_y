@@ -45,8 +45,8 @@ Dart talks to the service purely through the `Intent` extras defined in
 `VpnServiceContract.kt`; the two sides must stay in sync.
 
 `lib/src/android_api.dart` holds hand-written JNI bindings for the Android
-framework members used above. JNIgen is not used because the plugin binds no
-Java class of its own — the surface is small and stable.
+framework members used above. The separate `install_apps` package uses JNIgen
+to generate bindings for `PackageManager` and app icon APIs.
 
 ## Public API
 

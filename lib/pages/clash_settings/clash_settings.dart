@@ -1,7 +1,10 @@
 import 'package:clashy/pages/home/widget/setting_item.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
+import 'package:flutter_nop/router.dart';
 import 'package:material_ui/material_ui.dart';
+
+import 'controller/clash_settings_controller.dart';
 
 class ClashSettings extends StatefulWidget {
   const new({super.key});
@@ -11,8 +14,13 @@ class ClashSettings extends StatefulWidget {
 }
 
 class _ClashSettingsState extends State<ClashSettings> {
+  late final controller = getType<ClashSettingsController>();
+
   @override
   Widget build(BuildContext context) {
+    // create
+    controller;
+
     final modeW = Cs(() {
       final value = SettingsHive.mode.value;
       return SettingItem(
@@ -32,7 +40,7 @@ class _ClashSettingsState extends State<ClashSettings> {
               fontWeight: .w500,
             ),
             padding: .symmetric(horizontal: 6.w, vertical: 6),
-            labelPadding: .symmetric(vertical: 10, horizontal: 10),
+            labelPadding: .symmetric(vertical: 5, horizontal: 10),
             isScrollable: true,
             tabAlignment: .start,
             dividerHeight: 0,
@@ -91,7 +99,7 @@ class _ClashSettingsState extends State<ClashSettings> {
               fontWeight: .w500,
             ),
             padding: .symmetric(horizontal: 6.w, vertical: 6),
-            labelPadding: .symmetric(vertical: 10, horizontal: 10),
+            labelPadding: .symmetric(vertical: 5, horizontal: 10),
             isScrollable: true,
             tabAlignment: .start,
             dividerHeight: 0,
