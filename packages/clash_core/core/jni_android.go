@@ -109,7 +109,7 @@ func Java_io_aote_vpnService_ClashCore_start(env *C.JNIEnv, thiz C.jobject, conf
 	}
 	defer C.clash_jni_release_string(env, configDir, cConfigDir)
 
-	return jniStringResult(env, start(cConfigDir))
+	return jniStringResult(env, startTun(cConfigDir, 0))
 }
 
 //export Java_io_aote_vpnService_ClashCore_startTun

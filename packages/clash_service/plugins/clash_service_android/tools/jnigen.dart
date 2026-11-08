@@ -15,7 +15,9 @@ Future<void> main() async {
         'android.content.Intent',
         'android.net.VpnService',
         'android.os.Build',
+        'io.aote.vpnService.VpnStateStore',
       ],
+      sourcePath: [packageRoot.resolve('android/src/main/java')],
       androidSdk: AndroidSdk(versions: [36, 35, 34], sdkRoot: androidSdkRoot),
     ),
     output: Output(

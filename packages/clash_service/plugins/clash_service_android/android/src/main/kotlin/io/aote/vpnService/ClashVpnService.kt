@@ -164,9 +164,24 @@ class ClashVpnService : VpnService() {
                 START_STICKY
             }
 
+            VpnServiceContract.ACTION_START_CORE -> {
+                handleStartCore(intent)
+                START_STICKY
+            }
+
+            VpnServiceContract.ACTION_RELOAD_CONFIG -> {
+                handleReloadConfig(intent)
+                START_STICKY
+            }
+
             VpnServiceContract.ACTION_STOP -> {
                 handleStop(intent)
                 START_NOT_STICKY
+            }
+
+            VpnServiceContract.ACTION_STOP_VPN -> {
+                handleStopVpn(intent)
+                START_STICKY
             }
 
             VpnServiceContract.ACTION_UPDATE_PROFILE -> {
@@ -190,6 +205,7 @@ class ClashVpnService : VpnService() {
         profileUpdate = null
         clearPersistedProfile()
         setEnabled(false)
+        writeVpnActive(false)
         executor.execute {
             cleanup()
             stopForegroundCompat()
@@ -245,11 +261,9 @@ class ClashVpnService : VpnService() {
         val receiver = intent?.getResultReceiver()
         // 用持久化开关而不是 coreStarted 判断：内核重启（含配置更新）
         // 期间 coreStarted 会短暂为 false。
-        if (!isVpnEnabled()) {
-            Log.i(TAG, "profile update ignored: VPN is not running")
-            sendResult(receiver, false, "VPN is not running")
-            stopForegroundCompat()
-            stopSelf()
+        if (!coreStarted && !isVpnEnabled()) {
+            Log.i(TAG, "profile update ignored: Clash core is not running")
+            sendResult(receiver, false, "Clash core is not running")
             return
         }
 
@@ -345,6 +359,7 @@ class ClashVpnService : VpnService() {
                     )
                 }
             }
+
             pendingAutoStart = task
             mainHandler.postDelayed(task, delay)
             return
@@ -358,6 +373,101 @@ class ClashVpnService : VpnService() {
                 allowedApplications,
                 disallowedApplications,
             )
+        }
+    }
+
+    private fun handleStartCore(intent: Intent?) {
+        val receiver = intent?.getResultReceiver()
+        applyNotificationProfile(intent)
+        profileUpdate = intent.readProfileUpdate()
+
+        if (coreStarted) {
+            persistProfile(profileUpdate)
+            scheduleProfileUpdate()
+            sendResult(receiver, true)
+            return
+        }
+
+        if (isVpnEnabled()) {
+            handleStart(intent)
+            return
+        }
+
+        val configDir = intent
+            ?.getStringExtra(VpnServiceContract.EXTRA_CONFIG_DIR)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: prefs.getString(KEY_CONFIG_DIR, null)?.trim()
+            ?: defaultConfigDir()
+        val allowList = prefs.getBoolean(KEY_ALLOW_LIST, false)
+        val allowedApplications = prefs.getStringSet(KEY_ALLOWED_APPS, null)?.toList().orEmpty()
+        val disallowedApplications = prefs.getStringSet(KEY_DISALLOWED_APPS, null)?.toList().orEmpty()
+
+        executor.execute {
+            val error = startCoreOnly(
+                configDir,
+                allowList,
+                allowedApplications,
+                disallowedApplications,
+            )
+            if (error == null) {
+                sendResult(receiver, true)
+                scheduleProfileUpdate()
+            } else {
+                sendResult(receiver, false, error)
+                stopForegroundCompat()
+                stopSelf()
+            }
+        }
+    }
+
+    private fun handleReloadConfig(intent: Intent?) {
+        val receiver = intent?.getResultReceiver()
+        if (!coreStarted) {
+            sendResult(receiver, false, "Clash core is not running")
+            return
+        }
+
+        applyNotificationProfile(intent)
+        profileUpdate = intent.readProfileUpdate()
+        val configDir = intent
+            ?.getStringExtra(VpnServiceContract.EXTRA_CONFIG_DIR)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: prefs.getString(KEY_CONFIG_DIR, null)?.trim()
+            ?: defaultConfigDir()
+        val allowList = prefs.getBoolean(KEY_ALLOW_LIST, false)
+        val allowedApplications =
+            prefs.getStringSet(KEY_ALLOWED_APPS, null)?.toList().orEmpty()
+        val disallowedApplications =
+            prefs.getStringSet(KEY_DISALLOWED_APPS, null)?.toList().orEmpty()
+        val vpnActive = nativeTunFd > 0
+
+        executor.execute {
+            val error = if (vpnActive) {
+                startCoreInternal(
+                    configDir,
+                    allowList,
+                    allowedApplications,
+                    disallowedApplications,
+                )
+            } else {
+                startCoreOnly(
+                    configDir,
+                    allowList,
+                    allowedApplications,
+                    disallowedApplications,
+                )
+            }
+            if (error == null) {
+                sendResult(receiver, true)
+                scheduleProfileUpdate()
+            } else {
+                sendResult(receiver, false, error)
+                Log.e(TAG, "Failed to reload the current configuration: $error")
+                stopForegroundCompat()
+                stopSelf()
+            }
         }
     }
 
@@ -618,10 +728,80 @@ class ClashVpnService : VpnService() {
             val error = stopCore()
             releaseNativeTunFd()
             closeTunDescriptor()
+            writeVpnActive(false)
             val message = error ?: ""
             sendResult(receiver, message.isEmpty(), message)
             stopForegroundCompat()
             stopSelf()
+        }
+    }
+
+    private fun handleStopVpn(intent: Intent?) {
+        val receiver = intent?.getResultReceiver()
+        cancelPendingAutoStart()
+        prefs.edit().putInt(KEY_STORM_LEVEL, 0).apply()
+        executor.execute {
+            setEnabled(false)
+            val configDir = prefs.getString(KEY_CONFIG_DIR, null)?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: defaultConfigDir()
+            val wasVpnActive = nativeTunFd > 0
+            val error = startCoreOnly(
+                configDir,
+                prefs.getBoolean(KEY_ALLOW_LIST, false),
+                prefs.getStringSet(KEY_ALLOWED_APPS, null)?.toList().orEmpty(),
+                prefs.getStringSet(KEY_DISALLOWED_APPS, null)?.toList().orEmpty(),
+            )
+            if (error != null) {
+                if (wasVpnActive) {
+                    setEnabled(true)
+                    writeVpnActive(true)
+                }
+                sendResult(receiver, false, error)
+                Log.e(TAG, "Failed to disable VPN while keeping the core running: $error")
+                return@execute
+            }
+            sendResult(receiver, true)
+            scheduleProfileUpdate()
+            Log.i(TAG, "VPN disabled; mihomo core remains running")
+        }
+    }
+
+    /**
+     * Restarts mihomo without a TUN descriptor, keeping its controller API
+     * available while the VPN switch is off.
+     */
+    private fun startCoreOnly(
+        configDir: String,
+        allowList: Boolean,
+        allowedApplications: List<String>,
+        disallowedApplications: List<String>,
+    ): String? {
+        Log.i(TAG, "startCoreOnly configDir=$configDir")
+        return try {
+            stopTrafficMonitor()
+            val error = ClashCore().start(configDir)
+            if (error != null) {
+                throw IllegalStateException(error)
+            }
+
+            coreStarted = true
+            nativeTunFd = -1
+            closeTunDescriptor()
+            persistState(
+                configDir,
+                allowList,
+                allowedApplications,
+                disallowedApplications,
+                enabled = false,
+            )
+            persistProfile(profileUpdate)
+            writeVpnActive(false)
+            startTrafficMonitor()
+            null
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to start mihomo without VPN", t)
+            t.message ?: t.javaClass.simpleName
         }
     }
 
@@ -743,6 +923,14 @@ class ClashVpnService : VpnService() {
         prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
     }
 
+    private fun writeVpnActive(active: Boolean) {
+        try {
+            VpnStateStore.setVpnActive(this, active)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to persist VPN active state", t)
+        }
+    }
+
     private fun persistState(
         configDir: String,
         allowList: Boolean,
@@ -757,6 +945,7 @@ class ClashVpnService : VpnService() {
             .putStringSet(KEY_ALLOWED_APPS, allowedApplications.toSet())
             .putStringSet(KEY_DISALLOWED_APPS, disallowedApplications.toSet())
             .apply()
+        writeVpnActive(enabled)
     }
 
     @Suppress("DEPRECATION")

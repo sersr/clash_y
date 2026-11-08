@@ -2,7 +2,10 @@ package io.aote.vpnService
 
 internal object VpnServiceContract {
     const val ACTION_START = "io.aote.vpnService.action.START"
+    const val ACTION_START_CORE = "io.aote.vpnService.action.START_CORE"
+    const val ACTION_RELOAD_CONFIG = "io.aote.vpnService.action.RELOAD_CONFIG"
     const val ACTION_STOP = "io.aote.vpnService.action.STOP"
+    const val ACTION_STOP_VPN = "io.aote.vpnService.action.STOP_VPN"
 
     /** 只更新自动刷新用的 Profile，不重启内核。 */
     const val ACTION_UPDATE_PROFILE = "io.aote.vpnService.action.UPDATE_PROFILE"

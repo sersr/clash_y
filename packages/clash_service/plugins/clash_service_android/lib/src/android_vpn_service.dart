@@ -51,6 +51,115 @@ abstract final class AndroidVpnService {
   /// Whether the plugin can run on the current platform.
   static bool get isSupported => Platform.isAndroid;
 
+  /// Starts mihomo without establishing an Android VPN interface.
+  ///
+  /// This keeps the controller API available while the VPN switch is off.
+  static Future<bool> startCore(
+    String configDir, {
+    String? profileUrl,
+    String? profileName,
+    String? controllerSocketPath,
+    int? updateIntervalMinutes,
+    DateTime? updateTime,
+  }) async {
+    if (!isSupported) return false;
+
+    final directory = configDir.trim();
+    if (directory.isEmpty) {
+      _log('Refusing to start the core: the configuration directory is empty');
+      return false;
+    }
+
+    final context = _applicationContext();
+    if (context == null) return false;
+
+    try {
+      final intent = _serviceIntent(context, _Contract.actionStartCore);
+      try {
+        _putString(intent, _Contract.extraConfigDir, directory);
+        _putProfile(
+          intent,
+          profileUrl,
+          profileName,
+          controllerSocketPath,
+          updateIntervalMinutes,
+          updateTime,
+        );
+        _startService(context, intent);
+      } finally {
+        intent.release();
+      }
+      _log('Asked ClashVpnService to start mihomo without a VPN interface');
+      return true;
+    } catch (error, stackTrace) {
+      _log('Failed to start mihomo without VPN', error, stackTrace);
+      return false;
+    } finally {
+      context.release();
+    }
+  }
+
+  /// Restarts mihomo with the current configuration while preserving whether
+  /// the VPN interface is active.
+  static Future<bool> reloadConfig(
+    String configDir, {
+    String? profileUrl,
+    String? profileName,
+    String? controllerSocketPath,
+    int? updateIntervalMinutes,
+    DateTime? updateTime,
+  }) async {
+    if (!isSupported) return false;
+
+    final directory = configDir.trim();
+    if (directory.isEmpty) return false;
+
+    final context = _applicationContext();
+    if (context == null) return false;
+
+    try {
+      final intent = _serviceIntent(context, _Contract.actionReloadConfig);
+      try {
+        _putString(intent, _Contract.extraConfigDir, directory);
+        _putProfile(
+          intent,
+          profileUrl,
+          profileName,
+          controllerSocketPath,
+          updateIntervalMinutes,
+          updateTime,
+        );
+        _startService(context, intent);
+      } finally {
+        intent.release();
+      }
+      _log('Asked ClashVpnService to reload the current configuration');
+      return true;
+    } catch (error, stackTrace) {
+      _log('Failed to reload the current configuration', error, stackTrace);
+      return false;
+    } finally {
+      context.release();
+    }
+  }
+
+  /// Reads the VPN-active marker written by the VPN service process.
+  static bool isVpnActive() {
+    if (!isSupported) return false;
+
+    final context = _applicationContext();
+    if (context == null) return false;
+
+    try {
+      return AndroidApi.isVpnActive(context);
+    } catch (error, stackTrace) {
+      _log('Failed to read the VPN active state', error, stackTrace);
+      return false;
+    } finally {
+      context.release();
+    }
+  }
+
   /// Starts the VPN service for [configDir].
   ///
   /// Returns `false` when the platform is not Android, when [configDir] is
@@ -178,10 +287,9 @@ abstract final class AndroidVpnService {
     }
   }
 
-  /// Stops the VPN service and releases the TUN device it owns.
+  /// Asks the VPN service to stop and release the TUN device it owns.
   ///
-  /// The service is asked to stop and then stopped outright, so a service that
-  /// is already gone (or that never finished starting) is still torn down.
+  /// The service performs cleanup asynchronously and stops itself when done.
   static Future<bool> close() async {
     if (!isSupported) {
       _log('Not running on Android');
@@ -196,20 +304,38 @@ abstract final class AndroidVpnService {
     try {
       final intent = _serviceIntent(context, _Contract.actionStop);
       try {
-        try {
-          _startService(context, intent);
-        } catch (error, stackTrace) {
-          // The service may already be gone; stopService below still applies.
-          _log('Failed to signal the VPN service to stop', error, stackTrace);
-        }
-        final stopped = context.stopService(intent);
-        _log('stopService returned $stopped');
+        _startService(context, intent);
+        _log('Asked ClashVpnService to stop');
       } finally {
         intent.release();
       }
       return true;
     } catch (error, stackTrace) {
       _log('Failed to stop the VPN service', error, stackTrace);
+      return false;
+    } finally {
+      context.release();
+    }
+  }
+
+  /// Disables the VPN interface but leaves the mihomo core and its API running.
+  static Future<bool> stopVpn() async {
+    if (!isSupported) return false;
+
+    final context = _applicationContext();
+    if (context == null) return false;
+
+    try {
+      final intent = _serviceIntent(context, _Contract.actionStopVpn);
+      try {
+        _startService(context, intent);
+        _log('Asked ClashVpnService to disable VPN and keep mihomo running');
+      } finally {
+        intent.release();
+      }
+      return true;
+    } catch (error, stackTrace) {
+      _log('Failed to disable VPN', error, stackTrace);
       return false;
     } finally {
       context.release();
@@ -248,10 +374,7 @@ abstract final class AndroidVpnService {
   /// attached to this engine.
   static Context? _applicationContext() {
     try {
-      return androidApplicationContext.as(
-        Context.type,
-        releaseOriginal: true,
-      );
+      return androidApplicationContext.as(Context.type, releaseOriginal: true);
     } catch (error, stackTrace) {
       _log(
         'No Android application context: is jni_flutter registered?',
@@ -409,10 +532,7 @@ abstract final class AndroidVpnService {
 
   /// `Intent(context, ClashVpnService::class.java).setAction(action)`.
   static Intent _serviceIntent(Context context, String action) {
-    final intent = Intent.new$1(
-      context,
-      AndroidApi.vpnServiceComponentClass,
-    );
+    final intent = Intent.new$1(context, AndroidApi.vpnServiceComponentClass);
 
     final jAction = action.toJString();
     try {
@@ -523,7 +643,11 @@ abstract final class AndroidVpnService {
 /// `android/src/main/kotlin/io/aote/vpnService/VpnServiceContract.kt`.
 abstract final class _Contract {
   static const String actionStart = 'io.aote.vpnService.action.START';
+  static const String actionStartCore = 'io.aote.vpnService.action.START_CORE';
+  static const String actionReloadConfig =
+      'io.aote.vpnService.action.RELOAD_CONFIG';
   static const String actionStop = 'io.aote.vpnService.action.STOP';
+  static const String actionStopVpn = 'io.aote.vpnService.action.STOP_VPN';
   static const String actionUpdateProfile =
       'io.aote.vpnService.action.UPDATE_PROFILE';
   static const String extraConfigDir = 'configDir';

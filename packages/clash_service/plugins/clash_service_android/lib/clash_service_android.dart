@@ -9,6 +9,25 @@ import 'src/android_vpn_service.dart';
 
 export 'src/android_vpn_service.dart' show AndroidVpnService;
 
+/// Starts the bundled Clash core without establishing the VPN interface.
+Future<bool> startCore(
+  String configDir, {
+  String? profileUrl,
+  String? profileName,
+  String? controllerSocketPath,
+  int? updateIntervalMinutes,
+  DateTime? updateTime,
+}) {
+  return AndroidVpnService.startCore(
+    configDir,
+    profileUrl: profileUrl,
+    profileName: profileName,
+    controllerSocketPath: controllerSocketPath,
+    updateIntervalMinutes: updateIntervalMinutes,
+    updateTime: updateTime,
+  );
+}
+
 /// Starts the bundled VPN service with [configDir] as mihomo's configuration
 /// directory.
 ///
@@ -40,5 +59,11 @@ Future<bool> start(
   );
 }
 
-/// Stops the VPN service and releases the TUN device it owns.
-Future<bool> stop() => AndroidVpnService.close();
+/// Disables the VPN interface while leaving the Clash core running.
+Future<bool> stop() => AndroidVpnService.stopVpn();
+
+/// Whether the VPN interface is currently established.
+bool isVpnActive() => AndroidVpnService.isVpnActive();
+
+/// Stops the service and the Clash core entirely.
+Future<bool> close() => AndroidVpnService.close();

@@ -46,9 +46,11 @@ The Android service and its support classes are implemented in Kotlin:
 Dart talks to the service purely through the `Intent` extras defined in
 `VpnServiceContract.kt`; the two sides must stay in sync.
 
-The Android framework bindings used by Dart are generated with JNIgen into
-`lib/src/generated/`. Regenerate them from this package directory after
-`dart pub get` with:
+The Android framework bindings and the `VpnStateStore` bridge used by Dart are
+generated with JNIgen into `lib/src/generated/`. The service component class
+lookup remains handwritten because JNIgen does not generate bindings for the
+Kotlin service class from its source. Regenerate the bindings from this package
+directory after `dart pub get` with:
 
 ```sh
 dart --packages=.dart_tool/package_config.json tools/jnigen.dart
@@ -79,6 +81,19 @@ await clash.stop();
 service has been asked to start — not when mihomo is ready. `ClashVpnService`
 deliberately keeps no runtime status object, so callers that need mihomo itself
 should poll its API.
+
+On Android, the core and VPN interface have separate lifecycles:
+
+- `startCore` starts mihomo without a TUN device, allowing the controller API
+  (including proxy queries) to work while the VPN switch is off.
+- `start` establishes the VPN interface.
+- `stop` releases the VPN interface but leaves mihomo and its controller API
+  running.
+- `close` stops both the VPN service and mihomo.
+
+`isVpnActive` reads the service's persisted VPN-interface state. The controller
+API reports whether mihomo is available; it cannot tell whether the VPN
+interface is active.
 
 Use `AndroidVpnService.hasVpnConsent()` to check the consent state on its own,
 and `AndroidVpnService` for the same operations with named access to the flow
