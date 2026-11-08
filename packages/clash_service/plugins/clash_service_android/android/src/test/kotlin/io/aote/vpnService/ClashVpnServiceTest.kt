@@ -50,4 +50,17 @@ class ClashVpnServiceTest {
             ),
         )
     }
+
+    @Test
+    fun formatsLiveTrafficRates() {
+        assertEquals("0 B/s", formatTrafficRate(0))
+        assertEquals("1023 B/s", formatTrafficRate(1023))
+        assertEquals("1.0 KB/s", formatTrafficRate(1024))
+        assertEquals("1.0 MB/s", formatTrafficRate(1024 * 1024))
+    }
+
+    @Test
+    fun clampsNegativeTrafficRatesToZero() {
+        assertEquals("0 B/s", formatTrafficRate(-1))
+    }
 }

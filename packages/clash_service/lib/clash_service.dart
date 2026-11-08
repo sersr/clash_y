@@ -70,11 +70,14 @@ abstract final class ClashService {
     List<String> allowedApplications = const [],
     List<String> disallowedApplications = const [],
     String? trayClashSocket,
+    String? controllerSocketPath,
   }) async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.start(
         profile.configDir,
         profileUrl: profile.url,
+        profileName: profile.name,
+        controllerSocketPath: controllerSocketPath,
         updateIntervalMinutes: profile.updateInterval,
         updateTime: profile.updateTime,
         allowList: allowList,
@@ -115,15 +118,21 @@ abstract final class ClashService {
     return false;
   }
 
-  /// Updates the profile a running service refreshes itself from.
+  /// Updates the profile shown/used by a running service without restarting
+  /// the core.
   ///
   /// Desktop services are driven through their IPC API instead; this only
   /// covers Android, whose backend lives in the VPN process.
-  static Future<bool> updateProfile(ClashProfile profile) async {
+  static Future<bool> updateProfile(
+    ClashProfile profile, {
+    String? controllerSocketPath,
+  }) async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.updateProfile(
         configDir: profile.configDir,
         profileUrl: profile.url,
+        profileName: profile.name,
+        controllerSocketPath: controllerSocketPath,
         updateIntervalMinutes: profile.updateInterval,
         updateTime: profile.updateTime,
       );

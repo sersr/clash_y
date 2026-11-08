@@ -55,6 +55,8 @@ class ClashVpnService : VpnService() {
 
         /** 自动更新配置用的 Profile（App 未运行时由本进程刷新）。 */
         private const val KEY_PROFILE_URL = "profileUrl"
+        private const val KEY_PROFILE_NAME = "profileName"
+        private const val KEY_CONTROLLER_SOCKET = "controllerSocket"
         private const val KEY_UPDATE_INTERVAL = "updateInterval"
         private const val KEY_UPDATE_TIME = "updateTime"
 
@@ -101,6 +103,24 @@ class ClashVpnService : VpnService() {
     /** 当前运行配置对应的 Profile；为空表示不做自动更新。 */
     @Volatile
     private var profileUpdate: ProfileUpdate? = null
+
+    @Volatile
+    private var profileName = ""
+
+    @Volatile
+    private var controllerSocketPath = ""
+
+    @Volatile
+    private var uploadRate = 0L
+
+    @Volatile
+    private var downloadRate = 0L
+
+    @Volatile
+    private var trafficMonitor: TrafficMonitor? = null
+
+    private var lastNotificationTitle: String? = null
+    private var lastNotificationText: String? = null
 
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
 
@@ -233,6 +253,7 @@ class ClashVpnService : VpnService() {
             return
         }
 
+        applyNotificationProfile(intent)
         profileUpdate = intent.readProfileUpdate()
         persistProfile(profileUpdate)
         scheduleProfileUpdate()
@@ -242,6 +263,7 @@ class ClashVpnService : VpnService() {
 
     private fun handleStart(intent: Intent?) {
         val receiver = intent?.getResultReceiver()
+        applyNotificationProfile(intent)
 
         // onTaskRemoved 自恢复：进程未被杀、TUN 还在时无需重建
         if (intent?.getBooleanExtra(VpnServiceContract.EXTRA_RESUME_ONLY, false) == true &&
@@ -572,6 +594,7 @@ class ClashVpnService : VpnService() {
             )
             persistProfile(profileUpdate)
             Log.i(TAG, "mihomo started, configDir=$configDir nativeFd=$detachedNativeFd")
+            startTrafficMonitor()
             null
         } catch (t: Throwable) {
             releaseNativeTunFd(detachedNativeFd)
@@ -610,6 +633,7 @@ class ClashVpnService : VpnService() {
 
     @Synchronized
     private fun stopCore(): String? {
+        stopTrafficMonitor()
         if (!coreStarted) {
             Log.i(TAG, "stopCore skipped: mihomo is not running")
             return null
@@ -756,6 +780,7 @@ class ClashVpnService : VpnService() {
         manager.createNotificationChannel(channel)
     }
 
+    @Synchronized
     private fun buildNotification(): Notification {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         val contentIntent = launchIntent?.let {
@@ -774,13 +799,85 @@ class ClashVpnService : VpnService() {
             Notification.Builder(this)
         }
 
+        val title = profileName.ifBlank { "Clash VPN" }
+        val text = "↑ ${formatTrafficRate(uploadRate)}  ↓ ${formatTrafficRate(downloadRate)}"
+        lastNotificationTitle = title
+        lastNotificationText = text
+
         return builder
-            .setContentTitle("Clash VPN")
-            .setContentText("mihomo is running")
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .setContentIntent(contentIntent)
             .build()
+    }
+
+    private fun applyNotificationProfile(intent: Intent?) {
+        val name = intent?.getStringExtra(VpnServiceContract.EXTRA_PROFILE_NAME)
+            ?: prefs.getString(KEY_PROFILE_NAME, null)
+            ?: ""
+        val socketPath = intent?.getStringExtra(VpnServiceContract.EXTRA_CONTROLLER_SOCKET)
+            ?: prefs.getString(KEY_CONTROLLER_SOCKET, null)
+            ?: ""
+        profileName = name.trim()
+        controllerSocketPath = socketPath.trim()
+        prefs.edit()
+            .putString(KEY_PROFILE_NAME, profileName)
+            .putString(KEY_CONTROLLER_SOCKET, controllerSocketPath)
+            .apply()
+        refreshNotification()
+        if (coreStarted) startTrafficMonitor()
+    }
+
+    @Synchronized
+    private fun startTrafficMonitor() {
+        stopTrafficMonitor()
+        val socketPath = controllerSocketPath
+        if (socketPath.isBlank()) {
+            Log.w(TAG, "Traffic monitor not started: controller socket path is empty")
+            return
+        }
+        lateinit var monitor: TrafficMonitor
+        monitor = TrafficMonitor(socketPath) { up, down ->
+            if (trafficMonitor === monitor) {
+                uploadRate = up
+                downloadRate = down
+                refreshNotification()
+            }
+        }
+        trafficMonitor = monitor
+        monitor.start()
+    }
+
+    @Synchronized
+    private fun stopTrafficMonitor() {
+        val monitor = trafficMonitor ?: return
+        trafficMonitor = null
+        monitor.stop()
+        uploadRate = 0L
+        downloadRate = 0L
+        refreshNotification()
+    }
+
+    @Synchronized
+    private fun refreshNotification() {
+        val title = profileName.ifBlank { "Clash VPN" }
+        val text = "↑ ${formatTrafficRate(uploadRate)}  ↓ ${formatTrafficRate(downloadRate)}"
+        if (title == lastNotificationTitle && text == lastNotificationText) {
+            return
+        }
+
+        lastNotificationTitle = title
+        lastNotificationText = text
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
+        } else {
+            @Suppress("DEPRECATION")
+            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+                .notify(NOTIFICATION_ID, notification)
+        }
     }
 
     @Suppress("DEPRECATION")

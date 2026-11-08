@@ -2,7 +2,7 @@
 ///
 /// Implemented with JNIgen, `package:jni`, and `package:jni_flutter`: the VPN
 /// consent flow, service intent, and service start/stop calls happen in Dart,
-/// while the Android VpnService component is implemented in Java.
+/// while the Android VpnService component is implemented in Kotlin.
 library;
 
 import 'src/android_vpn_service.dart';
@@ -24,12 +24,16 @@ export 'src/android_vpn_service.dart' show AndroidVpnService;
 /// poll its API until it answers.
 Future<bool> start(
   String configDir, {
+  String? profileName,
+  String? controllerSocketPath,
   bool allowList = false,
   List<String> allowedApplications = const <String>[],
   List<String> disallowedApplications = const <String>[],
 }) {
   return AndroidVpnService.start(
     configDir,
+    profileName: profileName,
+    controllerSocketPath: controllerSocketPath,
     allowList: allowList,
     allowedApplications: allowedApplications,
     disallowedApplications: disallowedApplications,

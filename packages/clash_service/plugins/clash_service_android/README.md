@@ -40,6 +40,7 @@ The Android service and its support classes are implemented in Kotlin:
 | `android/src/main/kotlin/io/aote/vpnService/ClashCore.kt` | Native methods into `libclash` (provided by `package:clash_core`). |
 | `android/src/main/kotlin/io/aote/vpnService/VpnServiceContract.kt` | The actions/extras shared with `lib/src/android_vpn_service.dart`. |
 | `android/src/main/kotlin/io/aote/vpnService/ProfileConfigUpdater.kt` | Downloads subscriptions and merges app-owned configuration blocks. |
+| `android/src/main/kotlin/io/aote/vpnService/TrafficMonitor.kt` | Reads live upload/download rates from mihomo's Unix controller socket for the foreground notification. |
 | `android/src/main/AndroidManifest.xml` | Declares the service and the foreground-service permissions. |
 
 Dart talks to the service purely through the `Intent` extras defined in

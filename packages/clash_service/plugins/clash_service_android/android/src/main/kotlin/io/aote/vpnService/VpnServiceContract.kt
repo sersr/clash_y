@@ -9,6 +9,8 @@ internal object VpnServiceContract {
 
     const val EXTRA_CONFIG_DIR = "configDir"
     const val EXTRA_PROFILE_URL = "profileUrl"
+    const val EXTRA_PROFILE_NAME = "profileName"
+    const val EXTRA_CONTROLLER_SOCKET = "controllerSocket"
     const val EXTRA_UPDATE_INTERVAL = "updateInterval"
     const val EXTRA_UPDATE_TIME = "updateTime"
     const val EXTRA_RESULT_RECEIVER = "resultReceiver"

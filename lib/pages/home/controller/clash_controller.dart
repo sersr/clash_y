@@ -102,6 +102,7 @@ class ClashController with NopLifecycle {
           disallowedApplications: isAllowList
               ? const []
               : SettingsHive.disAllowApplications.value,
+          controllerSocketPath: BaseConfig.unixSockPath.value,
           trayClashSocket: defaultTargetPlatform == TargetPlatform.macOS
               ? BaseConfig.unixSockPath.value
               : null,
@@ -190,14 +191,20 @@ class ClashController with NopLifecycle {
   /// the background.
   Future<void> syncProfileWithService() async {
     final profile = BaseConfig.currentProfile.value;
-    if (profile.url == null) return;
+    if (profile.url == null &&
+        defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
 
     final clashProfile = profile.toClashProfile(configYaml.parent.path);
     try {
       if (defaultTargetPlatform.isDesktop) {
         await ClashServiceApi.updateClashProfile(clashProfile);
       } else {
-        await ClashService.updateProfile(clashProfile);
+        await ClashService.updateProfile(
+          clashProfile,
+          controllerSocketPath: BaseConfig.unixSockPath.value,
+        );
       }
     } catch (e) {
       Log.e('sync profile with service failed: $e');
