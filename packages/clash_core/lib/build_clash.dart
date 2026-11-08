@@ -86,6 +86,8 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
     'build',
     '-buildmode=c-shared',
     '-trimpath',
+    if (Platform.environment['CLASH_CORE_KEEP_DEBUG_SYMBOLS'] != '1')
+      ...['-ldflags', '-s -w'],
     '-o',
     outputPath,
     '-tags',
