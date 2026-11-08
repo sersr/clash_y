@@ -761,9 +761,10 @@ class ClashVpnService : VpnService() {
                 Log.e(TAG, "Failed to disable VPN while keeping the core running: $error")
                 return@execute
             }
+            stopForegroundCompat()
             sendResult(receiver, true)
             scheduleProfileUpdate()
-            Log.i(TAG, "VPN disabled; mihomo core remains running")
+            Log.i(TAG, "VPN disabled and notification dismissed; mihomo core remains running")
         }
     }
 
