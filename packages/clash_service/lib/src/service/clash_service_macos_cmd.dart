@@ -99,14 +99,7 @@ class HelperInstaller {
     try {
       final plist = File(_plistPath);
       if (!await plist.exists()) return false;
-      final installedPlist = (await plist.readAsString()).replaceAll(
-        RegExp(
-          r'^[ \t]*<!-- Bundle asset SHA-256: (?:[0-9a-f]{64})(?: [0-9a-f]{64})* -->\r?\n',
-          multiLine: true,
-        ),
-        '',
-      );
-      return installedPlist == expectedPlist;
+      return await plist.readAsString() == expectedPlist;
     } on FileSystemException {
       return false;
     }

@@ -5,7 +5,6 @@ import 'package:common/common.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:install_apps/install_apps.dart';
-import 'package:nop/utils.dart';
 
 class ApplicationListController with NopLifecycle, AlScopeManager {
   final _applications = <InstalledApplication>[].al;
@@ -26,9 +25,8 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
     final va = _filtedApplications.value.every(
       (e) => list.contains(e.packageName),
     );
-    Log.w('..$va');
     return va;
-  }.alManager(this);
+  }.mount(this);
 
   bool get isSellectAll => _isSellectAll.value;
 
@@ -41,22 +39,26 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
     };
 
     return list;
-  }.alManager(this);
+  }.mount(this);
 
   List<String> get selectedPackages => _selectedPackages.value;
 
   late final _filtedApplications = () {
     final query = searchText.trim().toLowerCase();
+    var showSys = showSystemApps.value;
+    var showNo = showNoInternetApps.value;
+    var isEmpty = query.isEmpty;
+
     return applications.where((application) {
-      if (!showSystemApps.value && application.systemApp) return false;
-      if (!showNoInternetApps.value && !application.hasInternetPermission) {
+      if (!showSys && application.systemApp) return false;
+      if (!showNo && !application.hasInternetPermission) {
         return false;
       }
-      return query.isEmpty ||
-          application.appName.toLowerCase().contains(query) ||
-          application.packageName.toLowerCase().contains(query);
+      return isEmpty ||
+          application.appNameLow.contains(query) ||
+          application.packageNameLow.contains(query);
     }).toList();
-  }.alManager(this);
+  }.mount(this);
 
   List<InstalledApplication> get visibleApplications =>
       _filtedApplications.value;
@@ -80,7 +82,7 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
       return true;
     }
     return mode.value != SettingsHive.applicationListMode.value;
-  }.alManager(this);
+  }.mount(this);
 
   int _loadGeneration = 0;
 
@@ -159,16 +161,16 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
   }
 
   bool get _clearable {
-    return showSystemApps.value && showNoInternetApps.value;
+    return searchText.trim().isEmpty &&
+        showSystemApps.value &&
+        showNoInternetApps.value;
   }
 
-  void unSelectAll() {
-    // Log.w(visibleApplications);
-    Log.w('${mode.value}  ${blackList.value} $visibleApplications');
+  void removeSelectApps() {
     switch (mode.value) {
       case .whiteList:
         final list = whiteList;
-        if (searchText.trim().isEmpty && _clearable) {
+        if (_clearable) {
           list.clear();
         } else {
           final removed = visibleApplications.map((e) => e.packageName);
@@ -177,7 +179,7 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
         list.sort();
       case .blackList:
         final list = blackList;
-        if (searchText.trim().isEmpty && _clearable) {
+        if (_clearable) {
           list.clear();
         } else {
           final removed = visibleApplications.map((e) => e.packageName);
@@ -222,7 +224,6 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
   @override
   void nopDispose() {
     _loadGeneration++;
-    disposeScope();
     listener.dispose();
     super.nopDispose();
   }

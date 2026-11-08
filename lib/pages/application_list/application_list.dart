@@ -173,7 +173,7 @@ class _ApplicationListPageState extends State<ApplicationListPage> {
                   return InkButton(
                     onPressed: () {
                       if (isSellectAll) {
-                        _controller.unSelectAll();
+                        _controller.removeSelectApps();
                       } else {
                         _controller.selectAll();
                       }

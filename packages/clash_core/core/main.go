@@ -83,12 +83,6 @@ func start(configDir *C.char) *C.char {
 	if err := hub.Parse(nil); err != nil {
 		return cError(fmt.Errorf("start core: %w", err))
 	}
-	if !listener.GetTunConf().Enable {
-		resetTunListener()
-		tunnel.OnSuspend()
-		started = false
-		return cError(errors.New("start TUN failed; check the service log for details"))
-	}
 
 	started = true
 	return nil

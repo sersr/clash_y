@@ -3,7 +3,7 @@ import 'package:test/test.dart';
 
 void main() {
   test('installed application exposes package selection metadata', () {
-    const app = InstalledApplication(
+    final app = InstalledApplication(
       appName: 'Clashy',
       packageName: 'io.aote.clashy',
       systemApp: false,

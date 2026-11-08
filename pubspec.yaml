@@ -45,6 +45,7 @@ dependencies:
   native_toolchain_c: ^0.19.5
   uuid: ^4.6.0
   dart_ipc: ^2.0.2
+  jsf: ^1.2.1
 
 
 dev_dependencies:
