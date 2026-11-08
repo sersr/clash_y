@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'dart:io' as io;
 import 'dart:math';
 
+import 'package:clash_service/clash_service.dart';
 import 'package:clashy/event/impl/dio/unix_socket_http.dart';
+import 'package:clashy/event/impl/clash_service.dart';
 import 'package:clashy/event/repository.dart';
 import 'package:common/common.dart';
 import 'package:dio/dio.dart';
@@ -235,6 +237,30 @@ final class ClashRequest {
   FutureOr<void> reloadCurrentConfig() async {
     try {
       await initConfigPath();
+      if (io.Platform.isAndroid && !ClashService.isVpnActive()) {
+        final profile = BaseConfig.currentProfile.value.toClashProfile(
+          configYaml.parent.path,
+        );
+        final accepted = await ClashService.reloadCoreConfig(
+          profile,
+          controllerSocketPath: BaseConfig.unixSockPath.value,
+        );
+        if (!accepted) {
+          Log.e('failed to request Android core configuration reload');
+        }
+        return;
+      }
+
+      if (io.Platform.isMacOS || io.Platform.isLinux || io.Platform.isWindows) {
+        final response = await ClashServiceApi.reloadClashConfig();
+        if (!response.success) {
+          Log.e('reload Clash config failed: ${response.data}');
+          return;
+        }
+        Log.i(response.data);
+        return;
+      }
+
       final response = await _dio.put(
         'configs',
         data: {'path': configYaml.path},
@@ -242,7 +268,7 @@ final class ClashRequest {
       );
       Log.i(response.data);
     } catch (e) {
-      Log.i(e);
+      Log.e('reload Clash config failed: $e');
     }
   }
 

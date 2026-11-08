@@ -118,6 +118,47 @@ abstract final class ClashService {
     return false;
   }
 
+  /// Starts the Android mihomo core without enabling its VPN interface.
+  ///
+  /// The controller API remains available so the application can load proxies
+  /// before the user turns the VPN on.
+  static Future<bool> startCore(
+    ClashProfile profile, {
+    String? controllerSocketPath,
+  }) async {
+    if (!Platform.isAndroid) return false;
+    return android.AndroidVpnService.startCore(
+      profile.configDir,
+      profileUrl: profile.url,
+      profileName: profile.name,
+      controllerSocketPath: controllerSocketPath,
+      updateIntervalMinutes: profile.updateInterval,
+      updateTime: profile.updateTime,
+    );
+  }
+
+  /// Reloads the Android core configuration without changing VPN state.
+  static Future<bool> reloadCoreConfig(
+    ClashProfile profile, {
+    String? controllerSocketPath,
+  }) async {
+    if (!Platform.isAndroid) return false;
+    return android.AndroidVpnService.reloadConfig(
+      profile.configDir,
+      profileUrl: profile.url,
+      profileName: profile.name,
+      controllerSocketPath: controllerSocketPath,
+      updateIntervalMinutes: profile.updateInterval,
+      updateTime: profile.updateTime,
+    );
+  }
+
+  /// Whether the Android VPN interface is currently established.
+  static bool isVpnActive() {
+    if (!Platform.isAndroid) return false;
+    return android.AndroidVpnService.isVpnActive();
+  }
+
   /// Updates the profile shown/used by a running service without restarting
   /// the core.
   ///
@@ -177,7 +218,7 @@ abstract final class ClashService {
 
   static Future<bool> stop() async {
     if (Platform.isAndroid) {
-      return android.AndroidVpnService.close();
+      return android.AndroidVpnService.stopVpn();
     }
     if (Platform.isIOS) {
       return IOSVpnService.close();

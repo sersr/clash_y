@@ -4,6 +4,13 @@ Platform service lifecycle for Clashy. iOS uses Apple's Network Extension
 Packet Tunnel API; the Go core runs inside the `PacketTunnel` extension, not in
 the Flutter app.
 
+On desktop, the service can run the Clash core with TUN disabled so proxies
+remain available while the VPN switch is off. Starting the VPN enables TUN;
+stopping it disables TUN without stopping the core. The macOS, Windows, and
+Linux service API exposes these as separate core and VPN operations. Reloading
+the current configuration preserves the service's current VPN/TUN state. iOS
+keeps its existing Packet Tunnel lifecycle.
+
 ## iOS setup
 
 - Enable the **Network Extensions > Packet Tunnel** capability for

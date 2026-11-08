@@ -10,6 +10,11 @@ import 'dio/unix_socket_dio.dart';
 abstract final class _Apis {
   static const clashEnv = 'baseInfo/env';
   static const clashStart = 'clash';
+  static const clashStartCore = 'clash/core';
+  static const clashVpnStart = 'clash/vpn/start';
+  static const clashVpnStop = 'clash/vpn/stop';
+  static const clashVpnStatus = 'clash/vpn/status';
+  static const clashReload = 'clash/reload';
   static const clashProfile = 'clash/profile';
   static const clashStop = 'clash/stop';
   static const clashStatus = 'clash/status';
@@ -31,6 +36,30 @@ abstract final class ClashServiceApi {
     return .transform(res.data);
   }
 
+  static Future<ApiResp> startClashCore(ClashProfile profile) async {
+    final res = await _dio.post(_Apis.clashStartCore, data: profile.toJson());
+
+    return .transform(res.data);
+  }
+
+  static Future<ApiResp> startVpn(ClashProfile profile) async {
+    final res = await _dio.post(_Apis.clashVpnStart, data: profile.toJson());
+
+    return .transform(res.data);
+  }
+
+  static Future<ApiResp> stopVpn() async {
+    final res = await _dio.post(_Apis.clashVpnStop);
+
+    return .transform(res.data);
+  }
+
+  static Future<ApiResp> reloadClashConfig() async {
+    final res = await _dio.post(_Apis.clashReload);
+
+    return .transform(res.data);
+  }
+
   /// Switches the profile a running service refreshes itself from.
   static Future<ApiResp> updateClashProfile(ClashProfile profile) async {
     final res = await _dio.post(_Apis.clashProfile, data: profile.toJson());
@@ -46,6 +75,12 @@ abstract final class ClashServiceApi {
 
   static Future<bool> isClashRunning() async {
     final res = await _dio.get(_Apis.clashStatus);
+    final response = ApiResp.transform(res.data);
+    return response.success && response.data == true;
+  }
+
+  static Future<bool> isVpnActive() async {
+    final res = await _dio.get(_Apis.clashVpnStatus);
     final response = ApiResp.transform(res.data);
     return response.success && response.data == true;
   }
