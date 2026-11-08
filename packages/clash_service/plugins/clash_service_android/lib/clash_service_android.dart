@@ -1,8 +1,8 @@
 /// Android VPN backend for `package:clash_service`.
 ///
-/// Implemented with `package:jni` and `package:jni_flutter`: the VPN consent
-/// flow, the service intent, and the service start/stop calls all happen in
-/// Dart, and only `ClashVpnService` itself lives on the Kotlin side.
+/// Implemented with JNIgen, `package:jni`, and `package:jni_flutter`: the VPN
+/// consent flow, service intent, and service start/stop calls happen in Dart,
+/// while the Android VpnService component is implemented in Java.
 library;
 
 import 'src/android_vpn_service.dart';

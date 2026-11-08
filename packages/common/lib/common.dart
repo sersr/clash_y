@@ -32,5 +32,6 @@ export 'src/utils/equal.dart';
 
 /// widget
 export 'src/widget/base_dialog.dart';
+export 'src/base_scaffold.dart';
 
 BuildContext get currentContext => GlobalContext.context;

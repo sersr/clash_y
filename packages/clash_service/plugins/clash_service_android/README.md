@@ -6,7 +6,7 @@ Android backend for [`clash_service`](../../), implemented with
 
 ## How it works
 
-There is no `MethodChannel` and no Java/Kotlin bridge class. Dart drives the
+There is no `MethodChannel` or Java bridge class. Dart drives the
 whole flow:
 
 1. `jni_flutter` exposes the Android application `Context` and the current
@@ -32,21 +32,32 @@ from the current activity, and detects the outcome by polling
 `VpnService.prepare`, which starts returning `null` once the dialog has recorded
 the consent system-side.
 
-Kotlin is only used where Android requires a real component:
+The Android service and its support classes are implemented in Kotlin:
 
 | File | Purpose |
 | --- | --- |
 | `android/src/main/kotlin/io/aote/vpnService/ClashVpnService.kt` | The `VpnService` that establishes the TUN device and owns mihomo's lifetime. |
-| `android/src/main/kotlin/io/aote/vpnService/ClashCore.kt` | `external` methods into `libclash` (provided by `package:clash_core`). |
+| `android/src/main/kotlin/io/aote/vpnService/ClashCore.kt` | Native methods into `libclash` (provided by `package:clash_core`). |
 | `android/src/main/kotlin/io/aote/vpnService/VpnServiceContract.kt` | The actions/extras shared with `lib/src/android_vpn_service.dart`. |
+| `android/src/main/kotlin/io/aote/vpnService/ProfileConfigUpdater.kt` | Downloads subscriptions and merges app-owned configuration blocks. |
 | `android/src/main/AndroidManifest.xml` | Declares the service and the foreground-service permissions. |
 
 Dart talks to the service purely through the `Intent` extras defined in
 `VpnServiceContract.kt`; the two sides must stay in sync.
 
-`lib/src/android_api.dart` holds hand-written JNI bindings for the Android
-framework members used above. The separate `install_apps` package uses JNIgen
-to generate bindings for `PackageManager` and app icon APIs.
+The Android framework bindings used by Dart are generated with JNIgen into
+`lib/src/generated/`. Regenerate them from this package directory after
+`dart pub get` with:
+
+```sh
+dart --packages=.dart_tool/package_config.json tools/jnigen.dart
+```
+
+The direct invocation avoids running Flutter native-asset build hooks while
+starting the generator.
+
+Set `ANDROID_SDK_ROOT` or `ANDROID_HOME` first, or configure `android/local.properties`
+at the workspace root. Generation uses Android API levels 34, 35, and 36.
 
 ## Public API
 

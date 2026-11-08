@@ -14,6 +14,9 @@ enum SettingsHive<T> with StorageEnum<T> {
   tunEnabled<bool>(),
   tunStack<ClashTunStack>(),
 
+  /// scripts
+  scripts<Map<String, String>>(),
+
   ///
 
   applicationListMode<ApplicationListMode>();
@@ -40,6 +43,8 @@ enum SettingsHive<T> with StorageEnum<T> {
         return .base(true);
       case .tunStack:
         return .new(ClashTunStack.fromJson, ClashTunStack.mixed);
+      case .scripts:
+        return .map<String, String>((data) => data, {});
     }
   }
 
