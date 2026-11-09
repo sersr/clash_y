@@ -15,10 +15,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   process: ^5.0.6
   yaml: ^3.1.0
-  nop_db:
-    path: ../packages/nop_db
-  nop_db_sqlite:
-    path: ../packages/nop_db_sqlite
+
 
   nop: ^0.3.0
   http: ^1.6.0
@@ -61,10 +58,6 @@ dev_dependencies:
 dependency_overrides:
   flutter_nop:
     path: ../packages/flutter_nop
-  nop_db:
-    path: ../packages/nop_db
-  nop_db_sqlite:
-    path: ../packages/nop_db_sqlite
   nop:
     path: ../packages/nop
   clash_core:

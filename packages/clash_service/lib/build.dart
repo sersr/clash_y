@@ -37,7 +37,7 @@ Future<void> buildMacOSDaemon(
   final result = await io.Process.run('swift', [
     'build',
     '--package-path',
-    'plugins/clash_service_drawin',
+    'packages/clash_service_drawin',
     '-c',
     'release',
   ], workingDirectory: input.packageRoot.path);
@@ -48,7 +48,7 @@ Future<void> buildMacOSDaemon(
 
   // 定位编译产物 .dylib
   final dylibPath =
-      '${input.packageRoot.path}/plugins/clash_service_drawin/.build/release/libclash-service.dylib';
+      '${input.packageRoot.path}/packages/clash_service_drawin/.build/release/libclash-service.dylib';
 
   input.config.code.linkModePreference;
   output.assets.code.add(
@@ -78,7 +78,7 @@ Future<void> buildClashServer(
 
   final serverDir = fs.currentDirectory
       .childDirectory(input.packageRoot.path)
-      .childDirectory('plugins')
+      .parent
       .childDirectory('server');
 
   final result = await io.Process.run('dart', [
@@ -147,7 +147,7 @@ Future<void> buildClashServer(
   if (targetOs == .macOS) {
     final wakeMonitorDir = fs.currentDirectory
         .childDirectory(input.packageRoot.path)
-        .childDirectory('plugins')
+        .parent
         .childDirectory('clash_wake_monitor');
     final swiftResult = await io.Process.run('swift', [
       'build',
@@ -193,7 +193,7 @@ Future<void> buildClashServer(
     // 用户级状态栏程序：由 clashyService daemon 直接启动，app 退出后图标仍在。
     final trayDir = fs.currentDirectory
         .childDirectory(input.packageRoot.path)
-        .childDirectory('plugins')
+        .parent
         .childDirectory('clash_tray');
     final trayResult = await io.Process.run('swift', [
       'build',

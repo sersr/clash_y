@@ -50,6 +50,8 @@ dependencies:
     git:
       url: https://github.com/sersr/ui_widgets
   yaml_writer: ^2.1.0
+  app_colors:
+    path: ../app_colors
 
 dev_dependencies:
   flutter_test:

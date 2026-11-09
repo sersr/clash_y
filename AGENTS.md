@@ -25,6 +25,10 @@
 
 - 新增或修改包名时保持列表无重复项；保存时沿用列表格式。
 
+## Git 提交
+
+- 创建 Git 提交时，提交信息中不要添加作者或共同作者署名（包括 `Co-authored-by` trailer），也不要通过 `--author` 指定作者。
+
 ## Flutter Apple 平台依赖
 
 - Flutter iOS/macOS 工程优先使用 Swift Package Manager（SPM）集成原生依赖；Flutter 3.44 起默认启用 SPM。不要为应用新增 CocoaPods/Podfile 集成。

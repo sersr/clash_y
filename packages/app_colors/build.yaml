@@ -1,0 +1,15 @@
+targets:
+  $default:
+    builders:
+      app_colors:
+        generate_for:
+          - test/*
+
+builders:
+  app_colors:
+    import: "package:app_colors/src/app_colors_builder.dart"
+    builder_factories: ["appColorsBuilder"]
+    build_extensions: { ".dart": ["app_colors.g.part"] }
+    auto_apply: dependents
+    build_to: cache
+    applies_builders: ["source_gen|combining_builder"]

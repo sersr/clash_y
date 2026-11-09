@@ -1,12 +1,14 @@
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart';
 
 part 'hive/model.dart';
 part 'hive/settings.dart';
 
 enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
+  appSettings,
   settings,
   config,
   window;
@@ -20,6 +22,8 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
           yield* BaseConfig.values;
         case Hives.window:
           yield* WindowHive.values;
+        case .appSettings:
+          yield* AppSettings.values;
       }
     }
   }
@@ -73,5 +77,22 @@ enum WindowHive<T> with StorageEnum<T> {
       case WindowHive.windowRect:
         return .new(WindowRect.fromJson, WindowRect.zero);
     }
+  }
+}
+
+enum AppSettings<T> with StorageEnum<T> {
+  themeMode<ThemeMode>();
+
+  @override
+  StorageMixin get target => Hives.appSettings;
+
+  @override
+  StorageTransform get transform {
+    return switch (this) {
+      .themeMode => .new(
+        (data) => ThemeMode.values[data % ThemeMode.values.length],
+        ThemeMode.system,
+      ),
+    };
   }
 }

@@ -152,7 +152,7 @@ class _NewConfigState extends State<_NewConfig> {
     final editNameW = TextField(
       controller: editName,
       style: .new(
-        color: CT.color(.new(0xFF333333)).color,
+        color: colors.editTextColor,
         fontSize: 14.sp,
         fontWeight: .w400,
       ),
@@ -162,23 +162,17 @@ class _NewConfigState extends State<_NewConfig> {
         contentPadding: .symmetric(vertical: 16.h, horizontal: 8.w),
         hintText: widget.profile?.rawName ?? "Profile name (Optional)",
         hintStyle: .new(
-          color: CT(
-            light: .fromARGB(255, 160, 160, 160),
-            dark: .fromARGB(100, 100, 100, 100),
-          ).color,
+          color: colors.editTextHintColor,
           fontSize: 14.sp,
           fontWeight: .w400,
         ),
         border: .none,
         focusedBorder: ShapedInputBorder(
-          borderSide: .new(
-            color: CT.textFieldBorderColorFocus.color,
-            width: 2.r,
-          ),
+          borderSide: .new(color: colors.textFieldBorderColorFocus, width: 2.r),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
         enabledBorder: ShapedInputBorder(
-          borderSide: .new(color: CT.textFieldBorderColor.color, width: 1.6.r),
+          borderSide: .new(color: colors.textFieldBorderColor, width: 1.6.r),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
       ),
@@ -187,7 +181,7 @@ class _NewConfigState extends State<_NewConfig> {
     final editUrlW = TextField(
       controller: editUrl,
       style: .new(
-        color: CT.color(.new(0xFF333333)).color,
+        color: colors.editTextColor,
         fontSize: 14.sp,
         fontWeight: .w400,
       ),
@@ -197,23 +191,17 @@ class _NewConfigState extends State<_NewConfig> {
         contentPadding: .symmetric(vertical: 16.h, horizontal: 8.w),
         hintText: "Subscribe URL (Required)",
         hintStyle: .new(
-          color: CT(
-            light: .fromARGB(255, 160, 160, 160),
-            dark: .fromARGB(100, 100, 100, 100),
-          ).color,
+          color: colors.editTextHintColor,
           fontSize: 14.sp,
           fontWeight: .w400,
         ),
         border: .none,
         focusedBorder: ShapedInputBorder(
-          borderSide: .new(
-            color: CT.textFieldBorderColorFocus.color,
-            width: 2.r,
-          ),
+          borderSide: .new(color: colors.textFieldBorderColorFocus, width: 2.r),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
         enabledBorder: ShapedInputBorder(
-          borderSide: .new(color: CT.textFieldBorderColor.color, width: 1.6.r),
+          borderSide: .new(color: colors.textFieldBorderColor, width: 1.6.r),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
       ),
@@ -221,7 +209,7 @@ class _NewConfigState extends State<_NewConfig> {
     final editIntervalW = TextField(
       controller: editInterval,
       style: .new(
-        color: CT.color(.new(0xFF333333)).color,
+        color: colors.editTextColor,
         fontSize: 14.sp,
         fontWeight: .w400,
       ),
@@ -233,23 +221,17 @@ class _NewConfigState extends State<_NewConfig> {
         contentPadding: .symmetric(vertical: 16.h, horizontal: 8.w),
         hintText: "Update interval (Minutes)",
         hintStyle: .new(
-          color: CT(
-            light: .fromARGB(255, 160, 160, 160),
-            dark: .fromARGB(100, 100, 100, 100),
-          ).color,
+          color: colors.editTextHintColor,
           fontSize: 14.sp,
           fontWeight: .w400,
         ),
         border: .none,
         focusedBorder: ShapedInputBorder(
-          borderSide: .new(
-            color: CT.textFieldBorderColorFocus.color,
-            width: 2.r,
-          ),
+          borderSide: .new(color: colors.textFieldBorderColorFocus, width: 2.r),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
         enabledBorder: ShapedInputBorder(
-          borderSide: .new(color: CT.textFieldBorderColor.color, width: 1.6.r),
+          borderSide: .new(color: colors.textFieldBorderColor, width: 1.6.r),
           shape: RoundedRectangleBorder(borderRadius: .circular(8.r)),
         ),
       ),
@@ -280,18 +262,13 @@ class _NewConfigState extends State<_NewConfig> {
         Nav.back((url: url, name: name, interval: intervalM));
       },
       padding: .symmetric(vertical: 10.h, horizontal: 32.w),
-      overlayColor: CT(
-        light: const Color(0x35FFFFFF),
-        dark: const Color(0x35FFFFFF),
-      ).color,
+      overlayColor: colors.inkOverlayColor,
       borderRadius: .circular(12.r),
-      backgroundColor: CT(light: Colors.blue, dark: Colors.blue).color,
+      backgroundColor: colors.inkBackgroundColor,
 
       child: Text(
         widget.isEdit ? 'Update' : "Add",
-        style: .new(
-          color: CT(light: .new(0xFFFFFFFF), dark: .new(0xFF333333)).color,
-        ),
+        style: .new(color: colors.inkTextColor),
       ),
     );
     final cancelW = InkButton(
@@ -299,29 +276,11 @@ class _NewConfigState extends State<_NewConfig> {
         Nav.back();
       },
       padding: .symmetric(vertical: 10.h, horizontal: 32.w),
-      overlayColor: CT(
-        light: const Color(0x35A0A0A0),
-        dark: const Color(0x35A0A0A0),
-      ).color,
+      overlayColor:  .new(0x35A0A0A0),
       borderRadius: .circular(12.r),
-      backgroundColor: CT(
-        light: Colors.transparent,
-        dark: Colors.transparent,
-      ).color,
-
-      side: .new(
-        color: CT(
-          light: const Color(0x488A8A8A),
-          dark: const Color(0x488A8A8A),
-        ).color,
-        width: 1.5.r,
-      ),
-      child: Text(
-        "Cancel",
-        style: .new(
-          color: CT(light: .new(0xFF3A3A3A), dark: .new(0xFF3A3A3A)).color,
-        ),
-      ),
+      backgroundColor: Colors.transparent,
+      side: .new(color: const Color(0x488A8A8A), width: 1.5.r),
+      child: Text("Cancel", style: .new(color: .new(0xFF3A3A3A))),
     );
 
     Widget body = Column(
