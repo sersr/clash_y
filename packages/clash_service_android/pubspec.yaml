@@ -11,7 +11,7 @@ dependencies:
   # Supplies `libclash.so` (and the `ClashCore` native methods it registers) to
   # the application through a native-assets build hook.
   clash_core:
-    path: ../../../clash_core
+    path: ../clash_core
   flutter:
     sdk: flutter
   jni: ^1.0.0

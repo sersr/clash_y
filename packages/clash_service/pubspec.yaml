@@ -27,9 +27,9 @@ dependencies:
   code_assets: ^2.0.0
   hooks: ^2.2.0
   server:
-    path: plugins/server
+    path: ../server
   clash_service_android:
-    path: plugins/clash_service_android
+    path: ../clash_service_android
   data_assets: ^0.20.0
 
 flutter:
