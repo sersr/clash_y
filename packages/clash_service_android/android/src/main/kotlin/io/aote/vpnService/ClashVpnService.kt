@@ -121,6 +121,7 @@ class ClashVpnService : VpnService() {
 
     private var lastNotificationTitle: String? = null
     private var lastNotificationText: String? = null
+    private var notificationTimestamp = 0L
 
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
 
@@ -950,7 +951,9 @@ class ClashVpnService : VpnService() {
     }
 
     @Suppress("DEPRECATION")
+    @Synchronized
     private fun stopForegroundCompat() {
+        notificationTimestamp = 0L
         stopForeground(true)
     }
 
@@ -993,8 +996,12 @@ class ClashVpnService : VpnService() {
         val text = "↑ ${formatTrafficRate(uploadRate)}  ↓ ${formatTrafficRate(downloadRate)}"
         lastNotificationTitle = title
         lastNotificationText = text
+        if (notificationTimestamp == 0L) {
+            notificationTimestamp = System.currentTimeMillis()
+        }
 
         return builder
+            .setWhen(notificationTimestamp)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
