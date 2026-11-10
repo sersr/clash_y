@@ -1,3 +1,4 @@
+@_colors
 library;
 
 import 'dart:math' as math;
@@ -7,22 +8,32 @@ import 'package:material_ui/material_ui.dart';
 
 part 'color_ext.g.dart';
 
-@AppColorsReg<({Color light, Color dark})>({
-  "textFieldBorderColor": (light: .new(0x496B6B6B), dark: .new(0xFFDDDDDD)),
-  "textFieldBorderColorFocus": (
+final class _Colors {
+  final Color light;
+  final Color dark;
+  const new({required this.light, required this.dark});
+}
+
+const _colors = AppColorsReg<_Colors>({
+  "textFieldBorderColor": .new(light: .new(0x496B6B6B), dark: .new(0xFFDDDDDD)),
+  "textFieldBorderColorFocus": .new(
     light: .new(0xFF1D79E2),
     dark: .new(0xFF1D79E2),
   ),
-  "editTextColor": (light: .new(0xFF333333), dark: .new(0xFFDDDDDD)),
-  "editTextHintColor": (
+  "editTextColor": .new(light: .new(0xFF333333), dark: .new(0xFFDDDDDD)),
+  "editTextHintColor": .new(
     light: .fromARGB(255, 160, 160, 160),
     dark: .fromARGB(100, 100, 100, 100),
   ),
-  "inkOverlayColor": (light: Color(0x35FFFFFF), dark: Color(0x35FFFFFF)),
-  "inkBackgroundColor": (light: Colors.blue, dark: Colors.blue),
-  "inkTextColor": (light: .new(0xFFFFFFFF), dark: .new(0xFF333333)),
-  "inkCancelOverlayColor": (light: Color(0x35A0A0A0), dark: Color(0x35A0A0A0)),
-})
+  "inkOverlayColor": .new(light: Color(0x35FFFFFF), dark: Color(0x35FFFFFF)),
+  "inkBackgroundColor": .new(light: Colors.blue, dark: Colors.blue),
+  "inkTextColor": .new(light: .new(0xFFFFFFFF), dark: .new(0xFF333333)),
+  "inkCancelOverlayColor": .new(
+    light: Color(0x35A0A0A0),
+    dark: Color(0x35A0A0A0),
+  ),
+});
+
 extension ColorString on String {
   Color get color {
     final value = replaceFirst('#', '').characters;

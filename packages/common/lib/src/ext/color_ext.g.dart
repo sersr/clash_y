@@ -61,35 +61,29 @@ final class AppColors extends ThemeExtension<AppColors> {
 
   @override
   AppColors lerp(covariant AppColors? other, double t) {
-    if (other is! AppColors) return this;
-
     return .new(
-      textFieldBorderColor: Color.lerp(
+      textFieldBorderColor: .lerp(
         textFieldBorderColor,
-        other.textFieldBorderColor,
+        other?.textFieldBorderColor,
         t,
       )!,
-      textFieldBorderColorFocus: Color.lerp(
+      textFieldBorderColorFocus: .lerp(
         textFieldBorderColorFocus,
-        other.textFieldBorderColorFocus,
+        other?.textFieldBorderColorFocus,
         t,
       )!,
-      editTextColor: Color.lerp(editTextColor, other.editTextColor, t)!,
-      editTextHintColor: Color.lerp(
-        editTextHintColor,
-        other.editTextHintColor,
-        t,
-      )!,
-      inkOverlayColor: Color.lerp(inkOverlayColor, other.inkOverlayColor, t)!,
-      inkBackgroundColor: Color.lerp(
+      editTextColor: .lerp(editTextColor, other?.editTextColor, t)!,
+      editTextHintColor: .lerp(editTextHintColor, other?.editTextHintColor, t)!,
+      inkOverlayColor: .lerp(inkOverlayColor, other?.inkOverlayColor, t)!,
+      inkBackgroundColor: .lerp(
         inkBackgroundColor,
-        other.inkBackgroundColor,
+        other?.inkBackgroundColor,
         t,
       )!,
-      inkTextColor: Color.lerp(inkTextColor, other.inkTextColor, t)!,
-      inkCancelOverlayColor: Color.lerp(
+      inkTextColor: .lerp(inkTextColor, other?.inkTextColor, t)!,
+      inkCancelOverlayColor: .lerp(
         inkCancelOverlayColor,
-        other.inkCancelOverlayColor,
+        other?.inkCancelOverlayColor,
         t,
       )!,
     );
@@ -99,56 +93,56 @@ final class AppColors extends ThemeExtension<AppColors> {
 enum AppColorsType {
   light(
     .new(
-      textFieldBorderColor: Color.from(
+      textFieldBorderColor: .from(
         alpha: 0.28627450980392155,
         red: 0.4196078431372549,
         green: 0.4196078431372549,
         blue: 0.4196078431372549,
         colorSpace: .sRGB,
       ),
-      textFieldBorderColorFocus: Color.from(
+      textFieldBorderColorFocus: .from(
         alpha: 1.0,
         red: 0.11372549019607843,
         green: 0.4745098039215686,
         blue: 0.8862745098039215,
         colorSpace: .sRGB,
       ),
-      editTextColor: Color.from(
+      editTextColor: .from(
         alpha: 1.0,
         red: 0.2,
         green: 0.2,
         blue: 0.2,
         colorSpace: .sRGB,
       ),
-      editTextHintColor: Color.from(
+      editTextHintColor: .from(
         alpha: 1.0,
         red: 0.6274509803921569,
         green: 0.6274509803921569,
         blue: 0.6274509803921569,
         colorSpace: .sRGB,
       ),
-      inkOverlayColor: Color.from(
+      inkOverlayColor: .from(
         alpha: 0.20784313725490197,
         red: 1.0,
         green: 1.0,
         blue: 1.0,
         colorSpace: .sRGB,
       ),
-      inkBackgroundColor: Color.from(
+      inkBackgroundColor: .from(
         alpha: 1.0,
         red: 0.12941176470588237,
         green: 0.5882352941176471,
         blue: 0.9529411764705882,
         colorSpace: .sRGB,
       ),
-      inkTextColor: Color.from(
+      inkTextColor: .from(
         alpha: 1.0,
         red: 1.0,
         green: 1.0,
         blue: 1.0,
         colorSpace: .sRGB,
       ),
-      inkCancelOverlayColor: Color.from(
+      inkCancelOverlayColor: .from(
         alpha: 0.20784313725490197,
         red: 0.6274509803921569,
         green: 0.6274509803921569,
@@ -159,56 +153,56 @@ enum AppColorsType {
   ),
   dark(
     .new(
-      textFieldBorderColor: Color.from(
+      textFieldBorderColor: .from(
         alpha: 1.0,
         red: 0.8666666666666667,
         green: 0.8666666666666667,
         blue: 0.8666666666666667,
         colorSpace: .sRGB,
       ),
-      textFieldBorderColorFocus: Color.from(
+      textFieldBorderColorFocus: .from(
         alpha: 1.0,
         red: 0.11372549019607843,
         green: 0.4745098039215686,
         blue: 0.8862745098039215,
         colorSpace: .sRGB,
       ),
-      editTextColor: Color.from(
+      editTextColor: .from(
         alpha: 1.0,
         red: 0.8666666666666667,
         green: 0.8666666666666667,
         blue: 0.8666666666666667,
         colorSpace: .sRGB,
       ),
-      editTextHintColor: Color.from(
+      editTextHintColor: .from(
         alpha: 0.39215686274509803,
         red: 0.39215686274509803,
         green: 0.39215686274509803,
         blue: 0.39215686274509803,
         colorSpace: .sRGB,
       ),
-      inkOverlayColor: Color.from(
+      inkOverlayColor: .from(
         alpha: 0.20784313725490197,
         red: 1.0,
         green: 1.0,
         blue: 1.0,
         colorSpace: .sRGB,
       ),
-      inkBackgroundColor: Color.from(
+      inkBackgroundColor: .from(
         alpha: 1.0,
         red: 0.12941176470588237,
         green: 0.5882352941176471,
         blue: 0.9529411764705882,
         colorSpace: .sRGB,
       ),
-      inkTextColor: Color.from(
+      inkTextColor: .from(
         alpha: 1.0,
         red: 0.2,
         green: 0.2,
         blue: 0.2,
         colorSpace: .sRGB,
       ),
-      inkCancelOverlayColor: Color.from(
+      inkCancelOverlayColor: .from(
         alpha: 0.20784313725490197,
         red: 0.6274509803921569,
         green: 0.6274509803921569,

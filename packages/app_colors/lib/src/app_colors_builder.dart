@@ -41,9 +41,31 @@ class AppColorsGeneratorForAnnotation
           }
 
           if (item.value case var color?) {
-            final m = map[name] ??= {};
-            m['light'] = genColor(color);
-            continue;
+            if (color.type?.element case ClassElement e) {
+              final names = e.allSupertypes.map((e) => e.element.name);
+              if (e.name == 'Color' || names.contains('Color')) {
+                final m = map[name] ??= {};
+                m['light'] = genColor(color);
+                continue;
+              }
+
+              final fileds = getAllFileds(e)
+                  .where((e) => e.name != 'hashCode')
+                  .map((e) => (e.name, color.getFieldE(e.name ?? '')))
+                  .toList();
+              for (var item in fileds) {
+                final key = item.$1 ?? '';
+                final color = item.$2;
+                if (color?.type?.element case ClassElement e) {
+                  final names = e.allSupertypes.map((e) => e.element.name);
+
+                  if (e.name == 'Color' || names.contains('Color')) {
+                    final m = map[name] ??= {};
+                    m[key] = genColor(color!);
+                  }
+                }
+              }
+            }
           }
         }
 
@@ -52,30 +74,29 @@ class AppColorsGeneratorForAnnotation
     }
   }
 
-  DartObject? getFieldInSuperclasses(DartObject object, String name) {
-    var current = object;
-
-    while (true) {
-      final field = current.getField(name);
-      if (field != null) return field;
-
-      final parent = current.getField('(super)');
-      if (parent == null) return null;
-      current = parent;
+  List<FieldElement> getAllFileds(Element e) {
+    if (e case ClassElement e when e.name != 'Object') {
+      final List<FieldElement> list = .from(e.fields);
+      for (var item in e.allSupertypes) {
+        list.addAll(getAllFileds(item.element));
+      }
+      return list;
     }
+
+    return const [];
   }
 
   String genColor(DartObject color) {
-    final a = getFieldInSuperclasses(color, 'a')?.toDoubleValue();
-    final r = getFieldInSuperclasses(color, 'r')?.toDoubleValue();
-    final g = getFieldInSuperclasses(color, 'g')?.toDoubleValue();
-    final b = getFieldInSuperclasses(color, 'b')?.toDoubleValue();
-    final colorSpace = getFieldInSuperclasses(
-      color,
-      'colorSpace',
-    )?.getField('_name')?.toStringValue();
+    final a = color.getFieldE('a')?.toDoubleValue();
+    final r = color.getFieldE('r')?.toDoubleValue();
+    final g = color.getFieldE('g')?.toDoubleValue();
+    final b = color.getFieldE('b')?.toDoubleValue();
+    final colorSpace = color
+        .getFieldE('colorSpace')
+        ?.getField('_name')
+        ?.toStringValue();
 
-    return 'Color.from(alpha: $a, red: $r, green: $g, blue: $b, colorSpace: .$colorSpace)';
+    return '.from(alpha: $a, red: $r, green: $g, blue: $b, colorSpace: .$colorSpace)';
   }
 
   String gen(String className, Map<String, Map<String, String>> colors) {
@@ -98,16 +119,22 @@ final class $className extends ThemeExtension<$className> {
     buffer.writeAll(colors.keys.map((e) => 'final Color $e;\n'));
 
     buffer.write('''
-const new({
+const new(
+${colors.keys.isEmpty ? '': "{"}
+
 ${colors.keys.map((e) => "required this.$e,\n").join()}
-});
+
+${colors.keys.isEmpty ? '': "}"}
+);
 
 @override
-$className copyWith({
+$className copyWith( 
+${colors.keys.isEmpty ? '': "{"}
 
 ${colors.keys.map((e) => "Color? $e,\n").join()}
 
-}) {
+${colors.keys.isEmpty ? '': "}"}
+) {
 
 return .new(
 ${colors.keys.map((e) => "$e: $e ?? this.$e,\n").join()}
@@ -117,10 +144,8 @@ ${colors.keys.map((e) => "$e: $e ?? this.$e,\n").join()}
 
 @override
 $className lerp(covariant $className? other, double t) {
-  if (other is! $className) return this;
-
   return .new(
-  ${colors.keys.map((e) => "$e: Color.lerp($e, other.$e, t,)!,\n").join()}
+  ${colors.keys.map((e) => "$e: .lerp($e, other?.$e, t,)!,\n").join()}
   );
 
 }
@@ -170,3 +195,18 @@ String getDartMemberName(String name) {
 
 Builder appColorsBuilder(BuilderOptions options) =>
     SharedPartBuilder([AppColorsGeneratorForAnnotation()], 'app_colors');
+
+extension on DartObject {
+  DartObject? getFieldE(String name) {
+    var current = this;
+
+    while (true) {
+      final field = current.getField(name);
+      if (field != null) return field;
+
+      final parent = current.getField('(super)');
+      if (parent == null) return null;
+      current = parent;
+    }
+  }
+}
