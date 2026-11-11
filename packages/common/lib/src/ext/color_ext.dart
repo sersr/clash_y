@@ -1,3 +1,6 @@
+// ignore_for_file: library_private_types_in_public_api
+
+// @_colorsMap
 @_colors
 library;
 
@@ -6,33 +9,12 @@ import 'dart:math' as math;
 import 'package:app_colors/app_colors.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'colors.dart';
+
 part 'color_ext.g.dart';
 
-final class _Colors {
-  final Color light;
-  final Color dark;
-  const new({required this.light, required this.dark});
-}
-
-const _colors = AppColorsReg<_Colors>({
-  "textFieldBorderColor": .new(light: .new(0x496B6B6B), dark: .new(0xFFDDDDDD)),
-  "textFieldBorderColorFocus": .new(
-    light: .new(0xFF1D79E2),
-    dark: .new(0xFF1D79E2),
-  ),
-  "editTextColor": .new(light: .new(0xFF333333), dark: .new(0xFFDDDDDD)),
-  "editTextHintColor": .new(
-    light: .fromARGB(255, 160, 160, 160),
-    dark: .fromARGB(100, 100, 100, 100),
-  ),
-  "inkOverlayColor": .new(light: Color(0x35FFFFFF), dark: Color(0x35FFFFFF)),
-  "inkBackgroundColor": .new(light: Colors.blue, dark: Colors.blue),
-  "inkTextColor": .new(light: .new(0xFFFFFFFF), dark: .new(0xFF333333)),
-  "inkCancelOverlayColor": .new(
-    light: Color(0x35A0A0A0),
-    dark: Color(0x35A0A0A0),
-  ),
-});
+const _colors = AppColorsReg(ColorsFields(), genAnother: true);
+// const _colorsMap = AppColorsReg(colorsMap, genAnother: true);
 
 extension ColorString on String {
   Color get color {
