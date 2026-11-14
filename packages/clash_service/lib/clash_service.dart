@@ -55,8 +55,8 @@ abstract final class ClashService {
   /// systemd unit 并启动（未提权时弹 pkexec 密码框）；Windows 安装并启动
   /// SCM 服务（未提权时弹 UAC 密码框）。
   ///
-  /// [profile] carries the configuration directory plus the subscription the
-  /// service keeps refreshing while the app is not running.
+  /// [profile] carries the configuration directory, subscription, and optional
+  /// script the service uses while the app is not running.
   ///
   /// [allowList] 为 `true` 时仅将 [allowedApplications]（以及 Android VPN
   /// 自身包名）纳入 VPN；为 `false` 时使用全局路由和
@@ -77,6 +77,7 @@ abstract final class ClashService {
         profile.configDir,
         profileUrl: profile.url,
         profileName: profile.name,
+        script: profile.script,
         controllerSocketPath: controllerSocketPath,
         updateIntervalMinutes: profile.updateInterval,
         updateTime: profile.updateTime,
@@ -131,6 +132,7 @@ abstract final class ClashService {
       profile.configDir,
       profileUrl: profile.url,
       profileName: profile.name,
+      script: profile.script,
       controllerSocketPath: controllerSocketPath,
       updateIntervalMinutes: profile.updateInterval,
       updateTime: profile.updateTime,
@@ -147,6 +149,7 @@ abstract final class ClashService {
       profile.configDir,
       profileUrl: profile.url,
       profileName: profile.name,
+      script: profile.script,
       controllerSocketPath: controllerSocketPath,
       updateIntervalMinutes: profile.updateInterval,
       updateTime: profile.updateTime,
@@ -173,6 +176,7 @@ abstract final class ClashService {
         configDir: profile.configDir,
         profileUrl: profile.url,
         profileName: profile.name,
+        script: profile.script,
         controllerSocketPath: controllerSocketPath,
         updateIntervalMinutes: profile.updateInterval,
         updateTime: profile.updateTime,

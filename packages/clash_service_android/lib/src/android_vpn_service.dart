@@ -58,6 +58,7 @@ abstract final class AndroidVpnService {
     String configDir, {
     String? profileUrl,
     String? profileName,
+    String? script,
     String? controllerSocketPath,
     int? updateIntervalMinutes,
     DateTime? updateTime,
@@ -81,6 +82,7 @@ abstract final class AndroidVpnService {
           intent,
           profileUrl,
           profileName,
+          script,
           controllerSocketPath,
           updateIntervalMinutes,
           updateTime,
@@ -105,6 +107,7 @@ abstract final class AndroidVpnService {
     String configDir, {
     String? profileUrl,
     String? profileName,
+    String? script,
     String? controllerSocketPath,
     int? updateIntervalMinutes,
     DateTime? updateTime,
@@ -125,6 +128,7 @@ abstract final class AndroidVpnService {
           intent,
           profileUrl,
           profileName,
+          script,
           controllerSocketPath,
           updateIntervalMinutes,
           updateTime,
@@ -174,6 +178,7 @@ abstract final class AndroidVpnService {
     String configDir, {
     String? profileUrl,
     String? profileName,
+    String? script,
     String? controllerSocketPath,
     int? updateIntervalMinutes,
     DateTime? updateTime,
@@ -209,6 +214,7 @@ abstract final class AndroidVpnService {
           intent,
           profileUrl,
           profileName,
+          script,
           controllerSocketPath,
           updateIntervalMinutes,
           updateTime,
@@ -249,6 +255,7 @@ abstract final class AndroidVpnService {
     required String configDir,
     String? profileUrl,
     String? profileName,
+    String? script,
     String? controllerSocketPath,
     int? updateIntervalMinutes,
     DateTime? updateTime,
@@ -269,6 +276,7 @@ abstract final class AndroidVpnService {
           intent,
           profileUrl,
           profileName,
+          script,
           controllerSocketPath,
           updateIntervalMinutes,
           updateTime,
@@ -556,20 +564,21 @@ abstract final class AndroidVpnService {
 
   /// Attaches the profile fields the service needs to refresh `config.yaml`.
   ///
-  /// All three fields are always sent, so clearing the interval (a local
-  /// profile, or the user disabling updates) also reaches the service. Numbers
-  /// are strings because the intent contract only resolves
-  /// `putExtra(String, String)`.
+  /// Profile fields are always sent, so clearing the script or update schedule
+  /// also reaches the service. Numbers are strings because the intent contract
+  /// only resolves `putExtra(String, String)`.
   static void _putProfile(
     Intent intent,
     String? url,
     String? profileName,
+    String? script,
     String? controllerSocketPath,
     int? updateIntervalMinutes,
     DateTime? updateTime,
   ) {
     _putString(intent, _Contract.extraProfileUrl, url ?? '');
     _putString(intent, _Contract.extraProfileName, profileName ?? '');
+    _putString(intent, _Contract.extraProfileScript, script ?? '');
     _putString(
       intent,
       _Contract.extraControllerSocket,
@@ -653,6 +662,7 @@ abstract final class _Contract {
   static const String extraConfigDir = 'configDir';
   static const String extraProfileUrl = 'profileUrl';
   static const String extraProfileName = 'profileName';
+  static const String extraProfileScript = 'profileScript';
   static const String extraControllerSocket = 'controllerSocket';
   static const String extraUpdateInterval = 'updateInterval';
   static const String extraUpdateTime = 'updateTime';

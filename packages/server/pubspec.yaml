@@ -12,6 +12,7 @@ dependencies:
   collection: ^1.19.1
   dart_service_manager: ^1.3.1
   ffi: ^2.2.0
+  quickjs_runtime: ^0.4.9
   file: ^7.0.1
   nop: ^0.3.0
   path: ^1.9.0
@@ -23,6 +24,7 @@ dependencies:
   json_rpc_2: ^4.1.0
   shelf_web_socket: ^3.0.0
   yaml: ^3.1.0
+  yaml_writer: ^2.1.0
   yaml_edit: ^2.2.4
   clash_core:
     path: ../clash_core
@@ -37,6 +39,10 @@ dev_dependencies:
   lints: ^6.0.0
   test: ^1.25.6
 
+dependency_overrides:
+  quickjs_runtime:
+    git:
+      url: https://github.com/sersr/quickjs_runtime
 hooks:
   user_defines:
     clash_service:

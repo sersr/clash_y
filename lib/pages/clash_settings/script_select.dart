@@ -63,12 +63,8 @@ class _ScriptSelectState extends State<ScriptSelect> {
       overlayColor: colors.inkOverlayColor,
       backgroundColor: colors.inkBackgroundColor,
       onPressed: () {
-        final script = controller.selected.value;
-        if (script != null && script.id.isNotEmpty) {
-          Nav.back(script);
-          return;
-        }
-        Nav.back();
+        final script = controller.selected.value ?? .new(id: '');
+        Nav.back(script);
       },
       child: Center(
         child: Text(
@@ -127,7 +123,6 @@ class _ScriptItemWidget extends StatelessWidget {
       maxLines: 1,
     );
 
-
     final editW = GestureDetector(
       onTap: () {
         NavRoutes.scriptEdit(item: item, id: item.id).go();
@@ -149,6 +144,8 @@ class _ScriptItemWidget extends StatelessWidget {
         if (v == null) return;
         if (v) {
           controller.selected.value = item;
+        } else {
+          controller.selected.value = null;
         }
       },
     );

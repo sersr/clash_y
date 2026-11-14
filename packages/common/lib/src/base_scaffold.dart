@@ -30,7 +30,13 @@ class BaseScaffold extends StatelessWidget {
         body: Column(
           children: [
             appbar,
-            Expanded(child: body),
+            Expanded(
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: body,
+              ),
+            ),
           ],
         ),
       ),

@@ -11,6 +11,7 @@ class ClashProfile {
     this.url,
     this.updateInterval,
     this.updateTime,
+    this.script,
   });
 
   /// Directory holding the `config.yaml` the core runs with.
@@ -18,6 +19,9 @@ class ClashProfile {
   final String? id;
   final String? name;
   final String? url;
+
+  /// Profile script applied to downloaded subscription configs.
+  final String? script;
 
   /// Subscription refresh interval in minutes. `null` or `<= 0` disables the
   /// automatic updates.
@@ -36,7 +40,6 @@ class ClashProfile {
 
     return DateTime.now().difference(lastUpdateTime).inMinutes >= interval;
   }
-
 
   static const _minDelay = Duration(seconds: 5);
 
@@ -65,6 +68,7 @@ class ClashProfile {
     String? url,
     int? updateInterval,
     DateTime? updateTime,
+    String? script,
   }) {
     return ClashProfile(
       configDir: configDir ?? this.configDir,
@@ -73,6 +77,7 @@ class ClashProfile {
       url: url ?? this.url,
       updateInterval: updateInterval ?? this.updateInterval,
       updateTime: updateTime ?? this.updateTime,
+      script: script ?? this.script,
     );
   }
 
@@ -84,6 +89,7 @@ class ClashProfile {
       'configDir': configDir,
       'updateInterval': updateInterval,
       'updateTime': updateTime?.toIso8601String(),
+      'script': script,
     };
   }
 
@@ -100,6 +106,7 @@ class ClashProfile {
         final String value => int.tryParse(value),
         _ => null,
       },
+      script: json['script'] as String?,
       updateTime: switch (json['updateTime']) {
         final String value => DateTime.tryParse(value),
         _ => null,

@@ -56,6 +56,7 @@ class ClashVpnService : VpnService() {
         /** 自动更新配置用的 Profile（App 未运行时由本进程刷新）。 */
         private const val KEY_PROFILE_URL = "profileUrl"
         private const val KEY_PROFILE_NAME = "profileName"
+        private const val KEY_PROFILE_SCRIPT = "profileScript"
         private const val KEY_CONTROLLER_SOCKET = "controllerSocket"
         private const val KEY_UPDATE_INTERVAL = "updateInterval"
         private const val KEY_UPDATE_TIME = "updateTime"
@@ -531,7 +532,9 @@ class ClashVpnService : VpnService() {
             ?: prefs.getString(KEY_UPDATE_INTERVAL, null)
         val updateTime = this?.getStringExtra(VpnServiceContract.EXTRA_UPDATE_TIME)
             ?: prefs.getString(KEY_UPDATE_TIME, null)
-        return ProfileUpdate.fromExtras(url, interval, updateTime)
+        val script = this?.getStringExtra(VpnServiceContract.EXTRA_PROFILE_SCRIPT)
+            ?: prefs.getString(KEY_PROFILE_SCRIPT, null)
+        return ProfileUpdate.fromExtras(url, interval, updateTime, script)
     }
 
     private fun persistProfile(update: ProfileUpdate?) {
@@ -540,10 +543,12 @@ class ClashVpnService : VpnService() {
             editor.remove(KEY_PROFILE_URL)
                 .remove(KEY_UPDATE_INTERVAL)
                 .remove(KEY_UPDATE_TIME)
+                .remove(KEY_PROFILE_SCRIPT)
         } else {
             editor.putString(KEY_PROFILE_URL, update.url)
                 .putString(KEY_UPDATE_INTERVAL, update.intervalMinutes.toString())
                 .putString(KEY_UPDATE_TIME, update.updateTimeMs.toString())
+                .putString(KEY_PROFILE_SCRIPT, update.script)
         }
         editor.apply()
     }
@@ -579,7 +584,7 @@ class ClashVpnService : VpnService() {
 
             try {
                 Log.i(TAG, "updating profile from ${update.url}")
-                val backup = ConfigUpdater.updateConfig(configDir, update.url)
+                val backup = ConfigUpdater.updateConfig(configDir, update.url, update.script)
                 if (restartForProfile(configDir, backup)) Log.i(TAG, "profile updated")
                 // 无论成败都从当前时刻重新计时：失败后按完整周期重试，
                 // 避免订阅地址不可达时反复下载。App 期间切换了 Profile
@@ -1059,6 +1064,7 @@ class ClashVpnService : VpnService() {
 
     @Synchronized
     private fun refreshNotification() {
+        if (!isVpnEnabled()) return
         val title = profileName.ifBlank { "Clash VPN" }
         val text = "↑ ${formatTrafficRate(uploadRate)}  ↓ ${formatTrafficRate(downloadRate)}"
         if (title == lastNotificationTitle && text == lastNotificationText) {

@@ -70,39 +70,46 @@ class _ScriptEditState extends State<ScriptEdit> {
     );
     return BaseScaffold(
       backgroundColor: colors.backgroundColor,
-      appbar: Cs(() {
-        return TextField(
-          controller: controller.titleController,
-          style: .new(color: Colors.black, fontWeight: .w500, fontSize: 18.sp),
-          textAlignVertical: .center,
-          decoration: .new(
-            isCollapsed: true,
-            border: .none,
-            contentPadding: .symmetric(vertical: 12),
-            prefixIconConstraints: .new(minHeight: 50.h),
-            constraints: .new(minHeight: 50.h),
-            isDense: true,
-            prefixIcon: Padding(
-              padding: .only(right: 10),
-              child: Cs(() {
-                return PopScope(
-                  canPop: controller.canPop.value,
-                  onPopInvokedWithResult: (didPop, result) {
-                    if (didPop) return;
-                    _saveDialog(controller.name.value);
-                  },
-                  child: controller.canPop.value
-                      ? const BaseBackClosedButton.black()
-                      : saveW,
-                );
-              }),
+      appbar: SafeArea(
+        bottom: false,
+        child: Cs(() {
+          return TextField(
+            controller: controller.titleController,
+            style: .new(
+              color: Colors.black,
+              fontWeight: .w500,
+              fontSize: 18.sp,
             ),
-            suffixIcon: TextClearSufWidget(
-              controller: controller.titleController,
+            textAlignVertical: .center,
+            decoration: .new(
+              isCollapsed: true,
+              border: .none,
+              contentPadding: .symmetric(vertical: 12),
+              prefixIconConstraints: .new(minHeight: 50.h),
+              constraints: .new(minHeight: 50.h),
+              isDense: true,
+              prefixIcon: Padding(
+                padding: .only(right: 10),
+                child: Cs(() {
+                  return PopScope(
+                    canPop: controller.canPop.value,
+                    onPopInvokedWithResult: (didPop, result) {
+                      if (didPop) return;
+                      _saveDialog(controller.name.value);
+                    },
+                    child: controller.canPop.value
+                        ? const BaseBackClosedButton.black()
+                        : saveW,
+                  );
+                }),
+              ),
+              suffixIcon: TextClearSufWidget(
+                controller: controller.titleController,
+              ),
             ),
-          ),
-        );
-      }),
+          );
+        }),
+      ),
       body: _build.cs,
     );
   }

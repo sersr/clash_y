@@ -8,7 +8,9 @@ import 'package:clash_core/clash_core.dart';
 import 'package:ffi/ffi.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart' as p;
+import 'package:quickjs_runtime/quickjs_runtime.dart';
 import 'package:yaml/yaml.dart';
+import 'package:yaml_writer/yaml_writer.dart';
 
 import 'config_overrides.dart';
 import 'models/models.dart';
@@ -355,11 +357,15 @@ abstract final class ClashProcess {
     final current = await configFile.readAsString();
     final downloaded = await _downloadConfig(url);
     final merged = applyConfigOverrides(downloaded, current);
+    final script = profile.script;
+    final configured = script == null || script.trim().isEmpty
+        ? merged
+        : _runProfileScript(merged, script);
 
     final backupPath = '${configFile.path}.bak';
     final backup = File(backupPath);
     await configFile.copy(backupPath);
-    await _writeConfig(configFile, merged);
+    await _writeConfig(configFile, configured);
 
     var vpnEnabled = false;
     final error = await _clashQueue.run(() async {
@@ -387,6 +393,47 @@ abstract final class ClashProcess {
       Log.e('restore previous config failed: $restoreError');
     }
     return error;
+  }
+
+  static String _runProfileScript(String yaml, String script) {
+    final js = QuickjsRuntime();
+    try {
+      final data = jsonDecode(jsonEncode(loadYaml(yaml)));
+      final scriptErrors = <String?>[];
+      js.eval(script, filename: 'profile-script.js', errMsg: scriptErrors);
+      if (scriptErrors.isNotEmpty) {
+        throw FormatException(
+          scriptErrors.first ?? 'unable to evaluate profile script',
+        );
+      }
+
+      js.setGlobal('profileConfig', data);
+      final resultErrors = <String?>[];
+      final result = js.eval(
+        'main(profileConfig);',
+        filename: 'profile-script-main.js',
+        errMsg: resultErrors,
+      );
+      if (resultErrors.isNotEmpty) {
+        throw FormatException(
+          resultErrors.first ?? 'unable to execute profile script',
+        );
+      }
+      if (result == null) {
+        throw const FormatException('profile script returned no config');
+      }
+
+      final config = jsonDecode(result);
+      if (config is! Map) {
+        throw const FormatException('profile script must return a config map');
+      }
+      return YamlWriter().write(config.cast<String, dynamic>());
+    } catch (e) {
+      Log.e('profile script failed: $e');
+      return yaml;
+    } finally {
+      js.close();
+    }
   }
 
   static Future<String> _downloadConfig(String url) async {

@@ -127,6 +127,7 @@ class ConfigsController with NopLifecycle {
 
     if (isCurrent(newProfile)) {
       BaseConfig.currentProfile.value = newProfile.id ?? '';
+      repository.clashEvent.reloadCurrentConfig();
       clash.syncProfileWithService();
     }
   }

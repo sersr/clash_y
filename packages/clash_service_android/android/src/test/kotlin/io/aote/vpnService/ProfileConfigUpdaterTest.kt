@@ -68,6 +68,49 @@ class ProfileConfigUpdaterTest {
     }
 
     @Test
+    fun appliesProfileScriptToTheMergedConfig() {
+        val merged = ConfigUpdater.applyOverrides(
+            "mode: rule\nmixed-port: 7890\nproxies: []",
+            current,
+        )
+        val result = ConfigUpdater.applyScript(
+            merged,
+            """
+                function main(config) {
+                    config.mode = "global";
+                    config.proxies.push({ name: "scripted", type: "direct" });
+                    return config;
+                }
+            """.trimIndent(),
+        )
+
+        assertTrue(result.contains("mode: global"), result)
+        assertTrue(result.contains("mixed-port: 7891"), result)
+        assertTrue(result.contains("name: scripted"), result)
+        assertTrue(result.contains("type: direct"), result)
+    }
+
+    @Test
+    fun keepsTheOriginalConfigWhenTheScriptFails() {
+        val original = "mode: rule\nproxies: []"
+
+        assertEquals(
+            original,
+            ConfigUpdater.applyScript(
+                original,
+                "function main(config) { throw new Error('script failed'); }",
+            ),
+        )
+        assertEquals(
+            original,
+            ConfigUpdater.applyScript(
+                original,
+                "function main(config) { return null; }",
+            ),
+        )
+    }
+
+    @Test
     fun extractsBlocksThatRunToTheEnd() {
         val block = ConfigUpdater.extractTopLevelBlock(current, "tun")
 
@@ -104,6 +147,15 @@ class ProfileConfigUpdaterTest {
         assertEquals(
             ProfileUpdate("https://example.com/sub", 10, 5L),
             ProfileUpdate.fromExtras("https://example.com/sub", "10", "5"),
+        )
+        assertEquals(
+            "function main(config) { return config; }",
+            ProfileUpdate.fromExtras(
+                "https://example.com/sub",
+                "10",
+                "5",
+                "function main(config) { return config; }",
+            )?.script,
         )
     }
 }

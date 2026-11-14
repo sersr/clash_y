@@ -193,6 +193,7 @@ internal class TrafficMonitor(
     }
 
     private fun parseTraffic(payload: ByteArray) {
+        if (stopped) return
         val json = JSONObject(String(payload, StandardCharsets.UTF_8))
         onTraffic(
             json.optLong("up").coerceAtLeast(0L),

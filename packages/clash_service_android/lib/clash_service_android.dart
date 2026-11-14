@@ -14,6 +14,7 @@ Future<bool> startCore(
   String configDir, {
   String? profileUrl,
   String? profileName,
+  String? script,
   String? controllerSocketPath,
   int? updateIntervalMinutes,
   DateTime? updateTime,
@@ -22,6 +23,7 @@ Future<bool> startCore(
     configDir,
     profileUrl: profileUrl,
     profileName: profileName,
+    script: script,
     controllerSocketPath: controllerSocketPath,
     updateIntervalMinutes: updateIntervalMinutes,
     updateTime: updateTime,
@@ -44,6 +46,7 @@ Future<bool> startCore(
 Future<bool> start(
   String configDir, {
   String? profileName,
+  String? script,
   String? controllerSocketPath,
   bool allowList = false,
   List<String> allowedApplications = const <String>[],
@@ -52,6 +55,7 @@ Future<bool> start(
   return AndroidVpnService.start(
     configDir,
     profileName: profileName,
+    script: script,
     controllerSocketPath: controllerSocketPath,
     allowList: allowList,
     allowedApplications: allowedApplications,

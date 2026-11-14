@@ -77,6 +77,9 @@ kotlin {
 }
 
 dependencies {
+    implementation("com.google.code.gson:gson:2.11.0")
+    implementation("org.mozilla:rhino:1.7.15")
+    implementation("org.yaml:snakeyaml:2.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }

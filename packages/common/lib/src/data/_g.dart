@@ -4,7 +4,7 @@ import 'dart:ui';
 import 'package:collection/collection.dart';
 import 'package:common/common.dart';
 import 'package:equatable/equatable.dart';
-import 'package:jsf/jsf.dart';
+import 'package:quickjs_runtime/quickjs_runtime.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:nop/utils.dart';
 

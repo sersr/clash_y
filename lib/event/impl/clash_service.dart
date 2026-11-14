@@ -141,6 +141,7 @@ extension ProfileServiceX on Profile {
       url: url,
       updateInterval: updateInterval,
       updateTime: updateTime,
+      script: SettingsHive.getScript(scriptId)?.script,
     );
   }
 }
