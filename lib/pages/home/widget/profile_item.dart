@@ -149,11 +149,13 @@ class _MenuState extends State<_Menu> {
           final res = await updateOrCreateProfile(true, widget.item);
           if (res == null) return;
           controller.updateProfile(
-              widget.item.copyWith(
+            widget.item.copyWith(
               url: res.url,
               name: res.name,
               updateInterval: res.interval,
-            ));
+              scriptId: res.script.idOrNull,
+            ),
+          );
         }),
         custom(Icons.copy, "Copy Url", () {
           copy(widget.item.url ?? '');

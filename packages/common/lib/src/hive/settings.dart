@@ -15,7 +15,7 @@ enum SettingsHive<T> with StorageEnum<T> {
   tunStack<ClashTunStack>(),
 
   /// scripts
-  scripts<Map<String, String>>(),
+  scripts<Map<String, ProfileScriptModel>>(),
 
   ///
 
@@ -44,8 +44,16 @@ enum SettingsHive<T> with StorageEnum<T> {
       case .tunStack:
         return .new(ClashTunStack.fromJson, ClashTunStack.mixed);
       case .scripts:
-        return .map<String, String>((data) => data, {});
+        return .map<String, ProfileScriptModel>(
+          ProfileScriptModel.fromJson,
+          {},
+        );
     }
+  }
+
+  static ProfileScriptModel? getScript(String? id) {
+    if (id == null) return null;
+    return scripts.value[id];
   }
 
   @override

@@ -1,5 +1,6 @@
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_nop/flutter_nop.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart';
@@ -38,7 +39,7 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
 }
 
 enum BaseConfig<T> with StorageEnum<T> {
-  currentProfile<Profile>(),
+  currentProfile<String>(),
   profiles<Map<String, Profile>>(),
   baseConfig<MihomoRootConfig>(),
   unixSockPath<String>();
@@ -50,7 +51,7 @@ enum BaseConfig<T> with StorageEnum<T> {
   StorageTransform get transform {
     switch (this) {
       case .currentProfile:
-        return .new(Profile.fromJson, Profile());
+        return .base('');
       case .profiles:
         return .map(Profile.fromJson, <String, Profile>{});
       case .baseConfig:
@@ -63,6 +64,11 @@ enum BaseConfig<T> with StorageEnum<T> {
         );
     }
   }
+
+  static final currentProfileData = () {
+    final id = currentProfile.value;
+    return profiles.value[id] ?? Profile();
+  }.al;
 }
 
 enum WindowHive<T> with StorageEnum<T> {

@@ -10,6 +10,7 @@ export 'src/constants.dart';
 export 'src/data/_g.dart';
 export 'src/ext/color_ext.dart';
 export 'src/ext/duration_ext.dart';
+export 'src/ext/widget_ext.dart';
 
 /// src
 export 'src/fs.dart';

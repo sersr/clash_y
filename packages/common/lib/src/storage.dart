@@ -81,8 +81,10 @@ mixin StorageEnum<D> on Enum {
   }
 
   AutoValueNotifier<D> get al {
-    return target.readLate<D>(this, _transform) as AutoValueNotifier<D>;
+    return target.readLate<D>(key, _transform) as AutoValueNotifier<D>;
   }
+
+  dynamic get key => this;
 
   StorageTransform _transform() => transform;
 

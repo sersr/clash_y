@@ -225,9 +225,9 @@ final class ClashRequest {
     Log.i('all Configs: $data');
   }
 
-  FutureOr<void> updateConfig(String path) async {
+  FutureOr<void> updateConfig(Profile profile) async {
     try {
-      await saveConfigPath(path);
+      await syncConfigDotYaml(profile);
       await reloadCurrentConfig();
     } catch (e) {
       Log.i(e);
@@ -238,7 +238,7 @@ final class ClashRequest {
     try {
       await initConfigPath();
       if (io.Platform.isAndroid && !ClashService.isVpnActive()) {
-        final profile = BaseConfig.currentProfile.value.toClashProfile(
+        final profile = BaseConfig.currentProfileData.value.toClashProfile(
           configYaml.parent.path,
         );
         final accepted = await ClashService.reloadCoreConfig(
@@ -373,6 +373,7 @@ final class ClashRequest {
             name: profile.name,
             updateInterval: profile.updateInterval,
             url: profile.url,
+            scriptId: profile.scriptId,
           );
 
           if (profile.id case var id?) {
@@ -386,10 +387,9 @@ final class ClashRequest {
 
       final exists = await file.exists();
       if (updateCurrent) {
-        BaseConfig.currentProfile.value = profile;
+        BaseConfig.currentProfile.value = profile.id ?? '';
         if (exists) {
-          Log.w('$exists $file');
-          await updateConfig(file.path);
+          await updateConfig(profile);
           return true;
         }
       }

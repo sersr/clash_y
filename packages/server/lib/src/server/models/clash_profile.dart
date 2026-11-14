@@ -27,10 +27,16 @@ class ClashProfile {
   final DateTime? updateTime;
 
   bool get canAutoUpdate {
-    final url = this.url;
+    final lastUpdateTime = updateTime;
+    if (lastUpdateTime == null) return true;
     final interval = updateInterval;
-    return url != null && url.isNotEmpty && interval != null && interval > 0;
+    if (interval == null || interval <= 0) {
+      return false;
+    }
+
+    return DateTime.now().difference(lastUpdateTime).inMinutes >= interval;
   }
+
 
   static const _minDelay = Duration(seconds: 5);
 

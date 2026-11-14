@@ -13,6 +13,7 @@ class Profile with Equatable {
     this.download,
     this.total,
     this.expire,
+    this.scriptId,
   });
 
   final String? id;
@@ -21,6 +22,7 @@ class Profile with Equatable {
   final String? rawName;
   final int? updateInterval;
   final DateTime? updateTime;
+  final String? scriptId;
 
   // subscription-userinfo
   final int? upload;
@@ -61,12 +63,40 @@ class Profile with Equatable {
     return '${gigabytes(consumed)} GB / ${gigabytes(quota)} GB';
   }
 
+  String get filePath {
+    if (url case var url?) {
+      final paths = Paths.g();
+      return paths.getCacheFile(url).path;
+    }
+    return '';
+  }
+
+  Future<Map<String, dynamic>> getConfigData() async {
+    final js = JsRuntime();
+    Map<String, dynamic> data = {};
+    try {
+      data = await getConfigMap(filePath);
+      final script = SettingsHive.getScript(scriptId);
+      if (script == null) return data;
+      js.execInitScript(script.script);
+      final value = js.eval('main(${jsonEncode(data)});');
+      // Logger().w((value as Map).logPretter);
+      return (value as Map).cast();
+    } catch (e) {
+      Log.e(e);
+      return data;
+    } finally {
+      js.dispose();
+    }
+  }
+
   factory fromJson(Map<String, dynamic> json) => _$ProfileFromJson(json);
 
   Profile copyWith({
     required String? url,
     required String? name,
     required int? updateInterval,
+    required String? scriptId,
     String? rawName,
     DateTime? updateTime,
     int? upload,
@@ -78,6 +108,7 @@ class Profile with Equatable {
       id: id,
       url: url,
       name: name,
+      scriptId: scriptId,
       updateInterval: updateInterval,
       rawName: rawName ?? this.rawName,
       updateTime: updateTime ?? this.updateTime,
@@ -96,6 +127,7 @@ class Profile with Equatable {
   List<Object?> get props => [
     id,
     name,
+    scriptId,
     url,
     rawName,
     updateInterval,

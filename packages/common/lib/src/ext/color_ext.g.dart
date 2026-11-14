@@ -23,6 +23,7 @@ final class AppColors extends ThemeExtension<AppColors> {
   final Color inkBackgroundColor;
   final Color inkTextColor;
   final Color inkCancelOverlayColor;
+  final Color backgroundColor;
   const new({
     required this.textFieldBorderColor,
     required this.textFieldBorderColorFocus,
@@ -32,6 +33,7 @@ final class AppColors extends ThemeExtension<AppColors> {
     required this.inkBackgroundColor,
     required this.inkTextColor,
     required this.inkCancelOverlayColor,
+    required this.backgroundColor,
   });
 
   @override
@@ -44,6 +46,7 @@ final class AppColors extends ThemeExtension<AppColors> {
     Color? inkBackgroundColor,
     Color? inkTextColor,
     Color? inkCancelOverlayColor,
+    Color? backgroundColor,
   }) {
     return .new(
       textFieldBorderColor: textFieldBorderColor ?? this.textFieldBorderColor,
@@ -56,6 +59,7 @@ final class AppColors extends ThemeExtension<AppColors> {
       inkTextColor: inkTextColor ?? this.inkTextColor,
       inkCancelOverlayColor:
           inkCancelOverlayColor ?? this.inkCancelOverlayColor,
+      backgroundColor: backgroundColor ?? this.backgroundColor,
     );
   }
 
@@ -86,6 +90,7 @@ final class AppColors extends ThemeExtension<AppColors> {
         other?.inkCancelOverlayColor,
         t,
       )!,
+      backgroundColor: .lerp(backgroundColor, other?.backgroundColor, t)!,
     );
   }
 }
@@ -149,6 +154,13 @@ enum AppColorsType {
         blue: 0.6274509803921569,
         colorSpace: .sRGB,
       ),
+      backgroundColor: .from(
+        alpha: 1.0,
+        red: 0.9725490196078431,
+        green: 0.9725490196078431,
+        blue: 0.9725490196078431,
+        colorSpace: .sRGB,
+      ),
     ),
   ),
   dark(
@@ -207,6 +219,13 @@ enum AppColorsType {
         red: 0.6274509803921569,
         green: 0.6274509803921569,
         blue: 0.6274509803921569,
+        colorSpace: .sRGB,
+      ),
+      backgroundColor: .from(
+        alpha: 1.0,
+        red: 0.9725490196078431,
+        green: 0.9725490196078431,
+        blue: 0.9725490196078431,
         colorSpace: .sRGB,
       ),
     ),
@@ -342,6 +361,22 @@ const appColorsMap = <String, _ColorGroup>{
       red: 0.6274509803921569,
       green: 0.6274509803921569,
       blue: 0.6274509803921569,
+      colorSpace: .sRGB,
+    ),
+  ),
+  "backgroundColor": .new(
+    light: .from(
+      alpha: 1.0,
+      red: 0.9725490196078431,
+      green: 0.9725490196078431,
+      blue: 0.9725490196078431,
+      colorSpace: .sRGB,
+    ),
+    dark: .from(
+      alpha: 1.0,
+      red: 0.9725490196078431,
+      green: 0.9725490196078431,
+      blue: 0.9725490196078431,
       colorSpace: .sRGB,
     ),
   ),

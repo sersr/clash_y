@@ -43,6 +43,8 @@ dependencies:
   uuid: ^4.6.0
   dart_ipc: ^2.0.2
   jsf: ^1.2.1
+  code_forge: ^11.8.0
+  re_highlight: ^0.0.3
 
 
 dev_dependencies:
@@ -64,6 +66,8 @@ dependency_overrides:
     path: packages/clash_core
   overlays:
     path: ../packages/overlays
+  ui_widgets:
+    path: ../packages/ui_widgets
 
 flutter:
   uses-material-design: true

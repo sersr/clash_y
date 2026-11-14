@@ -47,6 +47,48 @@ class Routes {
       },
     );
 
+    __profileScriptPage = NPage(
+      path: 'profileScriptPage',
+      pageBuilder: (entry) {
+        return MaterialIgnorePage(
+          key: entry.pageKey,
+          entry: entry,
+          child: const ProfileScriptPage(),
+        );
+      },
+    );
+
+    __scriptEdit = NPage(
+      path: 'scriptEdit',
+      pageBuilder: (entry) {
+        var item = entry.queryParams['item'];
+        if (item is! ProfileScriptModel?) {
+          item = ProfileScriptModel.fromJson(item);
+        }
+        var id = entry.queryParams['id'];
+        return MaterialIgnorePage(
+          key: entry.pageKey,
+          entry: entry,
+          child: ScriptEdit(item: item, id: id),
+        );
+      },
+    );
+
+    __scriptSelect = NPage(
+      path: 'scriptSelect',
+      pageBuilder: (entry) {
+        var current = entry.queryParams['current'];
+        if (current is! ProfileScriptModel?) {
+          current = ProfileScriptModel.fromJson(current);
+        }
+        return MaterialIgnorePage(
+          key: entry.pageKey,
+          entry: entry,
+          child: ScriptSelect(current: current),
+        );
+      },
+    );
+
     __clashSettings = NPage(
       path: 'clashSettings',
       pageBuilder: (entry) {
@@ -59,7 +101,13 @@ class Routes {
     );
 
     _home = NPageMain(
-      pages: [__applicationList, __clashSettings],
+      pages: [
+        __applicationList,
+        __profileScriptPage,
+        __scriptEdit,
+        __scriptSelect,
+        __clashSettings,
+      ],
       path: '/',
       pageBuilder: (entry) {
         return MaterialIgnorePage(
@@ -70,6 +118,7 @@ class Routes {
       },
     );
 
+    NRouterJsonTransfrom.putToJsonFn<ProfileScriptModel>((null,));
     _router = NRouter(
       rootPage: _home,
       params: params,
@@ -84,6 +133,12 @@ class Routes {
   static NRouter get router => _instance!._router;
   late final NPage __applicationList;
   static NPage get _applicationList => _instance!.__applicationList;
+  late final NPage __profileScriptPage;
+  static NPage get _profileScriptPage => _instance!.__profileScriptPage;
+  late final NPage __scriptEdit;
+  static NPage get _scriptEdit => _instance!.__scriptEdit;
+  late final NPage __scriptSelect;
+  static NPage get _scriptSelect => _instance!.__scriptSelect;
   late final NPage __clashSettings;
   static NPage get _clashSettings => _instance!.__clashSettings;
   late final NPageMain _home;
@@ -99,6 +154,45 @@ class NavRoutes {
     return RouterAction(
       Routes._applicationList,
       Routes.router,
+      groupId: groupId,
+    );
+  }
+
+  /// [groupId]
+  /// see: [NPage.newGroupKey]
+  static RouterAction profileScriptPage({dynamic groupId}) {
+    return RouterAction(
+      Routes._profileScriptPage,
+      Routes.router,
+      groupId: groupId,
+    );
+  }
+
+  /// [groupId]
+  /// see: [NPage.newGroupKey]
+  static RouterAction scriptEdit({
+    required ProfileScriptModel? item,
+    required String? id,
+    dynamic groupId,
+  }) {
+    return RouterAction(
+      Routes._scriptEdit,
+      Routes.router,
+      extra: {'item': item, 'id': id},
+      groupId: groupId,
+    );
+  }
+
+  /// [groupId]
+  /// see: [NPage.newGroupKey]
+  static RouterAction scriptSelect({
+    ProfileScriptModel? current,
+    dynamic groupId,
+  }) {
+    return RouterAction(
+      Routes._scriptSelect,
+      Routes.router,
+      extra: {'current': current},
       groupId: groupId,
     );
   }

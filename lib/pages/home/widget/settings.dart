@@ -40,6 +40,12 @@ class _SettingsState extends State<Settings> {
                 label: "Clash Settings",
                 onTap: () => NavRoutes.clashSettings().go(),
               ),
+              const SettingDiv(),
+
+              SettingItem(
+                label: "Scripts",
+                onTap: () => NavRoutes.profileScriptPage().go(),
+              ),
             ],
           ),
         ),

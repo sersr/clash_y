@@ -16,6 +16,12 @@ part 'color_ext.g.dart';
 const _colors = AppColorsReg(ColorsFields(), genAnother: true);
 // const _colorsMap = AppColorsReg(colorsMap, genAnother: true);
 
+extension ColorWidgetState on Color {
+  WidgetStatePropertyAll<Color> get state {
+    return .new(this);
+  }
+}
+
 extension ColorString on String {
   Color get color {
     final value = replaceFirst('#', '').characters;

@@ -10,6 +10,7 @@ import 'package:shelf/shelf_io.dart' as io;
 import 'server.dart';
 import 'src/my_router.dart';
 import 'src/server/base_info.dart';
+import 'src/server/clash_routes.dart';
 import 'src/server/clash_process.dart';
 
 export 'src/server/models/models.dart';
@@ -32,7 +33,7 @@ final router = MyRouter()
   ..get('/', (req) => .ok('Clash VPN!'))
   ..get('/version', (req) => .ok(version))
   ..mount('/baseInfo', BaseInfo.router.call)
-  ..mount('/clash', ClashProcess.clash);
+  ..mount('/clash', ClashRoutes.handler);
 
 Middleware loggingMiddleware() =>
     (Handler inner) => (Request req) async {

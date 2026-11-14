@@ -52,6 +52,7 @@ dependencies:
   yaml_writer: ^2.1.0
   app_colors:
     path: ../app_colors
+  jsf: ^1.2.1
 
 dev_dependencies:
   flutter_test:

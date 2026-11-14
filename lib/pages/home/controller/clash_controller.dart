@@ -62,7 +62,9 @@ class ClashController with NopLifecycle {
       var coreStarted = false;
       if (defaultTargetPlatform == TargetPlatform.android) {
         final path = await initConfigPath();
-        final profile = BaseConfig.currentProfile.value.toClashProfile(path);
+        final profile = BaseConfig.currentProfileData.value.toClashProfile(
+          path,
+        );
         final accepted = await ClashService.startCore(
           profile,
           controllerSocketPath: BaseConfig.unixSockPath.value,
@@ -196,7 +198,7 @@ class ClashController with NopLifecycle {
 
   Future<ClashProfile> _currentProfile() async {
     final path = await initConfigPath();
-    return BaseConfig.currentProfile.value.toClashProfile(path);
+    return BaseConfig.currentProfileData.value.toClashProfile(path);
   }
 
   Future<bool> _hasOtherVpnConnection() async {
@@ -261,7 +263,7 @@ class ClashController with NopLifecycle {
   /// refreshes `config.yaml` from the right subscription while the app is in
   /// the background.
   Future<void> syncProfileWithService() async {
-    final profile = BaseConfig.currentProfile.value;
+    final profile = BaseConfig.currentProfileData.value;
     if (profile.url == null &&
         defaultTargetPlatform != TargetPlatform.android) {
       return;

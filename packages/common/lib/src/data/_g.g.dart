@@ -575,6 +575,36 @@ Map<String, dynamic> _$MihomoRootConfigToJson(MihomoRootConfig instance) =>
       'rule-providers': ?instance.ruleProviders,
     };
 
+Profile _$ProfileFromJson(Map<String, dynamic> json) => Profile(
+  id: json['id'] as String?,
+  name: json['name'] as String?,
+  rawName: json['rawName'] as String?,
+  updateInterval: (json['updateInterval'] as num?)?.toInt(),
+  updateTime: json['updateTime'] == null
+      ? null
+      : DateTime.parse(json['updateTime'] as String),
+  url: json['url'] as String?,
+  upload: (json['upload'] as num?)?.toInt(),
+  download: (json['download'] as num?)?.toInt(),
+  total: (json['total'] as num?)?.toInt(),
+  expire: (json['expire'] as num?)?.toInt(),
+  scriptId: json['scriptId'] as String?,
+);
+
+Map<String, dynamic> _$ProfileToJson(Profile instance) => <String, dynamic>{
+  'id': instance.id,
+  'url': instance.url,
+  'name': instance.name,
+  'rawName': instance.rawName,
+  'updateInterval': instance.updateInterval,
+  'updateTime': instance.updateTime?.toIso8601String(),
+  'scriptId': instance.scriptId,
+  'upload': instance.upload,
+  'download': instance.download,
+  'total': instance.total,
+  'expire': instance.expire,
+};
+
 ProxyItem _$ProxyItemFromJson(Map<String, dynamic> json) => ProxyItem(
   all: json['all'] as List<dynamic>?,
   history: json['history'] as List<dynamic>?,
@@ -592,6 +622,20 @@ Map<String, dynamic> _$ProxyItemToJson(ProxyItem instance) => <String, dynamic>{
   'type': instance.type,
   'udp': instance.udp,
 };
+
+ProfileScriptModel _$ProfileScriptModelFromJson(Map<String, dynamic> json) =>
+    ProfileScriptModel(
+      script: json['script'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      id: json['id'] as String,
+    );
+
+Map<String, dynamic> _$ProfileScriptModelToJson(ProfileScriptModel instance) =>
+    <String, dynamic>{
+      'script': instance.script,
+      'name': instance.name,
+      'id': instance.id,
+    };
 
 LogModel _$LogModelFromJson(Map<String, dynamic> json) => LogModel(
   type: json['type'] as String? ?? '',
@@ -632,31 +676,3 @@ Map<String, dynamic> _$WindowRectToJson(WindowRect instance) =>
       'right': instance.right,
       'bottom': instance.bottom,
     };
-
-Profile _$ProfileFromJson(Map<String, dynamic> json) => Profile(
-  id: json['id'] as String?,
-  name: json['name'] as String?,
-  rawName: json['rawName'] as String?,
-  updateInterval: (json['updateInterval'] as num?)?.toInt(),
-  updateTime: json['updateTime'] == null
-      ? null
-      : DateTime.parse(json['updateTime'] as String),
-  url: json['url'] as String?,
-  upload: (json['upload'] as num?)?.toInt(),
-  download: (json['download'] as num?)?.toInt(),
-  total: (json['total'] as num?)?.toInt(),
-  expire: (json['expire'] as num?)?.toInt(),
-);
-
-Map<String, dynamic> _$ProfileToJson(Profile instance) => <String, dynamic>{
-  'id': instance.id,
-  'url': instance.url,
-  'name': instance.name,
-  'rawName': instance.rawName,
-  'updateInterval': instance.updateInterval,
-  'updateTime': instance.updateTime?.toIso8601String(),
-  'upload': instance.upload,
-  'download': instance.download,
-  'total': instance.total,
-  'expire': instance.expire,
-};

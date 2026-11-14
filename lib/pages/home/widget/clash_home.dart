@@ -1,4 +1,5 @@
 import 'package:clashy/event/base/data.dart';
+import 'package:clashy/pages/home/widget/home_bottom_padding.dart';
 import 'package:common/common.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_nop/flutter_nop.dart';
@@ -19,6 +20,8 @@ class _ClashHomeState extends State<ClashHome> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = HomeBottomPadding.homePadding(context);
+
     return ColoredBox(
       color: const Color(0xFFF0F0F0),
       child: SafeArea(
@@ -53,13 +56,20 @@ class _ClashHomeState extends State<ClashHome> {
                       slivers: [
                         for (var item in proxies)
                           ClashListItem(proxyItem: item),
-                        SliverToBoxAdapter(child: 70.verticalSpace),
+                        if (proxies.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: (bottomPadding + 70).verticalSpace,
+                          ),
                       ],
                     ),
                   ),
                 ],
               ),
-              Positioned(right: 10.w, bottom: 10.h, child: _action.cs),
+              Positioned(
+                right: 10.w,
+                bottom: 5 + bottomPadding,
+                child: _action.cs,
+              ),
             ],
           );
         }),

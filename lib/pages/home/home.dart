@@ -1,6 +1,9 @@
+import 'package:clashy/pages/home/widget/home_bottom_padding.dart';
 import 'package:clashy/pages/home/widget/settings.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:common/common.dart';
+import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'controller/clash_connection_controller.dart';
 import 'controller/clash_controller.dart';
@@ -19,7 +22,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   late ClashController clashMainNotifier = getType();
   late ClashConnectionController clashConnectionsNotifier = getType();
 
-  final _notifier = ValueNotifier(0);
+  final index = 0.al;
 
   @override
   void initState() {
@@ -41,7 +44,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       clashMainNotifier.stopListen();
     } else if (state == AppLifecycleState.resumed) {
       clashMainNotifier.refreshOnResume();
-      clashConnectionsNotifier.toggle(_notifier.value == 2);
+      clashConnectionsNotifier.toggle(index.value == 2);
     }
   }
 
@@ -53,64 +56,99 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       const ClashConnections(),
       const Settings(),
     ];
-    return Scaffold(
-      body: AnimatedBuilder(
-        animation: _notifier,
-        builder: (context, _) {
-          return IndexedStack(index: _notifier.value, children: children);
-        },
-      ),
-      bottomNavigationBar: AnimatedBuilder(
-        animation: _notifier,
-        builder: (context, _) {
-          return BottomNavigationBar(
-            type: BottomNavigationBarType.fixed,
-            iconSize: 24,
-            showSelectedLabels: true,
-            showUnselectedLabels: true,
-            selectedFontSize: 12,
-            unselectedFontSize: 12,
-            selectedItemColor: const Color.fromARGB(255, 1, 139, 194),
-            unselectedItemColor: const Color.fromARGB(255, 129, 129, 129),
-            unselectedLabelStyle: const TextStyle(
-              color: Color.fromARGB(255, 73, 73, 73),
-            ),
-            selectedLabelStyle: const TextStyle(
-              color: Color.fromARGB(255, 3, 3, 3),
-            ),
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.home_outlined),
-                activeIcon: Icon(Icons.home),
-                label: 'clash',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.menu_book_outlined),
-                activeIcon: Icon(Icons.menu_book),
-                label: 'Profiles',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.device_hub_outlined),
-                activeIcon: Icon(Icons.device_hub),
-                label: 'connections',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.settings_outlined),
-                activeIcon: Icon(Icons.settings),
-                label: 'settings',
-              ),
-            ],
-            currentIndex: _notifier.value,
-            onTap: (index) {
-              if (index == 0) {
-                clashMainNotifier.refreshOnResume();
-              }
-              _notifier.value = index;
 
-              clashConnectionsNotifier.toggle(_notifier.value == 2);
-            },
-          );
-        },
+    var items = const [
+      BottomNavigationBarItem(
+        icon: Icon(Icons.home_outlined),
+        activeIcon: Icon(Icons.home),
+        label: 'Proxies',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.menu_book_outlined),
+        activeIcon: Icon(Icons.menu_book),
+        label: 'Profiles',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.device_hub_outlined),
+        activeIcon: Icon(Icons.device_hub),
+        label: 'connections',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.settings_outlined),
+        activeIcon: Icon(Icons.settings),
+        label: 'settings',
+      ),
+    ];
+
+    final tabbar = Cs(() {
+      return DefaultTabController(
+        initialIndex: index.value,
+        length: items.length,
+        child: TabBar(
+          dividerHeight: 0,
+          tabs: items.map((e) => e.icon).toList(),
+          labelPadding: .all(8),
+          splashBorderRadius: .circular(1000),
+          overlayColor: WidgetStatePropertyAll(
+            const Color.fromARGB(73, 216, 216, 216),
+          ),
+          indicator: ShapeDecoration(
+            color: const Color.fromARGB(255, 229, 229, 229),
+            shape: StadiumBorder(),
+          ),
+          indicatorSize: .tab,
+          labelStyle: .new(color: const Color.fromARGB(255, 30, 110, 223)),
+          unselectedLabelStyle: .new(
+            color: const Color.fromARGB(255, 88, 88, 88),
+          ),
+          onTap: (index) {
+            if (index == 0) {
+              clashMainNotifier.refreshOnResume();
+            }
+            this.index.value = index;
+            clashConnectionsNotifier.toggle(index == 2);
+          },
+        ),
+      );
+    });
+
+    var bottomNav = Container(
+      alignment: .center,
+      child: Container(
+        decoration: ShapeDecoration(
+          shape: StadiumBorder(
+            side: .new(color: Colors.white, width: 2.r),
+          ),
+        ),
+        child: Container(
+          constraints: .new(maxWidth: 600.w),
+          decoration: ShapeDecoration(
+            color: const Color.fromARGB(255, 249, 248, 248),
+            shape: StadiumBorder(),
+          ),
+          clipBehavior: .hardEdge,
+          child: tabbar,
+        ),
+      ),
+    );
+
+    final homePadding = 20.h + Nav.bottomHeight;
+    return Scaffold(
+      body: Stack(
+        children: [
+          HomeBottomPadding(
+            padding: homePadding + 50.h,
+            child: Cs(() {
+              return IndexedStack(index: index.value, children: children);
+            }),
+          ),
+          Positioned(
+            left: 20.w,
+            right: 20.w,
+            bottom: homePadding,
+            child: bottomNav,
+          ),
+        ],
       ),
     );
   }

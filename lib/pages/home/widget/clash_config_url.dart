@@ -1,3 +1,5 @@
+import 'package:clashy/_route/routes.dart';
+import 'package:clashy/pages/home/widget/home_bottom_padding.dart';
 import 'package:clashy/pages/home/widget/profile_item.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
@@ -69,6 +71,8 @@ class _ClashProfilesState extends State<ClashProfiles> {
       },
     );
 
+    final bottom = HomeBottomPadding.homePadding(context);
+
     return Refresh(
       isEmpty: profiles.isEmpty,
       emptyWidget: Center(
@@ -81,7 +85,11 @@ class _ClashProfilesState extends State<ClashProfiles> {
           ),
         ),
       ),
-      slivers: [body],
+      slivers: [
+        body,
+        if (profiles.isNotEmpty)
+          SliverToBoxAdapter(child: bottom.verticalSpace),
+      ],
     );
   }
 
@@ -93,21 +101,25 @@ class _ClashProfilesState extends State<ClashProfiles> {
         res.url,
         res.name,
         res.interval,
+        res.script.idOrNull,
       );
     }
   }
 }
 
-Future<({String url, String name, int? interval})?> updateOrCreateProfile(
-  bool isEdit,
-  Profile? profile,
-) async {
+Future<({String url, String name, int? interval, ProfileScriptModel script})?>
+updateOrCreateProfile(bool isEdit, Profile? profile) async {
   final res = await showCenterDialog(
     currentContext,
     _NewConfig(isEdit: isEdit, profile: profile),
   );
 
-  if (res case (url: String _, name: String _, interval: int? _)) {
+  if (res case (
+    url: String _,
+    name: String _,
+    interval: int? _,
+    script: ProfileScriptModel _,
+  )) {
     return res;
   }
   return null;
@@ -125,12 +137,16 @@ class _NewConfigState extends State<_NewConfig> {
   final editName = TextEditingController();
   final editUrl = TextEditingController();
   final editInterval = TextEditingController();
+  final script = ProfileScriptModel(id: '').al;
 
   @override
   void initState() {
     editName.text = widget.profile?.name ?? '';
     editUrl.text = widget.profile?.url ?? '';
     editInterval.text = widget.profile?.updateInterval?.toString() ?? '';
+    script.value =
+        SettingsHive.scripts.value[widget.profile?.scriptId ?? ""] ??
+        ProfileScriptModel(id: '');
     super.initState();
   }
 
@@ -237,6 +253,48 @@ class _NewConfigState extends State<_NewConfig> {
       ),
     );
 
+    final scriptW = GestureDetector(
+      onTap: () async {
+        final res = await NavRoutes.scriptSelect(current: script.value)
+            .go()
+            .popped;
+        if (res case ProfileScriptModel data) {
+          script.value = data;
+        }
+      },
+      child: Padding(
+        padding: .symmetric(vertical: 8.h),
+        child: Row(
+          spacing: 12.w,
+          children: [
+            Text(
+              'Script',
+              style: .new(
+                color: Colors.black,
+                fontSize: 15.sp,
+                fontWeight: .w500,
+              ),
+            ),
+            Expanded(
+              child: Cs(() {
+                return Text(
+                  script.value.name.isEmpty ? 'None' : script.value.name,
+                  textAlign: .end,
+                  style: .new(
+                    color: script.value.name.isEmpty
+                        ? Colors.grey
+                        : Colors.blue,
+                    fontSize: 14.sp,
+                    fontWeight: .w500,
+                  ),
+                );
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+
     final confirmW = InkButton(
       onPressed: () {
         final name = editName.text.trim();
@@ -259,7 +317,12 @@ class _NewConfigState extends State<_NewConfig> {
           intervalM = int.tryParse(interval);
         }
 
-        Nav.back((url: url, name: name, interval: intervalM));
+        Nav.back((
+          url: url,
+          name: name,
+          interval: intervalM,
+          script: script.value,
+        ));
       },
       padding: .symmetric(vertical: 10.h, horizontal: 32.w),
       overlayColor: colors.inkOverlayColor,
@@ -276,7 +339,7 @@ class _NewConfigState extends State<_NewConfig> {
         Nav.back();
       },
       padding: .symmetric(vertical: 10.h, horizontal: 32.w),
-      overlayColor:  .new(0x35A0A0A0),
+      overlayColor: .new(0x35A0A0A0),
       borderRadius: .circular(12.r),
       backgroundColor: Colors.transparent,
       side: .new(color: const Color(0x488A8A8A), width: 1.5.r),
@@ -293,6 +356,9 @@ class _NewConfigState extends State<_NewConfig> {
         editUrlW,
         12.verticalSpace,
         editIntervalW,
+        8.verticalSpace,
+        scriptW,
+        10.verticalSpace,
 
         32.verticalSpace,
         Row(

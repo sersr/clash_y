@@ -69,4 +69,8 @@ final class ColorsFields {
     light: Color(0x35A0A0A0),
     dark: Color(0x35A0A0A0),
   );
+  final _ColorGroup backgroundColor = const .new(
+    light: Color.fromARGB(255, 248, 248, 248),
+    dark: Color.fromARGB(255, 248, 248, 248),
+  );
 }

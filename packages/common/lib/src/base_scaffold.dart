@@ -9,6 +9,7 @@ class BaseScaffold extends StatelessWidget {
     this.statusBgLight = true,
     this.navBgLight = true,
     this.navBarColor,
+    this.backgroundColor,
   });
   final Widget appbar;
 
@@ -17,7 +18,7 @@ class BaseScaffold extends StatelessWidget {
   final bool statusBgLight;
   final bool navBgLight;
   final Color? navBarColor;
-
+  final Color? backgroundColor;
   @override
   Widget build(BuildContext context) {
     return SystemUI(
@@ -25,6 +26,7 @@ class BaseScaffold extends StatelessWidget {
       navBarColor: navBarColor,
       navBgLight: navBgLight,
       child: Scaffold(
+        backgroundColor: backgroundColor,
         body: Column(
           children: [
             appbar,

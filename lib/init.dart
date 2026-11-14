@@ -5,6 +5,7 @@ import 'package:clash_service/clash_service.dart' show ClashService;
 import 'package:clashy/app_window.dart';
 import 'package:clashy/event/repository.dart';
 import 'package:clashy/pages/application_list/controller/application_list_controller.dart';
+import 'package:clashy/pages/clash_settings/controller/profile_script_controller.dart';
 import 'package:clashy/pages/home/controller/clash_controller.dart';
 import 'package:common/common.dart';
 import 'package:flutter/services.dart';
@@ -54,6 +55,7 @@ void initController() {
   router.put(() => ConfigsController());
   router.put(() => ApplicationListController());
   router.put(() => ClashSettingsController());
+  router.put(() => ProfileScriptController());
 }
 
 void _registerMacOsShutdownHandler() {

@@ -3,30 +3,18 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:math';
 
 import 'package:clash_core/clash_core.dart';
 import 'package:ffi/ffi.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart' as p;
-import 'package:shelf/shelf.dart';
-import 'package:shelf_web_socket/shelf_web_socket.dart' as web;
-import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:yaml/yaml.dart';
 
-import '../my_router.dart';
 import 'config_overrides.dart';
 import 'models/models.dart';
-import 'response.dart';
 
 final _clashQueue = TaskQueue();
 final _stateQueue = TaskQueue();
-
-extension on Request {
-  dynamic get data {
-    return context['clashy_data'];
-  }
-}
 
 abstract final class ClashProcess {
   static const _wakeNetworkSettleDelay = Duration(seconds: 5);
@@ -34,8 +22,6 @@ abstract final class ClashProcess {
       '/Library/Application Support/Clashy/clash-state.json';
   static String? _wakeMonitorLibraryPath;
 
-  static final _sockets = <WebSocketChannel>[];
-  static final _sockets2 = <StreamSink<List<int>>>[];
   static final _stateFile = File(_stateFilePath);
   static ReceivePort? _wakeEvents;
   static StreamSubscription<dynamic>? _wakeSubscription;
@@ -252,111 +238,9 @@ abstract final class ClashProcess {
     return RegExp(r'flags=\d+<[^>]*\bUP\b').hasMatch(firstLine);
   }
 
-  static Handler get clash {
-    final router = MyRouter();
-    router
-      ..ws('/ws', web.webSocketHandler(ws))
-      ..get('/', getClash)
-      ..get('/status', getStatus)
-      ..post('/', startClash)
-      ..post('/core', startCoreClash)
-      ..get('/vpn/status', getVpnStatus)
-      ..post('/vpn/start', startVpn)
-      ..post('/vpn/stop', stopVpn)
-      ..post('/reload', reloadClashConfig)
-      ..post('/profile', updateProfile)
-      ..post('/stop', stopClash);
+  static bool get started => _started;
 
-    return router.call;
-  }
-
-  static Future<Resp> ws(
-    WebSocketChannel webSocket,
-    String? subprotocol,
-  ) async {
-    _sockets.add(webSocket);
-    webSocket.stream.listen(
-      (data) {
-        print(data);
-      },
-      cancelOnError: true,
-      onDone: () => _sockets.remove(webSocket),
-      onError: (_) => _sockets.remove(webSocket),
-    );
-    _start();
-    return .ok();
-  }
-
-  static Timer? _timer;
-  static void _start() {
-    _timer?.cancel();
-    Log.w('sockets: ${_sockets.length}');
-    if (_sockets.isEmpty && _sockets2.isEmpty) return;
-    for (var socket in _sockets) {
-      socket.sink.add("value: ${Random().nextInt(1024)}");
-    }
-    for (var socket in _sockets2) {
-      socket.add(utf8.encode("value: ${Random().nextInt(1024)}"));
-    }
-    _timer?.cancel();
-    _timer = Timer(const Duration(seconds: 1), _start);
-  }
-
-  static Future<Resp> getClash(Request request) async {
-    return .ok(
-      jsonEncode({
-        "dir": Platform.resolvedExecutable,
-        'work': Directory.current.path,
-      }),
-    );
-  }
-
-  static Future<Resp> getStatus(Request request) async => .ok(_started);
-
-  static Future<Resp> getVpnStatus(Request request) async => .ok(_vpnEnabled);
-
-  static Future<Resp> startClash(Request request) =>
-      _startProfile(request, vpnEnabled: true);
-
-  static Future<Resp> startCoreClash(Request request) =>
-      _startProfile(request, vpnEnabled: false);
-
-  static Future<Resp> startVpn(Request request) =>
-      _startProfile(request, vpnEnabled: true);
-
-  static Future<Resp> _startProfile(
-    Request request, {
-    required bool vpnEnabled,
-  }) async {
-    final profile = ClashProfile.tryParse(request.data);
-    if (profile == null || profile.configDir.isEmpty) {
-      return .error(data: 'invalid profile');
-    }
-
-    final res = vpnEnabled
-        ? await run(profile.configDir)
-        : await runCoreOnly(profile.configDir);
-    if (res case String error when error.isNotEmpty) {
-      return .error(data: error);
-    }
-    await _setProfile(profile);
-    return .ok(res);
-  }
-
-  /// Updates the profile the running core refreshes itself from without
-  /// restarting it. Used when the user switches profiles from the app.
-  static Future<Resp> updateProfile(Request request) async {
-    final profile = ClashProfile.tryParse(request.data);
-    if (profile == null) return .error(data: 'invalid profile');
-
-    final current = _profile;
-    await _setProfile(
-      profile.configDir.isEmpty && current != null
-          ? profile.copyWith(configDir: current.configDir)
-          : profile,
-    );
-    return .ok();
-  }
+  static bool get vpnEnabled => _vpnEnabled;
 
   static Future<String?> run(String configDir) async {
     return _clashQueue.run(() => _runSingle(configDir, vpnEnabled: true));
@@ -366,22 +250,33 @@ abstract final class ClashProcess {
     return _clashQueue.run(() => _runSingle(configDir, vpnEnabled: false));
   }
 
-  static Future<Resp> stopVpn(Request request) async {
+  static Future<void> setProfile(ClashProfile profile) => _setProfile(profile);
+
+  static Future<void> updateProfile(ClashProfile profile) async {
+    final current = _profile;
+    await _setProfile(
+      profile.configDir.isEmpty && current != null
+          ? profile.copyWith(configDir: current.configDir)
+          : profile,
+    );
+  }
+
+  static Future<String?> stopVpn() async {
     final configDir = _clashKey;
     if (!_started || configDir == null) {
       _vpnEnabled = false;
-      return .ok();
+      return null;
     }
 
     final error = await runCoreOnly(configDir);
-    if (error != null) return .error(data: error);
+    if (error != null) return error;
     final profile = _profile;
     if (profile != null) await _persistState(profile);
-    return .ok();
+    return null;
   }
 
-  static Future<Resp> reloadClashConfig(Request request) async {
-    final error = await _clashQueue.run(() async {
+  static Future<String?> reloadConfig() async {
+    return _clashQueue.run(() async {
       if (!_started || _clashKey == null) {
         return 'Clash core is not running';
       }
@@ -392,21 +287,17 @@ abstract final class ClashProcess {
       if (stopError != null) return stopError;
       return _runSingle(configDir, vpnEnabled: vpnEnabled);
     });
-    if (error != null) return .error(data: error);
-    return .ok();
   }
 
-  static Future<Resp> stopClash(Request request) async {
+  static Future<String?> stop() async {
     final err = await _clashQueue.run(_stopSingle);
-    if (err case var err? when err.isNotEmpty) {
-      return .error(data: err);
-    }
+    if (err case var err? when err.isNotEmpty) return err;
     _profileTimer?.cancel();
     _profileTimer = null;
     _profile = null;
     _vpnEnabled = false;
     await _clearPersistedState();
-    return .ok();
+    return null;
   }
 
   static Future<void> _setProfile(ClashProfile profile) async {
@@ -426,7 +317,10 @@ abstract final class ClashProcess {
 
   static Future<void> _updateProfile() async {
     final profile = _profile;
-    if (profile == null || !profile.canAutoUpdate) return;
+    if (profile == null || !profile.canAutoUpdate) {
+      _scheduleProfileUpdate();
+      return;
+    }
 
     try {
       final error = await _refreshConfig(profile);

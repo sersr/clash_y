@@ -17,27 +17,20 @@ Map<String, Object?> defaultDnsConfig() {
   };
 }
 
-Future<void> saveConfigPath(String path) async {
+Future<void> syncConfigDotYaml(Profile profile) async {
+  final path = profile.filePath;
   if (path != configYaml.path) {
     try {
-      final data = await getConfigMap(path);
+      var data = await profile.getConfigData();
 
+      // data = await runYaml(
+      //   data,
+      //   SettingsHive.scripts.value.values.firstOrNull?.script ?? '',
+      // );
       await configYaml.writeAsString(YamlWriter().write(data));
     } catch (e) {
       Log.e(e);
     }
-  }
-}
-
-Future<void> _sync() async {
-  try {
-    // if (await configYaml.exists()) return;
-    final current = BaseConfig.currentProfile.value.url;
-    if (current == null) return;
-    final paths = Paths.g();
-    await saveConfigPath(paths.getCacheFile(current).path);
-  } catch (e) {
-    Log.e(e);
   }
 }
 
@@ -46,52 +39,28 @@ Map<String, dynamic> yamlToJson(String yaml) {
 }
 
 Future<String> initConfigPath() async {
-  await _sync();
+  final current = BaseConfig.currentProfileData.value;
+
   final file = configYaml;
-
   final configDir = file.parent;
-  final unixSocketPath = BaseConfig.unixSockPath.value;
 
-  var data = {};
-  if (await file.exists()) {
-    data = yamlToJson(await file.readAsString());
-  } else {
-    await file.create(recursive: true);
-  }
-
-  if (defaultTargetPlatform == .windows) {
-    data['external-controller-pipe'] = unixSocketPath;
-  } else {
-    data['external-controller-unix'] = unixSocketPath;
-  }
-
-  data['log-level'] = SettingsHive.logLevel.value.name;
-  data['mixed-port'] = SettingsHive.mixedPort.value;
-  data['mode'] = SettingsHive.mode.value.name;
-  data['ipv6'] = SettingsHive.ipv6.value;
-  data['allow-lan'] = SettingsHive.allowLan.value;
-
-  final tun = data['tun'] ??= <String, dynamic>{};
-  tun
-    ..['enable'] = SettingsHive.tunEnabled.value
-    ..['stack'] = SettingsHive.tunStack.value.name
-    ..['device'] = 'clashy';
-
-  data['dns'] = defaultDnsConfig();
+  final data = await current.getConfigData();
+  _updateProfileData(data);
 
   try {
+    if (!await file.exists()) {
+      await file.create(recursive: true);
+    }
     await file.writeAsString(YamlWriter().write(data));
   } catch (e) {
     Log.e('error: $e');
   }
 
-  // copy(v);
   return configDir.path;
 }
 
 Future<Map<String, dynamic>> getConfigMap(String path) async {
   final file = fs.currentDirectory.childFile(path);
-  final unixSocketPath = BaseConfig.unixSockPath.value;
 
   var data = <String, dynamic>{};
   if (await file.exists()) {
@@ -99,6 +68,14 @@ Future<Map<String, dynamic>> getConfigMap(String path) async {
   } else {
     await file.create(recursive: true);
   }
+  _updateProfileData(data);
+
+  // copy(v);
+  return data;
+}
+
+void _updateProfileData(Map<String, dynamic> data) {
+  final unixSocketPath = BaseConfig.unixSockPath.value;
 
   if (defaultTargetPlatform == .windows) {
     data['external-controller-pipe'] = unixSocketPath;
@@ -119,9 +96,6 @@ Future<Map<String, dynamic>> getConfigMap(String path) async {
     ..['device'] = 'clashy';
 
   data['dns'] = defaultDnsConfig();
-
-  // copy(v);
-  return data;
 }
 
 Future<void> writeConfigMap(String path, Map<String, dynamic> data) async {

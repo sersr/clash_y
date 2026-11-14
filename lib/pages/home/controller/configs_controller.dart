@@ -19,7 +19,7 @@ class ConfigsController with NopLifecycle {
 
   AMap<String, Profile> get profiles => BaseConfig.profiles.al.al;
   bool isCurrent(Profile profile) {
-    return BaseConfig.currentProfile.value.isCurrent(profile);
+    return BaseConfig.currentProfileData.value.isCurrent(profile);
   }
 
   @override
@@ -99,6 +99,7 @@ class ConfigsController with NopLifecycle {
     String url,
     String name,
     int? updateIntervalM,
+    String? scriptId,
   ) async {
     final data = BaseConfig.profiles.value;
     final id = Uuid().v4();
@@ -108,6 +109,7 @@ class ConfigsController with NopLifecycle {
       url: url,
       name: name,
       updateInterval: updateIntervalM,
+      scriptId: scriptId,
     );
     data[id] = profile;
     updateConfigData(profile);
@@ -119,11 +121,12 @@ class ConfigsController with NopLifecycle {
         url: profile.url,
         name: profile.name,
         updateInterval: profile.updateInterval,
+        scriptId: profile.scriptId,
       );
     });
 
     if (isCurrent(newProfile)) {
-      BaseConfig.currentProfile.value = newProfile;
+      BaseConfig.currentProfile.value = newProfile.id ?? '';
       clash.syncProfileWithService();
     }
   }
@@ -137,7 +140,7 @@ class ConfigsController with NopLifecycle {
       await release(const Duration(milliseconds: 300));
       clash.getData();
       if (isCurrent(profile) && clash.isRunning) {
-        await clash.syncProfileWithService();
+        // await clash.syncProfileWithService();
       }
     }
   }
