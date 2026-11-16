@@ -139,10 +139,10 @@ class ConfigsController with NopLifecycle {
         ) ==
         true) {
       await release(const Duration(milliseconds: 300));
-      clash.getData();
       if (isCurrent(profile) && clash.isRunning) {
-        // await clash.syncProfileWithService();
+        await clash.syncProfileWithService();
       }
+      clash.getData();
     }
   }
 

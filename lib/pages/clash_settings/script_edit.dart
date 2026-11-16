@@ -1,10 +1,10 @@
 import 'package:clashy/pages/clash_settings/controller/profile_script_controller.dart';
 import 'package:clashy/pages/clash_settings/controller/script_edit_controller.dart';
-import 'package:code_forge/code_forge.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:re_editor/re_editor.dart';
 import 'package:re_highlight/languages/javascript.dart';
 import 'package:re_highlight/styles/atom-one-dark.dart';
 import 'package:uuid/uuid.dart';
@@ -32,6 +32,18 @@ class _ScriptEditState extends State<ScriptEdit> {
     super.dispose();
   }
 
+  void _save() async {
+    if (controller.canPop.value) {
+      Nav.back();
+      return;
+    }
+    final res = await _saveDialog(controller.name.value);
+    if (res == true) {
+      save();
+    }
+    Nav.back();
+  }
+
   void save() {
     // controller.verify();
 
@@ -46,28 +58,6 @@ class _ScriptEditState extends State<ScriptEdit> {
 
   @override
   Widget build(BuildContext context) {
-    final saveW = IntrinsicWidth(
-      child: Center(
-        child: Padding(
-          padding: .only(left: 10.w),
-          child: InkButton(
-            backgroundColor: const Color.fromARGB(255, 238, 237, 237),
-            overlayColor: const Color.fromARGB(74, 198, 198, 198),
-            isStadium: true,
-            padding: .symmetric(horizontal: 12, vertical: 5),
-            onPressed: save,
-            child: Text(
-              'Save',
-              style: .new(
-                color: const Color.fromARGB(255, 117, 116, 116),
-                fontSize: 13.sp,
-                fontWeight: .w500,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
     return BaseScaffold(
       backgroundColor: colors.backgroundColor,
       appbar: SafeArea(
@@ -95,11 +85,9 @@ class _ScriptEditState extends State<ScriptEdit> {
                     canPop: controller.canPop.value,
                     onPopInvokedWithResult: (didPop, result) {
                       if (didPop) return;
-                      _saveDialog(controller.name.value);
+                      _save();
                     },
-                    child: controller.canPop.value
-                        ? const BaseBackClosedButton.black()
-                        : saveW,
+                    child: BaseBackClosedButton.black(onBack: _save),
                   );
                 }),
               ),
@@ -110,17 +98,43 @@ class _ScriptEditState extends State<ScriptEdit> {
           );
         }),
       ),
+      // body: Container(color: const Color(0xFF15191D), child: _build.cs),
       body: _build.cs,
     );
   }
 
   Widget _build(BuildContext context) {
-    return CodeForge(
-      language: langJavascript,
-      initialText: controller.initText,
+    const theme = atomOneDarkTheme;
+    return CodeEditor(
       controller: controller.controller,
-      undoController: controller.undoController,
-      editorTheme: atomOneDarkTheme,
+      padding: .only(right: 12.w),
+      indicatorBuilder:
+          (context, editingController, chunkController, notifier) {
+            return Row(
+              children: [
+                12.horizontalSpace,
+                DefaultCodeLineNumber(
+                  controller: editingController,
+                  notifier: notifier,
+                ),
+                DefaultCodeChunkIndicator(
+                  width: 20,
+                  controller: chunkController,
+                  notifier: notifier,
+                ),
+              ],
+            );
+          },
+      style: CodeEditorStyle(
+        textColor: theme['root']?.color,
+        backgroundColor: theme['root']?.backgroundColor,
+        codeTheme: CodeHighlightTheme(
+          languages: {
+            'javascript': CodeHighlightThemeMode(mode: langJavascript),
+          },
+          theme: theme,
+        ),
+      ),
     );
   }
 }

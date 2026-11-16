@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:clash_core/clash_core.dart';
+import 'package:dio/dio.dart';
 import 'package:ffi/ffi.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart' as p;
@@ -305,6 +306,7 @@ abstract final class ClashProcess {
   static Future<void> _setProfile(ClashProfile profile) async {
     _profile = profile;
     _scheduleProfileUpdate();
+    Log.w(profile.toJson().logPretter);
     await _persistState(profile);
   }
 
@@ -319,7 +321,7 @@ abstract final class ClashProcess {
 
   static Future<void> _updateProfile() async {
     final profile = _profile;
-    if (profile == null || !profile.canAutoUpdate) {
+    if (profile == null) {
       _scheduleProfileUpdate();
       return;
     }
@@ -336,7 +338,7 @@ abstract final class ClashProcess {
         return;
       }
     } catch (e) {
-      Log.e('profile update failed: $e');
+      Log.e('profile update failed: ${profile.url} $e');
     }
     if (!identical(_profile, profile)) return;
     // Retry after a full interval instead of hammering an unreachable server.
@@ -437,24 +439,18 @@ abstract final class ClashProcess {
   }
 
   static Future<String> _downloadConfig(String url) async {
-    final uri = Uri.parse(url);
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 15);
+    final client = Dio(.new(connectTimeout: const Duration(seconds: 15)));
     try {
-      final request = await client.getUrl(uri);
-      request.headers.set(HttpHeaders.userAgentHeader, 'clash/mihomo');
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw HttpException(
-          'unexpected status ${response.statusCode}',
-          uri: uri,
-        );
-      }
-      if (body.trim().isEmpty) {
-        throw HttpException('empty response', uri: uri);
-      }
-      return body;
+      final responseFile = await client.get<String>(
+        url,
+        options: .new(
+          responseType: ResponseType.plain,
+          headers: {'User-Agent': 'clash/mihomo'},
+        ),
+      );
+      final fileData = responseFile.data;
+      Log.w('data: $fileData');
+      return fileData ?? '';
     } finally {
       client.close(force: true);
     }

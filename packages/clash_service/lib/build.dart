@@ -90,30 +90,12 @@ Future<void> buildClashServer(
     throw Exception('dart build cli failed: server.\n${result.stderr}');
   }
 
-  final name = targetOs.executableFileName('clashyService');
-  final clashName = targetOs.dylibFileName('clash');
-  // final bundle = fs.currentDirectory.childDirectory(
-  //   join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle'),
-  // );
-
-  final exePath = join(
-    serverDir.path,
-    'build',
-    'cli',
-    '${targetOs}_$arc',
-    'bundle',
-    'bin',
-    name,
+  final exeDir = fs.currentDirectory.childDirectory(
+    join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle', 'bin'),
   );
 
-  final clashPath = join(
-    serverDir.path,
-    'build',
-    'cli',
-    '${targetOs}_$arc',
-    'bundle',
-    'lib',
-    clashName,
+  final clashLibDir = fs.currentDirectory.childDirectory(
+    join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle', 'lib'),
   );
 
   final libDir = serverDir.childDirectory('lib');
@@ -128,21 +110,34 @@ Future<void> buildClashServer(
     }
   }
 
-  output.assets.data.add(
-    DataAsset(
-      package: packageName,
-      name: 'bin/$name',
-      file: Uri.file(exePath, windows: targetOs == .windows),
-    ),
-  );
+  final bins = await exeDir.list().toList();
 
-  output.assets.data.add(
-    DataAsset(
-      package: packageName,
-      name: 'lib/$clashName',
-      file: Uri.file(clashPath, windows: targetOs == .windows),
-    ),
-  );
+  final suf = targetOs.dylibFileName('').split('.').last;
+  for (var item in bins) {
+    if (item case File f) {
+      output.assets.data.add(
+        DataAsset(
+          package: packageName,
+          name: 'bin/${f.basename}',
+          file: Uri.file(item.path, windows: targetOs == .windows),
+        ),
+      );
+    }
+  }
+
+  final libs = await clashLibDir.list().toList();
+
+  for (var item in libs) {
+    if (item case File f when f.basename.endsWith('.$suf')) {
+      output.assets.data.add(
+        DataAsset(
+          package: packageName,
+          name: 'lib/${f.basename}',
+          file: Uri.file(item.path, windows: targetOs == .windows),
+        ),
+      );
+    }
+  }
 
   if (targetOs == .macOS) {
     final wakeMonitorDir = fs.currentDirectory

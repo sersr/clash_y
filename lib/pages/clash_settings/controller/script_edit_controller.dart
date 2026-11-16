@@ -1,20 +1,19 @@
-import 'package:code_forge/code_forge/controller.dart';
-import 'package:code_forge/code_forge/undo_redo.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:re_editor/re_editor.dart';
 
 class ScriptEditController with AlScopeManager {
   String initText = '';
   late final name = () {
-    return titleController.al.value.text;
+    return titleController.alisten.text;
   }.mount(this);
 
-  final controller = CodeForgeController();
-  final undoController = UndoRedoController();
+  late final CodeLineEditingController controller;
   String get scriptName => name.value.isEmpty ? 'New Script' : name.value;
+
   late final canPop = () {
-    return name.value == _initName && !undoController.al.value.canUndo;
+    return name.value == _initName && !controller.alisten.canUndo;
   }.mount(this);
 
   String? id;
@@ -24,6 +23,7 @@ class ScriptEditController with AlScopeManager {
   void init(ProfileScriptModel? data, String? id) {
     this.id = id;
     initText = data?.script ?? '';
+    controller = .fromText(initText);
     titleController = .new(text: _initName = data?.name ?? 'New Script');
   }
 }

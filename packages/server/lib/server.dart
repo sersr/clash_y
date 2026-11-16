@@ -78,6 +78,7 @@ RespHandler jsonMiddleware(Handler handler) {
 
 Future<void> clashServer() async {
   Log.defaultLogger.logPathFn = (path) => path;
+  Log.defaultLogger.lines = 100;
 
   final handler = const Pipeline()
       .addMiddleware(jsonMiddleware)

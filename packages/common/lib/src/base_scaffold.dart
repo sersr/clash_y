@@ -10,6 +10,7 @@ class BaseScaffold extends StatelessWidget {
     this.navBgLight = true,
     this.navBarColor,
     this.backgroundColor,
+    this.resizeToAvoidBottomInset,
   });
   final Widget appbar;
 
@@ -19,6 +20,8 @@ class BaseScaffold extends StatelessWidget {
   final bool navBgLight;
   final Color? navBarColor;
   final Color? backgroundColor;
+  final bool? resizeToAvoidBottomInset;
+
   @override
   Widget build(BuildContext context) {
     return SystemUI(
@@ -27,6 +30,7 @@ class BaseScaffold extends StatelessWidget {
       navBgLight: navBgLight,
       child: Scaffold(
         backgroundColor: backgroundColor,
+        resizeToAvoidBottomInset:resizeToAvoidBottomInset ,
         body: Column(
           children: [
             appbar,

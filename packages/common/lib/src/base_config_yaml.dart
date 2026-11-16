@@ -35,7 +35,9 @@ Future<void> syncConfigDotYaml(Profile profile) async {
 }
 
 Map<String, dynamic> yamlToJson(String yaml) {
-  return jsonDecode(jsonEncode(loadYaml(yaml)));
+  final v = loadYaml(yaml);
+  final v1 = jsonEncode(v);
+  return jsonDecode(v1);
 }
 
 Future<String> initConfigPath() async {

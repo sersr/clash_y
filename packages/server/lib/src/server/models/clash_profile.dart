@@ -31,17 +31,11 @@ class ClashProfile {
   final DateTime? updateTime;
 
   bool get canAutoUpdate {
-    final lastUpdateTime = updateTime;
-    if (lastUpdateTime == null) return true;
-    final interval = updateInterval;
-    if (interval == null || interval <= 0) {
-      return false;
-    }
-
-    return DateTime.now().difference(lastUpdateTime).inMinutes >= interval;
+    final delay = nextUpdateDelay();
+    return delay != null && delay.inMicroseconds <= 0;
   }
 
-  static const _minDelay = Duration(seconds: 5);
+  static const _minDelay = Duration(minutes: 10);
 
   /// How long to wait before the next download.
   ///
@@ -49,11 +43,12 @@ class ClashProfile {
   /// due (or was never downloaded) still waits [_minDelay] so a fresh start is
   /// not immediately followed by another download.
   Duration? nextUpdateDelay([DateTime? now]) {
-    if (!canAutoUpdate) return null;
     final last = updateTime;
-    if (last == null) return _minDelay;
+    if (last == null) return null;
+    final interval = updateInterval;
+    if (interval == null || interval <= 0) return null;
 
-    final due = last.add(Duration(minutes: updateInterval!));
+    final due = last.add(Duration(minutes: interval));
     final current = now ?? DateTime.now();
     if (!due.isAfter(current)) return _minDelay;
 

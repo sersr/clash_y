@@ -354,7 +354,7 @@ final class ClashRequest {
               await fileTemp.create(recursive: true);
             }
 
-            await fileTemp.writeAsString(fileData);
+            await fileTemp.writeAsString(fileData, flush: true);
             final config = await getConfigMap(fileTemp.path);
             await writeConfigMap(fileTemp.path, config);
             if (!await file.exists()) {
