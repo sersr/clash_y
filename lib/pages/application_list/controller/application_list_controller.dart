@@ -10,8 +10,8 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
   final _applications = <InstalledApplication>[].al;
   List<InstalledApplication> get applications => _applications.value;
 
-  final whiteList = SettingsHive.allowApplications.value.toList().al;
-  final blackList = SettingsHive.disAllowApplications.value.toList().al;
+  final AList<String> whiteList = SettingsHive.allowApplications.al.aList;
+  final AList<String> blackList = SettingsHive.disAllowApplications.al.aList;
   final mode = SettingsHive.applicationListMode.value.al;
 
   final showSystemApps = false.al;
@@ -34,8 +34,8 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
     final v = mode.value;
     final list = switch (v) {
       .none => const <String>[],
-      .blackList => blackList,
-      .whiteList => whiteList,
+      .blackList => blackList.value,
+      .whiteList => whiteList.value,
     };
 
     return list;

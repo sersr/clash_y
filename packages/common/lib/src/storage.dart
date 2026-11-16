@@ -9,30 +9,20 @@ final class StorageTransform {
   final Function fn;
   final dynamic defaultValue;
 
-  final ValueNotifier Function(dynamic v)? createN;
-  const new(this.fn, [this.defaultValue, this.createN]);
-  const new base([this.defaultValue, this.createN]) : fn = _base;
-
-  ValueNotifier? createNotifier(dynamic value) {
-    if (createN case var create?) {
-      return create(value);
-    }
-
-    return null;
-  }
+  const new(this.fn, [this.defaultValue]);
+  const new base([this.defaultValue]) : fn = _base;
 
   static StorageTransform list<E>([List<E>? defaultValue]) {
-    return .new(_list<E>, defaultValue, (value) => AList<E>(value ?? <E>[]));
+    return .new(_list<E>, defaultValue);
   }
 
-  static List Function(List list) listDy(Function fn) =>
-      (List list) => list.map((e) => fn(e)).toList();
+  static List<E> Function(List list) listDy<E>(Function fn) =>
+      (List list) => list.map((e) => fn(e) as E).toList();
 
   static StorageTransform map<K, E>(Function fn, [Map<K, E>? defaultValue]) {
     return .new(
       (Map map) => map.map<K, E>((k, v) => MapEntry(k, fn(v))),
       defaultValue,
-      (value) => AMap<K, E>(value ?? <K, E>{}),
     );
   }
 
@@ -144,22 +134,20 @@ mixin StorageMixin {
     final t = transform();
 
     final v = _read<T>(key, t) ?? t.defaultValue;
-    var obx = t.createNotifier(v) as ValueNotifier<T?>?;
-    if (obx == null) {
-      if (v != null) {
-        obx = ValueNotifier<T>(v);
-      } else {
-        obx = .new(v);
-      }
+    ValueNotifier<T?> obx;
+
+    if (v != null) {
+      obx = ValueNotifier<T>(v);
+    } else {
+      obx = .new(v);
     }
 
-    final o = obx;
-    o.addListener(() {
-      _saveData(key, o.value);
+    obx.addListener(() {
+      _saveData(key, obx.value);
     });
-    StorageMixin._wrap(key, o);
+    StorageMixin._wrap(key, obx);
 
-    return o.al;
+    return obx.al;
   }
 
   T? _read<T>(Object key, StorageTransform transform) {

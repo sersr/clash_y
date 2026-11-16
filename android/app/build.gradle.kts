@@ -39,6 +39,9 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
+        debug {
+            applicationIdSuffix = ".debug"
+        }
     }
 
     packaging {

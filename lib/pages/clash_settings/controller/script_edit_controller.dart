@@ -6,14 +6,14 @@ import 'package:re_editor/re_editor.dart';
 class ScriptEditController with AlScopeManager {
   String initText = '';
   late final name = () {
-    return titleController.alisten.text;
+    return titleController.al.text;
   }.mount(this);
 
   late final CodeLineEditingController controller;
   String get scriptName => name.value.isEmpty ? 'New Script' : name.value;
 
   late final canPop = () {
-    return name.value == _initName && !controller.alisten.canUndo;
+    return name.value == _initName && !controller.al.canUndo;
   }.mount(this);
 
   String? id;

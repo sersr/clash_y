@@ -377,7 +377,7 @@ final class ClashRequest {
           );
 
           if (profile.id case var id?) {
-            BaseConfig.profiles.al.al[id] = profile;
+            BaseConfig.profiles.al.aMap[id] = profile;
           }
         } catch (e, s) {
           Log.e('$e,$s');

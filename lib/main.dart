@@ -3,6 +3,7 @@
 import 'package:common/common.dart';
 import 'package:common/multi_window.dart' as mw;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:nop/utils.dart';
@@ -14,6 +15,7 @@ import 'pages/app.dart';
 void main() async {
   final binding = WidgetsFlutterBinding.ensureInitialized();
 
+  SystemNavigator.setFrameworkHandlesBack(true);
   requestNotification();
 
   if (!await initMain()) {

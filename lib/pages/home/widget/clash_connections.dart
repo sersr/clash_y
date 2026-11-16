@@ -1,3 +1,4 @@
+import 'package:clashy/pages/home/widget/home_bottom_padding.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
@@ -78,6 +79,8 @@ class _ClashConnectionsState extends State<ClashConnections> {
         ),
       ),
     );
+
+    final bottom = HomeBottomPadding.homePadding(context);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F0F0),
@@ -176,7 +179,11 @@ class _ClashConnectionsState extends State<ClashConnections> {
                     ),
                   ),
                 ),
-                slivers: [body],
+                slivers: [
+                  body,
+                  if (connections.isNotEmpty)
+                    SliverToBoxAdapter(child: bottom.verticalSpace),
+                ],
               );
             }).cs,
           ),

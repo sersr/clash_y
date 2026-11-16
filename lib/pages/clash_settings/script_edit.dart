@@ -38,6 +38,7 @@ class _ScriptEditState extends State<ScriptEdit> {
       return;
     }
     final res = await _saveDialog(controller.name.value);
+    if (res == null) return;
     if (res == true) {
       save();
     }
@@ -45,58 +46,58 @@ class _ScriptEditState extends State<ScriptEdit> {
   }
 
   void save() {
-    // controller.verify();
-
     final id = controller.id ?? Uuid().v4();
-    SettingsHive.scripts.al.al[id] = .new(
+    SettingsHive.scripts.al.aMap[id] = .new(
       id: id,
       script: controller.controller.text,
       name: controller.scriptName,
     );
-    Nav.back();
   }
 
   @override
   Widget build(BuildContext context) {
     return BaseScaffold(
-      backgroundColor: colors.backgroundColor,
-      appbar: SafeArea(
-        bottom: false,
-        child: Cs(() {
-          return TextField(
-            controller: controller.titleController,
-            style: .new(
-              color: Colors.black,
-              fontWeight: .w500,
-              fontSize: 18.sp,
-            ),
-            textAlignVertical: .center,
-            decoration: .new(
-              isCollapsed: true,
-              border: .none,
-              contentPadding: .symmetric(vertical: 12),
-              prefixIconConstraints: .new(minHeight: 50.h),
-              constraints: .new(minHeight: 50.h),
-              isDense: true,
-              prefixIcon: Padding(
-                padding: .only(right: 10),
-                child: Cs(() {
-                  return PopScope(
-                    canPop: controller.canPop.value,
-                    onPopInvokedWithResult: (didPop, result) {
-                      if (didPop) return;
-                      _save();
-                    },
-                    child: BaseBackClosedButton.black(onBack: _save),
-                  );
-                }),
+      backgroundColor: atomOneDarkTheme['root']?.backgroundColor,
+      appbar: Container(
+        color: colors.backgroundColor,
+        child: SafeArea(
+          bottom: false,
+          child: Cs(() {
+            return TextField(
+              controller: controller.titleController,
+              style: .new(
+                color: Colors.black,
+                fontWeight: .w500,
+                fontSize: 18.sp,
               ),
-              suffixIcon: TextClearSufWidget(
-                controller: controller.titleController,
+              textAlignVertical: .center,
+              decoration: .new(
+                isCollapsed: true,
+                border: .none,
+                contentPadding: .symmetric(vertical: 12),
+                prefixIconConstraints: .new(minHeight: 50.h),
+                constraints: .new(minHeight: 50.h),
+                isDense: true,
+                prefixIcon: Padding(
+                  padding: .only(right: 10),
+                  child: Cs(() {
+                    return PopScope(
+                      canPop: controller.canPop.value,
+                      onPopInvokedWithResult: (didPop, result) {
+                        if (didPop) return;
+                        _save();
+                      },
+                      child: BaseBackClosedButton.black(onBack: _save),
+                    );
+                  }),
+                ),
+                suffixIcon: TextClearSufWidget(
+                  controller: controller.titleController,
+                ),
               ),
-            ),
-          );
-        }),
+            );
+          }),
+        ),
       ),
       // body: Container(color: const Color(0xFF15191D), child: _build.cs),
       body: _build.cs,

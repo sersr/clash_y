@@ -1,4 +1,5 @@
 import 'package:clashy/pages/home/controller/clash_controller.dart';
+import 'package:clashy/pages/home/widget/home_bottom_padding.dart';
 import 'package:common/common.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_nop/router.dart';
@@ -66,6 +67,8 @@ class _SettingsState extends State<Settings> {
           children: [
             appbar,
             Expanded(child: body),
+
+            HomeBottomPadding.homePadding(context).verticalSpace,
           ],
         ),
       ),

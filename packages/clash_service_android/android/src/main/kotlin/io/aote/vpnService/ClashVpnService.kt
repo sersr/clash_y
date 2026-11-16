@@ -123,6 +123,7 @@ class ClashVpnService : VpnService() {
     private var lastNotificationTitle: String? = null
     private var lastNotificationText: String? = null
     private var notificationTimestamp = 0L
+    private var foregroundStarted = false
 
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
 
@@ -143,7 +144,7 @@ class ClashVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val receiver = intent?.getResultReceiver()
         try {
-            startForeground(NOTIFICATION_ID, buildNotification())
+            startForegroundCompat()
         } catch (t: Throwable) {
             val message = "Failed to start foreground service: ${t.message ?: t.javaClass.simpleName}"
             Log.e(TAG, message, t)
@@ -762,6 +763,10 @@ class ClashVpnService : VpnService() {
                 if (wasVpnActive) {
                     setEnabled(true)
                     writeVpnActive(true)
+                    startForegroundCompat()
+                    startTrafficMonitor()
+                } else {
+                    stopForegroundCompat()
                 }
                 sendResult(receiver, false, error)
                 Log.e(TAG, "Failed to disable VPN while keeping the core running: $error")
@@ -804,7 +809,6 @@ class ClashVpnService : VpnService() {
             )
             persistProfile(profileUpdate)
             writeVpnActive(false)
-            startTrafficMonitor()
             null
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to start mihomo without VPN", t)
@@ -955,11 +959,20 @@ class ClashVpnService : VpnService() {
         writeVpnActive(enabled)
     }
 
+    @Synchronized
+    private fun startForegroundCompat() {
+        if (foregroundStarted) return
+        startForeground(NOTIFICATION_ID, buildNotification())
+        foregroundStarted = true
+    }
+
     @Suppress("DEPRECATION")
     @Synchronized
     private fun stopForegroundCompat() {
+        if (!foregroundStarted) return
         notificationTimestamp = 0L
         stopForeground(true)
+        foregroundStarted = false
     }
 
     private fun createNotificationChannel() {
@@ -1029,7 +1042,7 @@ class ClashVpnService : VpnService() {
             .putString(KEY_CONTROLLER_SOCKET, controllerSocketPath)
             .apply()
         refreshNotification()
-        if (coreStarted) startTrafficMonitor()
+        if (coreStarted && isVpnEnabled()) startTrafficMonitor()
     }
 
     @Synchronized
@@ -1064,7 +1077,11 @@ class ClashVpnService : VpnService() {
 
     @Synchronized
     private fun refreshNotification() {
-        if (!isVpnEnabled()) return
+        if (!isVpnEnabled()) {
+            stopForegroundCompat()
+            return
+        }
+        if (!foregroundStarted) return
         val title = profileName.ifBlank { "Clash VPN" }
         val text = "↑ ${formatTrafficRate(uploadRate)}  ↓ ${formatTrafficRate(downloadRate)}"
         if (title == lastNotificationTitle && text == lastNotificationText) {
