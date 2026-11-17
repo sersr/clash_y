@@ -2,8 +2,9 @@ import 'dart:io';
 
 import 'package:clash_service_android/clash_service_android.dart' as android;
 import 'package:file/local.dart' as f;
-import 'package:server/server.dart' show ClashProfile;
+import 'package:server/server.dart' show ApiResp, ClashProfile;
 
+import 'src/service/api.dart';
 import 'src/service/clash_service_linux.dart';
 import 'src/service/clash_service_ios.dart';
 import 'src/service/clash_service_macos_cmd.dart';
@@ -48,12 +49,10 @@ abstract final class ClashService {
     );
   }
 
-  /// Brings the VPN service up for [profile].
+  /// Starts the Clash core and enables the VPN for [profile].
   ///
-  /// Android 使用 VPN 后端；macOS 安装并启动 privileged helper，同时确保
-  /// Tray 运行；Linux 写入
-  /// systemd unit 并启动（未提权时弹 pkexec 密码框）；Windows 安装并启动
-  /// SCM 服务（未提权时弹 UAC 密码框）。
+  /// Desktop platforms ensure their service is running, start the core, then
+  /// enable and verify the VPN.
   ///
   /// [profile] carries the configuration directory, subscription, and optional
   /// script the service uses while the app is not running.
@@ -62,8 +61,7 @@ abstract final class ClashService {
   /// 自身包名）纳入 VPN；为 `false` 时使用全局路由和
   /// [disallowedApplications] 排除列表。
   ///
-  /// 返回 `false` 表示平台没有 VPN 后端，或后端拒绝启动 —— 例如用户拒绝了
-  /// Android VPN 授权对话框、提权被取消、或 Windows 非管理员运行。
+  /// Returns `false` if the platform has no VPN backend or startup fails.
   static Future<bool> start(
     ClashProfile profile, {
     bool allowList = false,
@@ -91,10 +89,25 @@ abstract final class ClashService {
       return IOSVpnService.start(profile);
     }
 
+    if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
+      if (!await _startDesktopService(trayClashSocket: trayClashSocket)) {
+        return false;
+      }
+      if (!await ClashServiceApi.isClashRunning()) {
+        final coreResponse = await ClashServiceApi.startClashCore(profile);
+        if (!coreResponse.success) return false;
+      }
+      final vpnResponse = await ClashServiceApi.startVpn(profile);
+      return vpnResponse.success && await ClashServiceApi.isVpnActive();
+    }
+
+    return false;
+  }
+
+  static Future<bool> _startDesktopService({String? trayClashSocket}) async {
     if (Platform.isMacOS) {
       await HelperInstaller.install();
-      final running = await HelperInstaller.isRunning();
-      if (!running) return false;
+      if (!await HelperInstaller.isRunning()) return false;
       final clashSocket = trayClashSocket;
       if (clashSocket == null) {
         throw ArgumentError.value(
@@ -112,31 +125,71 @@ abstract final class ClashService {
       return isSystemdServiceRunning();
     }
 
-    if (Platform.isWindows) {
-      return startService();
-    }
-
+    if (Platform.isWindows) return startService();
     return false;
   }
 
-  /// Starts the Android mihomo core without enabling its VPN interface.
+  static Future<ApiResp> getClashEnv() => ClashServiceApi.getClashEnv();
+
+  static Future<ApiResp> startClash(ClashProfile profile) =>
+      ClashServiceApi.startClash(profile);
+
+  static Future<ApiResp> startVpn(ClashProfile profile) =>
+      ClashServiceApi.startVpn(profile);
+
+  static Future<ApiResp> stopVpn() => ClashServiceApi.stopVpn();
+
+  static Future<ApiResp> reloadClashConfig() =>
+      ClashServiceApi.reloadClashConfig();
+
+  static Future<ApiResp> updateClashProfile(ClashProfile profile) =>
+      ClashServiceApi.updateClashProfile(profile);
+
+  static Future<ApiResp> stopClash() => ClashServiceApi.stopClash();
+
+  static Future<bool> isClashRunning() => ClashServiceApi.isClashRunning();
+
+  /// Whether the platform's VPN interface or tunnel is active.
+  static Future<bool> isVpnActive() async {
+    if (Platform.isAndroid) return android.AndroidVpnService.isVpnActive();
+    if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
+      return ClashServiceApi.isVpnActive();
+    }
+    return false;
+  }
+
+  /// Starts the mihomo core without enabling its VPN interface.
   ///
   /// The controller API remains available so the application can load proxies
   /// before the user turns the VPN on.
   static Future<bool> startCore(
     ClashProfile profile, {
     String? controllerSocketPath,
+    String? trayClashSocket,
   }) async {
-    if (!Platform.isAndroid) return false;
-    return android.AndroidVpnService.startCore(
-      profile.configDir,
-      profileUrl: profile.url,
-      profileName: profile.name,
-      script: profile.script,
-      controllerSocketPath: controllerSocketPath,
-      updateIntervalMinutes: profile.updateInterval,
-      updateTime: profile.updateTime,
-    );
+    if (Platform.isAndroid) {
+      return android.AndroidVpnService.startCore(
+        profile.configDir,
+        profileUrl: profile.url,
+        profileName: profile.name,
+        script: profile.script,
+        controllerSocketPath: controllerSocketPath,
+        updateIntervalMinutes: profile.updateInterval,
+        updateTime: profile.updateTime,
+      );
+    }
+
+    if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
+      if (!await _startDesktopService(trayClashSocket: trayClashSocket)) {
+        return false;
+      }
+      if (await ClashServiceApi.isClashRunning()) return true;
+
+      final response = await ClashServiceApi.startClashCore(profile);
+      return response.success;
+    }
+
+    return false;
   }
 
   /// Reloads the Android core configuration without changing VPN state.
@@ -157,11 +210,6 @@ abstract final class ClashService {
   }
 
   /// Whether the Android VPN interface is currently established.
-  static bool isVpnActive() {
-    if (!Platform.isAndroid) return false;
-    return android.AndroidVpnService.isVpnActive();
-  }
-
   /// Updates the profile shown/used by a running service without restarting
   /// the core.
   ///

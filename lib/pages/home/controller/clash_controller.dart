@@ -37,6 +37,9 @@ class ClashController with NopLifecycle {
   final _isStarting = false.val;
   bool get isStarting => _isStarting.value;
 
+  Future<void> _initialization = Future<void>.value();
+  var _initializationSucceeded = false;
+
   final map = <String, int?>{};
   late final ss = map.val;
   String getName(String proxyName) {
@@ -51,69 +54,59 @@ class ClashController with NopLifecycle {
   }
 
   @override
-  void nopInit() async {
+  void nopInit() {
     super.nopInit();
-    await _loadInitialState();
+    _initializationSucceeded = false;
+    _initialization = _loadInitialState();
   }
 
   Future<void> _loadInitialState() async {
     try {
-      ProxiesData? remoteData;
-      var coreStarted = false;
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        final path = await clashEvent.initConfig();
-        final profile = BaseConfig.currentProfileData.value.toClashProfile(
-          path,
-        );
-        final accepted = await ClashService.startCore(
-          profile,
-          controllerSocketPath: unixSockPath,
-        );
-        if (accepted) {
-          coreStarted = true;
-        } else {
-          const message = 'Failed to start the Clash core service.';
-          Log.e(message);
-          showMsg(message);
-        }
-      } else if (defaultTargetPlatform.isDesktop) {
-        final profile = await _currentProfile();
-        final serviceStarted = await ClashService.start(
-          profile,
-          controllerSocketPath: unixSockPath,
-          trayClashSocket: unixSockPath,
-        );
-        if (!serviceStarted) {
-          _reportError('Failed to start the Clash service.');
-        } else {
-          coreStarted = true;
-          if (!await ClashServiceApi.isVpnActive()) {
-            final response = await ClashServiceApi.startClashCore(profile);
-            coreStarted = response.success;
-            if (!response.success) {
-              _reportError('Failed to start the Clash core: ${response.data}');
-            }
-          }
-        }
-      }
-
-      final running = await _queryRunningState();
-      if (coreStarted) {
-        remoteData ??= await _waitForCore();
-        if (remoteData == null) {
-          _reportError('Clash core did not expose its controller API.');
-        }
-      } else if (running) {
-        remoteData ??= await clashEvent.clashApi.getProxies();
-      }
-      _data.value = remoteData ?? const ProxiesData(history: [], proxies: []);
-      removeProxyDelay();
+      final coreStarted = await _startCoreForInitialization();
+      final remoteData = await _loadInitialProxies(coreStarted: coreStarted);
+      _updateData(remoteData ?? const ProxiesData(history: [], proxies: []));
       if (remoteData != null) {
-        await syncProfileWithService();
+        await _syncProfileWithService();
       }
-    } catch (e) {
-      _reportError('Load Clash state failed: $e');
+      _initializationSucceeded = true;
+    } catch (error, stackTrace) {
+      Log.e('Load Clash state failed: $error\n$stackTrace');
+      showMsg('Load Clash state failed: $error');
     }
+  }
+
+  Future<bool> _startCoreForInitialization() async {
+    final platform = defaultTargetPlatform;
+    if (platform != TargetPlatform.android && !platform.isDesktop) return false;
+
+    final profile = await _currentProfile();
+    final started = await ClashService.startCore(
+      profile,
+      controllerSocketPath: unixSockPath,
+      trayClashSocket: unixSockPath,
+    );
+    if (!started) {
+      throw StateError('Failed to start the Clash core.');
+    }
+    return true;
+  }
+
+  Future<ProxiesData?> _loadInitialProxies({required bool coreStarted}) async {
+    final vpnRunning = await _queryRunningState();
+    if (coreStarted) {
+      final data = await _waitForCore();
+      if (data == null) {
+        throw StateError('Clash core did not expose its controller API.');
+      }
+      return data;
+    }
+    if (!vpnRunning) return null;
+    return clashEvent.clashApi.getProxies();
+  }
+
+  Future<bool> _waitForInitialization() async {
+    await _initialization;
+    return _initializationSucceeded;
   }
 
   Future<ProxiesData?> _waitForCore() async {
@@ -133,7 +126,10 @@ class ClashController with NopLifecycle {
   }
 
   final _queue = TaskQueue();
-  Future<void> start() => _queue.run(_start);
+  Future<void> start() async {
+    if (!await _waitForInitialization()) return;
+    await _queue.run(_start);
+  }
 
   Future<void> _start() async {
     _isStarting.value = true;
@@ -144,6 +140,16 @@ class ClashController with NopLifecycle {
 
     try {
       final profile = await _currentProfile();
+      if (defaultTargetPlatform.isDesktop && await _hasOtherVpnConnection()) {
+        await _queryRunningState();
+        _reportError(
+          'Another VPN connection or tunnel route is active. '
+          'Disconnect the other VPN and try again.',
+          warning: true,
+        );
+        return;
+      }
+
       final mode = SettingsHive.applicationListMode.value;
       final started = await ClashService.start(
         profile,
@@ -160,22 +166,6 @@ class ClashController with NopLifecycle {
       if (!started) {
         await _queryRunningState();
         _reportError('Start VPN failed.');
-        return;
-      }
-
-      if (defaultTargetPlatform.isDesktop && await _hasOtherVpnConnection()) {
-        await _queryRunningState();
-        _reportError(
-          'Another VPN connection or tunnel route is active. '
-          'Disconnect the other VPN and try again.',
-          warning: true,
-        );
-        return;
-      }
-
-      if (defaultTargetPlatform.isDesktop &&
-          !await _startDesktopCore(profile)) {
-        await _queryRunningState();
         return;
       }
 
@@ -205,14 +195,6 @@ class ClashController with NopLifecycle {
     return ClashService.hasOtherVpnConnection();
   }
 
-  Future<bool> _startDesktopCore(ClashProfile profile) async {
-    if (!await ClashService.isInstalled()) {
-      _reportError('Clash service is not installed.');
-      return false;
-    }
-    return _run(profile);
-  }
-
   Future<ProxiesData?> _waitForRunningData() async {
     for (var attempt = 0; attempt < 20; attempt++) {
       final remoteData = await clashEvent.clashApi.getProxies();
@@ -233,36 +215,15 @@ class ClashController with NopLifecycle {
     showMsg(message);
   }
 
-  Future<bool> _run(ClashProfile profile) async {
-    if (!defaultTargetPlatform.isDesktop) return true;
-
-    try {
-      final coreResponse = await ClashServiceApi.startClashCore(profile);
-      if (!coreResponse.success) {
-        _reportError('Start Clash core failed: ${coreResponse.data}');
-        return false;
-      }
-
-      final vpnResponse = await ClashServiceApi.startVpn(profile);
-      if (!vpnResponse.success) {
-        _reportError('Start VPN failed: ${vpnResponse.data}');
-        return false;
-      }
-      if (!await ClashServiceApi.isVpnActive()) {
-        _reportError('VPN did not become active.');
-        return false;
-      }
-      return true;
-    } catch (e) {
-      _reportError('Start Clash failed: $e');
-      return false;
-    }
-  }
-
   /// Pushes the profile the app currently uses to the running service so it
   /// refreshes `config.yaml` from the right subscription while the app is in
   /// the background.
   Future<void> syncProfileWithService() async {
+    if (!await _waitForInitialization()) return;
+    await _syncProfileWithService();
+  }
+
+  Future<void> _syncProfileWithService() async {
     final profile = BaseConfig.currentProfileData.value;
     if (profile.url == null) {
       return;
@@ -271,7 +232,7 @@ class ClashController with NopLifecycle {
     final clashProfile = profile.toClashProfile(configYaml.parent.path);
     try {
       if (defaultTargetPlatform.isDesktop) {
-        await ClashServiceApi.updateClashProfile(clashProfile);
+        await ClashService.updateClashProfile(clashProfile);
       } else {
         await ClashService.updateProfile(
           clashProfile,
@@ -284,6 +245,7 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> getData() async {
+    if (!await _waitForInitialization()) return;
     await _queue.run(_refreshData);
   }
 
@@ -314,11 +276,11 @@ class ClashController with NopLifecycle {
     late final bool running;
     try {
       if (defaultTargetPlatform == .android) {
-        running = ClashService.isVpnActive();
+        running = await ClashService.isVpnActive();
       } else if (defaultTargetPlatform == .iOS) {
         running = await clashEvent.clashApi.getProxies() != null;
       } else {
-        running = await ClashServiceApi.isVpnActive();
+        running = await ClashService.isVpnActive();
       }
     } catch (e) {
       Log.e('check Clash status failed: $e');
@@ -344,7 +306,12 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> stop() {
-    return _queue.run(_stop);
+    return _stopAfterInitialization();
+  }
+
+  Future<void> _stopAfterInitialization() async {
+    if (!await _waitForInitialization()) return;
+    await _queue.run(_stop);
   }
 
   Future<void> _stop() async {
@@ -392,7 +359,7 @@ class ClashController with NopLifecycle {
 
   Future<bool> _stopDesktopVpn() async {
     try {
-      final response = await ClashServiceApi.stopVpn();
+      final response = await ClashService.stopVpn();
       if (!response.success) {
         await _queryRunningState();
         _reportError('Stop VPN failed: ${response.data}');
@@ -402,7 +369,7 @@ class ClashController with NopLifecycle {
       final deadline = DateTime.now().add(const Duration(seconds: 10));
       do {
         if (!await _queryRunningState() &&
-            await ClashServiceApi.isClashRunning()) {
+            await ClashService.isClashRunning()) {
           return true;
         }
         await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -425,6 +392,7 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> uninstall() async {
+    if (!await _waitForInitialization()) return;
     final success = await ClashService.uninstall();
     await _queryRunningState();
     Log.w('close vpn: $success');
@@ -437,6 +405,7 @@ class ClashController with NopLifecycle {
 
   Future<void> selectProxy(String? selector, String? proxy) async {
     if (selector == null || proxy == null) return;
+    if (!await _waitForInitialization()) return;
     return EventQueue.runOne([selector, proxy], () async {
       await clashEvent.clashApi.selectProxy(selector, proxy);
       return getData();
@@ -444,6 +413,7 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> getDelay(String proxy) async {
+    if (!await _waitForInitialization()) return;
     final delay = await clashEvent.clashApi.getDelay(proxy, 3000, testUrl);
 
     getSelector(proxy).value = delay?.delay ?? 0;
@@ -469,10 +439,11 @@ class ClashController with NopLifecycle {
 
   void startListen() {
     if (_log != null) return;
-    listenLogTraffic();
+    unawaited(listenLogTraffic());
   }
 
-  void listenLogTraffic() async {
+  Future<void> listenLogTraffic() async {
+    if (!await _waitForInitialization()) return;
     _log?.cancel();
     _traffic?.cancel();
     _log = clashEvent.clashApi

@@ -3,11 +3,13 @@ import 'dart:io' as io;
 import 'package:code_assets/code_assets.dart';
 import 'package:data_assets/data_assets.dart';
 import 'package:file/file.dart';
+import 'package:file/local.dart';
 import 'package:hooks/hooks.dart';
 import 'package:path/path.dart';
 
-import 'clash_service.dart';
 import 'src/tray_asset.dart';
+
+const _fs = LocalFileSystem();
 
 extension on HookInputUserDefines {
   bool get isCli {
@@ -74,7 +76,7 @@ Future<void> buildClashServer(
 
   final packageName = input.packageName;
 
-  final serverDir = fs.currentDirectory
+  final serverDir = _fs.currentDirectory
       .childDirectory(input.packageRoot.path)
       .parent
       .childDirectory('server');
@@ -88,11 +90,11 @@ Future<void> buildClashServer(
     throw Exception('dart build cli failed: server.\n${result.stderr}');
   }
 
-  final exeDir = fs.currentDirectory.childDirectory(
+  final exeDir = _fs.currentDirectory.childDirectory(
     join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle', 'bin'),
   );
 
-  final clashLibDir = fs.currentDirectory.childDirectory(
+  final clashLibDir = _fs.currentDirectory.childDirectory(
     join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle', 'lib'),
   );
 
@@ -138,7 +140,7 @@ Future<void> buildClashServer(
   }
 
   if (targetOs == .macOS) {
-    final wakeMonitorDir = fs.currentDirectory
+    final wakeMonitorDir = _fs.currentDirectory
         .childDirectory(input.packageRoot.path)
         .parent
         .childDirectory('clash_wake_monitor');
@@ -184,7 +186,7 @@ Future<void> buildClashServer(
     );
 
     // 用户级状态栏程序：由 clashyService daemon 直接启动，app 退出后图标仍在。
-    final trayDir = fs.currentDirectory
+    final trayDir = _fs.currentDirectory
         .childDirectory(input.packageRoot.path)
         .parent
         .childDirectory('clash_tray');

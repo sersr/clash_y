@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:clash_service/clash_service.dart';
 import 'package:dio/dio.dart';
 import 'package:nop/nop.dart';
+import 'package:server/server.dart' show ApiResp, ClashProfile, clashSocket;
 
 import '../api/dio/unix_socket_dio.dart';
 

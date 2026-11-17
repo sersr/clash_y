@@ -142,6 +142,15 @@ class WebDavBackupService {
       await client.readFile(remotePath, remoteArchive.path);
       final decodedRemote = await _decodeSnapshot(remoteArchive);
       try {
+        if (await lastSyncAt() == null) {
+          await _restoreSnapshot(decodedRemote.archive);
+          await _saveLastSyncAt();
+          return const WebDavSyncResult(
+            message: 'Restored remote backup on first sync.',
+            restored: true,
+          );
+        }
+
         if (localSnapshot.modifiedAt.isAfter(decodedRemote.modifiedAt) ||
             (localSnapshot.modifiedAt.isAtSameMomentAs(
                   decodedRemote.modifiedAt,
@@ -205,12 +214,12 @@ class WebDavBackupService {
       );
     }
 
-    if ((username.trim().isNotEmpty || (password?.isNotEmpty ?? false)) &&
-        uri.scheme.toLowerCase() != 'https') {
-      throw const FormatException(
-        'WebDAV authentication requires an HTTPS URL.',
-      );
-    }
+    // if ((username.trim().isNotEmpty || (password?.isNotEmpty ?? false)) &&
+    //     uri.scheme.toLowerCase() != 'https') {
+    //   throw const FormatException(
+    //     'WebDAV authentication requires an HTTPS URL.',
+    //   );
+    // }
 
     return uri.replace(path: uri.path.replaceFirst(RegExp(r'/+$'), ''));
   }

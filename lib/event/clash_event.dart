@@ -36,7 +36,7 @@ final class ClashEvent with NopLifecycle {
     try {
       await initConfig();
 
-      if (io.Platform.isAndroid && !ClashService.isVpnActive()) {
+      if (io.Platform.isAndroid && !await ClashService.isVpnActive()) {
         final profile = BaseConfig.currentProfileData.value.toClashProfile(
           configYaml.parent.path,
         );
@@ -51,7 +51,7 @@ final class ClashEvent with NopLifecycle {
       }
 
       if (io.Platform.isMacOS || io.Platform.isLinux || io.Platform.isWindows) {
-        final response = await ClashServiceApi.reloadClashConfig();
+        final response = await ClashService.reloadClashConfig();
         if (!response.success) {
           Log.e('reload Clash config failed: ${response.data}');
           return;
