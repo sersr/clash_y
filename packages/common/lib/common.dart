@@ -21,6 +21,7 @@ export 'src/macos/proxy.dart';
 ///
 export 'src/storage.dart';
 export 'src/utils/copy.dart';
+export 'src/webdav.dart';
 
 /// utils
 export 'src/utils/date_format.dart';
@@ -34,5 +35,8 @@ export 'src/utils/equal.dart';
 /// widget
 export 'src/widget/base_dialog.dart';
 export 'src/base_scaffold.dart';
+
+export 'package:clash_service/api.dart';
+export 'package:clash_service/clash_service.dart' show fs;
 
 BuildContext get currentContext => GlobalContext.context;

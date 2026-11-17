@@ -4,26 +4,19 @@ import 'dart:io' as io;
 import 'dart:math';
 
 import 'package:clash_service/clash_service.dart';
-import 'package:clashy/event/impl/dio/unix_socket_http.dart';
-import 'package:clashy/event/impl/clash_service.dart';
-import 'package:clashy/event/repository.dart';
-import 'package:common/common.dart';
+import 'package:clash_service/src/api/dio/unix_socket_http.dart';
 import 'package:dio/dio.dart';
-import 'package:file/file.dart';
-import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
 
-import '../../event.dart';
+import '../model/_g.dart';
 import 'unix_socket_dio.dart';
 
-final class ClashRequest {
-  ClashRequest({required this.paths, required this.repo}) {
+final class ClashApi {
+  ClashApi({required this.appConfigPath, required this.unixSocketPath}) {
     init();
   }
-  String get appConfigPath => paths.appConfigPath;
-  String get unixSocketPath => G.unixSocketPath;
-  final Repository repo;
-  final Paths paths;
+  final String appConfigPath;
+  final String unixSocketPath;
   late Dio _dio;
 
   void init() {
@@ -220,56 +213,13 @@ final class ClashRequest {
     Log.i('all Rules: $data');
   }
 
-  FutureOr<void> getConfigs() async {
-    final data = await gets('configs');
-    Log.i('all Configs: $data');
-  }
-
-  Future<void> updateConfig(Profile profile) async {
-    try {
-      await syncConfigDotYaml(profile);
-      await reloadCurrentConfig();
-    } catch (e) {
-      Log.i(e);
-    }
-  }
-
-  FutureOr<void> reloadCurrentConfig() async {
-    try {
-      await initConfigPath();
-      if (io.Platform.isAndroid && !ClashService.isVpnActive()) {
-        final profile = BaseConfig.currentProfileData.value.toClashProfile(
-          configYaml.parent.path,
-        );
-        final accepted = await ClashService.reloadCoreConfig(
-          profile,
-          controllerSocketPath: unixSocketPath,
-        );
-        if (!accepted) {
-          Log.e('failed to request Android core configuration reload');
-        }
-        return;
-      }
-
-      if (io.Platform.isMacOS || io.Platform.isLinux || io.Platform.isWindows) {
-        final response = await ClashServiceApi.reloadClashConfig();
-        if (!response.success) {
-          Log.e('reload Clash config failed: ${response.data}');
-          return;
-        }
-        Log.i(response.data);
-        return;
-      }
-
-      final response = await _dio.put(
-        'configs',
-        data: {'path': configYaml.path},
-        queryParameters: {'force': true},
-      );
-      Log.i(response.data);
-    } catch (e) {
-      Log.e('reload Clash config failed: $e');
-    }
+  Future<void> updateConfigPath(String path) async {
+    final response = await _dio.put(
+      'configs',
+      data: {'path': path},
+      queryParameters: {'force': true},
+    );
+    Log.i(response.data);
   }
 
   FutureOr<Delay?> getDelay(String proxy, int timeout, String testUrl) async {
@@ -292,32 +242,20 @@ final class ClashRequest {
     return null;
   }
 
-  File getFile(String url) {
-    return paths.getCacheFile(url);
-  }
+  static final dlConfigDio = Dio();
 
-  final dlConfigDio = Dio();
-
-  /// The freshest copy of [profile] known to the store.
-  ///
-  /// Queued refreshes may have been started with a profile that has since been
-  /// updated (or just downloaded by another tick), so the queued task re-reads
-  /// it instead of trusting the captured snapshot.
-  Profile _latestProfile(Profile profile) {
-    final id = profile.id;
-    if (id == null) return profile;
-    return BaseConfig.profiles.value[id] ?? profile;
-  }
-
-  FutureOr<bool?> reloadConfigs(Profile profile, {bool refresh = false}) async {
-    if (profile.url == null) return false;
+  static FutureOr<Profile?> reloadConfigs(
+    Profile profile,
+    String filePath, {
+    bool refresh = false,
+  }) async {
+    if (profile.url == null) return null;
 
     final res = await EventQueue.run(reloadConfigs, () async {
-      profile = _latestProfile(profile);
       final url = profile.url;
-      if (url == null) return false;
+      if (url == null) return null;
 
-      var file = getFile(url);
+      var file = fs.currentDirectory.childFile(filePath);
       var isError = false;
       final fileExists = await file.exists();
       if (!fileExists || profile.shouldUpdate() || refresh) {
@@ -350,9 +288,7 @@ final class ClashRequest {
               await fileTemp.create(recursive: true);
             }
 
-            await fileTemp.writeAsString(fileData, flush: true);
-            final config = await getConfigMap(fileTemp.path);
-            await writeConfigMap(fileTemp.path, config);
+            await fileTemp.writeAsString(fileData);
             if (!await file.exists()) {
               await file.create(recursive: true);
             }
@@ -372,9 +308,7 @@ final class ClashRequest {
             scriptId: profile.scriptId,
           );
 
-          if (profile.id case var id?) {
-            BaseConfig.profiles.val.al[id] = profile;
-          }
+          return profile;
         } catch (e, s) {
           Log.e('$e,$s');
           isError = true;
@@ -384,7 +318,7 @@ final class ClashRequest {
       if (isError) {
         throw 'update url error.';
       }
-      return true;
+      return profile;
     });
 
     return res;

@@ -91,6 +91,14 @@ mixin StorageMixin {
   Future<void> delete(Object key);
   Future<void> put(Object key, dynamic data);
 
+  void refresh(Object key, StorageTransform transform) {
+    if (_weekRef[key] case _Wrapper(
+      value: WeakReference(target: ValueNotifier target),
+    )) {
+      target.value = _read<dynamic>(key, transform) ?? transform.defaultValue;
+    }
+  }
+
   static final _weekRef = <Object, _Wrapper>{};
 
   static final _finalizer = Finalizer<Object>((v) {

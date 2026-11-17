@@ -1,17 +1,17 @@
 import 'dart:async';
 
+import 'package:clashy/event/clash_event.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../event/repository.dart';
 import '../../../event/update_profile.dart';
 import 'clash_controller.dart';
 
 class ConfigsController with NopLifecycle {
   ConfigsController();
-  late final Repository repository = getType();
+  late final ClashEvent clashEvent = getType();
   late final ClashController clash = getType();
 
   /// Periodic profile refreshes, keyed by profile id.
@@ -84,7 +84,7 @@ class ConfigsController with NopLifecycle {
     final profile = profiles.value[id];
     if (profile == null) return false;
 
-    final res = await repository.clashEvent.reloadConfigs(profile);
+    final res = await ClashApi.reloadConfigs(profile, profile.filePath);
     if (res == null) {
       return false;
     }
@@ -136,7 +136,7 @@ class ConfigsController with NopLifecycle {
   void sync(Profile newProfile) async {
     if (isCurrent(newProfile)) {
       await [
-        repository.clashEvent.updateConfig(newProfile),
+        clashEvent.updateConfig(newProfile),
         clash.syncProfileWithService(),
       ].wait;
 
@@ -147,13 +147,13 @@ class ConfigsController with NopLifecycle {
   Future<void> reloadConfig(Profile profile) async {
     BaseConfig.currentProfile.value = profile.id ?? '';
 
-    await repository.clashEvent.reloadConfigs(profile);
+    await ClashApi.reloadConfigs(profile, profile.filePath);
     await release(const Duration(milliseconds: 300));
     sync(profile);
   }
 
   Future<void> updateConfigData(Profile profile, {bool refresh = true}) async {
-    await repository.clashEvent.reloadConfigs(profile, refresh: refresh);
+    await ClashApi.reloadConfigs(profile, profile.filePath, refresh: refresh);
     await release(const Duration(milliseconds: 300));
     sync(profile);
   }

@@ -31,11 +31,8 @@ Future<void> syncConfigDotYaml(Profile profile) async {
   if (path != configYaml.path) {
     try {
       var data = await profile.getConfigData();
+      _updateProfileData(data);
 
-      // data = await runYaml(
-      //   data,
-      //   SettingsHive.scripts.value.values.firstOrNull?.script ?? '',
-      // );
       await configYaml.writeAsString(YamlWriter().write(data));
     } catch (e) {
       Log.e(e);
@@ -49,11 +46,14 @@ Map<String, dynamic> yamlToJson(String yaml) {
   return jsonDecode(v1);
 }
 
-Future<String> initConfigPath() async {
+Future<String> initConfigPath(Future Function(Profile profile) download) async {
   final current = BaseConfig.currentProfileData.value;
 
   final file = configYaml;
   final configDir = file.parent;
+  if (!await file.exists()) {
+    await download(current);
+  }
 
   final data = await current.getConfigData();
   _updateProfileData(data);
@@ -76,10 +76,7 @@ Future<Map<String, dynamic>> getConfigMap(String path) async {
   var data = <String, dynamic>{};
   if (await file.exists()) {
     data = yamlToJson(await file.readAsString());
-  } else {
-    await file.create(recursive: true);
   }
-  _updateProfileData(data);
 
   // copy(v);
   return data;

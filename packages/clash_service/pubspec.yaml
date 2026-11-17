@@ -31,6 +31,9 @@ dependencies:
   clash_service_android:
     path: ../clash_service_android
   data_assets: ^0.20.0
+  dio: ^5.11.1
+  equatable: ^2.1.0
+  quickjs_runtime: ^0.4.9
 
 flutter:
   plugin:

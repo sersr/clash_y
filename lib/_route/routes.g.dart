@@ -100,6 +100,17 @@ class Routes {
       },
     );
 
+    __webDavBackupPage = NPage(
+      path: 'webDavBackupPage',
+      pageBuilder: (entry) {
+        return MaterialIgnorePage(
+          key: entry.pageKey,
+          entry: entry,
+          child: const WebDavBackupPage(),
+        );
+      },
+    );
+
     _home = NPageMain(
       pages: [
         __applicationList,
@@ -107,6 +118,7 @@ class Routes {
         __scriptEdit,
         __scriptSelect,
         __clashSettings,
+        __webDavBackupPage,
       ],
       path: '/',
       pageBuilder: (entry) {
@@ -141,6 +153,8 @@ class Routes {
   static NPage get _scriptSelect => _instance!.__scriptSelect;
   late final NPage __clashSettings;
   static NPage get _clashSettings => _instance!.__clashSettings;
+  late final NPage __webDavBackupPage;
+  static NPage get _webDavBackupPage => _instance!.__webDavBackupPage;
   late final NPageMain _home;
   static NPageMain get home => _instance!._home;
 }
@@ -201,6 +215,16 @@ class NavRoutes {
   /// see: [NPage.newGroupKey]
   static RouterAction clashSettings({dynamic groupId}) {
     return RouterAction(Routes._clashSettings, Routes.router, groupId: groupId);
+  }
+
+  /// [groupId]
+  /// see: [NPage.newGroupKey]
+  static RouterAction webDavBackupPage({dynamic groupId}) {
+    return RouterAction(
+      Routes._webDavBackupPage,
+      Routes.router,
+      groupId: groupId,
+    );
   }
 
   /// [groupId]

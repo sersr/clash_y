@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:clash_service/clash_service.dart' show ClashService;
 import 'package:clashy/app_window.dart';
-import 'package:clashy/event/repository.dart';
 import 'package:clashy/pages/application_list/controller/application_list_controller.dart';
 import 'package:clashy/pages/clash_settings/controller/profile_script_controller.dart';
 import 'package:clashy/pages/home/controller/clash_controller.dart';
@@ -12,25 +11,19 @@ import 'package:flutter/services.dart';
 import 'package:nop/nop.dart';
 
 import '_route/routes.dart';
+import 'event/clash_event.dart';
 import 'pages/clash_settings/controller/clash_settings_controller.dart';
 import 'pages/home/controller/clash_connection_controller.dart';
 import 'pages/home/controller/configs_controller.dart';
+import 'pages/webdav_backup/controller/webdav_backup_controller.dart';
 
 Future<bool> initMain() async {
   try {
     initLog();
 
-    await [G.init()].wait;
+    await [G.init(), _initTray()].wait;
     initController();
-    if (Platform.isMacOS) {
-      try {
-        await ClashService.ensureTrayStarted(
-          clashSocket: G.unixSocketPath,
-        );
-      } catch (e) {
-        Log.e('start macOS tray failed: $e');
-      }
-    }
+
     _registerMacOsShutdownHandler();
     return true;
   } catch (e) {
@@ -47,13 +40,24 @@ void initLog() {
 
 void initController() {
   Routes.init(observers: [GlobalContext.globalObserver, Overlays]);
-  router.put(() => Repository());
   router.put(() => ClashController());
   router.put(() => ClashConnectionController());
   router.put(() => ConfigsController());
   router.put(() => ApplicationListController());
   router.put(() => ClashSettingsController());
   router.put(() => ProfileScriptController());
+  router.put(() => WebDavBackupController());
+  router.put(() => ClashEvent());
+}
+
+Future<void> _initTray() async {
+  if (Platform.isMacOS) {
+    try {
+      await ClashService.ensureTrayStarted(clashSocket: G.unixSocketPath);
+    } catch (e) {
+      Log.e('start macOS tray failed: $e');
+    }
+  }
 }
 
 void _registerMacOsShutdownHandler() {

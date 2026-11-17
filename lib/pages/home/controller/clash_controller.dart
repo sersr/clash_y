@@ -1,9 +1,7 @@
 import 'dart:async';
 
 import 'package:clash_service/clash_service.dart' hide fs;
-import 'package:clashy/event/base/data.dart';
-import 'package:clashy/event/impl/clash_service.dart';
-import 'package:clashy/event/repository.dart';
+import 'package:clashy/event/clash_event.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
@@ -16,7 +14,7 @@ class ClashController with NopLifecycle {
 
   static const _resumeRefreshCooldown = Duration(seconds: 30);
 
-  late final Repository repository = getType();
+  late final ClashEvent clashEvent = getType();
   final _mainChangedNotifier = (<String, AV<int>>{});
 
   final _delayQueue = TaskQueue(channels: 10);
@@ -63,7 +61,7 @@ class ClashController with NopLifecycle {
       ProxiesData? remoteData;
       var coreStarted = false;
       if (defaultTargetPlatform == TargetPlatform.android) {
-        final path = await initConfigPath();
+        final path = await clashEvent.initConfig();
         final profile = BaseConfig.currentProfileData.value.toClashProfile(
           path,
         );
@@ -106,7 +104,7 @@ class ClashController with NopLifecycle {
           _reportError('Clash core did not expose its controller API.');
         }
       } else if (running) {
-        remoteData ??= await repository.clashEvent.getProxies();
+        remoteData ??= await clashEvent.clashApi.getProxies();
       }
       _data.value = remoteData ?? const ProxiesData(history: [], proxies: []);
       removeProxyDelay();
@@ -120,7 +118,7 @@ class ClashController with NopLifecycle {
 
   Future<ProxiesData?> _waitForCore() async {
     for (var attempt = 0; attempt < 20; attempt++) {
-      final remoteData = await repository.clashEvent.getProxies();
+      final remoteData = await clashEvent.clashApi.getProxies();
       if (remoteData != null) return remoteData;
       await Future<void>.delayed(const Duration(milliseconds: 500));
     }
@@ -199,7 +197,7 @@ class ClashController with NopLifecycle {
   }
 
   Future<ClashProfile> _currentProfile() async {
-    final path = await initConfigPath();
+    final path = await clashEvent.initConfig();
     return BaseConfig.currentProfileData.value.toClashProfile(path);
   }
 
@@ -217,7 +215,7 @@ class ClashController with NopLifecycle {
 
   Future<ProxiesData?> _waitForRunningData() async {
     for (var attempt = 0; attempt < 20; attempt++) {
-      final remoteData = await repository.clashEvent.getProxies();
+      final remoteData = await clashEvent.clashApi.getProxies();
       if (await _queryRunningState() && remoteData != null) {
         return remoteData;
       }
@@ -266,8 +264,7 @@ class ClashController with NopLifecycle {
   /// the background.
   Future<void> syncProfileWithService() async {
     final profile = BaseConfig.currentProfileData.value;
-    if (profile.url == null &&
-        defaultTargetPlatform != TargetPlatform.android) {
+    if (profile.url == null) {
       return;
     }
 
@@ -291,7 +288,7 @@ class ClashController with NopLifecycle {
   }
 
   Future<void> _refreshData() async {
-    final remoteData = await repository.clashEvent.getProxies();
+    final remoteData = await clashEvent.clashApi.getProxies();
     await _queryRunningState();
 
     _updateData(remoteData ?? const ProxiesData(history: [], proxies: []));
@@ -319,7 +316,7 @@ class ClashController with NopLifecycle {
       if (defaultTargetPlatform == .android) {
         running = ClashService.isVpnActive();
       } else if (defaultTargetPlatform == .iOS) {
-        running = await repository.clashEvent.getProxies() != null;
+        running = await clashEvent.clashApi.getProxies() != null;
       } else {
         running = await ClashServiceApi.isVpnActive();
       }
@@ -379,7 +376,7 @@ class ClashController with NopLifecycle {
     final deadline = DateTime.now().add(const Duration(seconds: 10));
     do {
       if (!await _queryRunningState() &&
-          await repository.clashEvent.getProxies() != null) {
+          await clashEvent.clashApi.getProxies() != null) {
         return true;
       }
       await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -441,13 +438,13 @@ class ClashController with NopLifecycle {
   Future<void> selectProxy(String? selector, String? proxy) async {
     if (selector == null || proxy == null) return;
     return EventQueue.runOne([selector, proxy], () async {
-      await repository.clashEvent.selectProxy(selector, proxy);
+      await clashEvent.clashApi.selectProxy(selector, proxy);
       return getData();
     });
   }
 
   Future<void> getDelay(String proxy) async {
-    final delay = await repository.clashEvent.getDelay(proxy, 3000, testUrl);
+    final delay = await clashEvent.clashApi.getDelay(proxy, 3000, testUrl);
 
     getSelector(proxy).value = delay?.delay ?? 0;
   }
@@ -478,7 +475,7 @@ class ClashController with NopLifecycle {
   void listenLogTraffic() async {
     _log?.cancel();
     _traffic?.cancel();
-    _log = repository.clashEvent
+    _log = clashEvent.clashApi
         .watchLogs('debug')
         .listen(
           _logListen,
@@ -487,7 +484,7 @@ class ClashController with NopLifecycle {
           onError: (e) => _log = null,
         );
 
-    _traffic = repository.clashEvent.watchTraffic().listen(
+    _traffic = clashEvent.clashApi.watchTraffic().listen(
       _trafficListen,
       onDone: () => _traffic = null,
       onError: (e) => _traffic = null,

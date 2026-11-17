@@ -53,10 +53,12 @@ dependencies:
   app_colors:
     path: ../app_colors
   quickjs_runtime: ^0.4.9
-  simple_webdav_client: ^0.3.0
   clash_service:
     path: ../clash_service
-
+  archive: ^4.7.1
+  crypto: ^3.0.8
+  simple_secure_storage: ^0.4.3
+  webdav_client_plus: ^3.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

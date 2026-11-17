@@ -1,10 +1,11 @@
-import 'package:clashy/event/repository.dart';
+import 'package:clashy/event/clash_event.dart';
+
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:material_ui/material_ui.dart';
 
 class ClashSettingsController with NopLifecycle {
-  late final repo = getType<Repository>();
+  late final clashEvent = getType<ClashEvent>();
 
   final _listenable = Listenable.merge(SettingsHive.values.map((e) => e.val));
 
@@ -15,7 +16,7 @@ class ClashSettingsController with NopLifecycle {
   }
 
   void _update() {
-    repo.clashEvent.reloadCurrentConfig();
+    clashEvent.reloadCurrentConfig();
   }
 
   @override

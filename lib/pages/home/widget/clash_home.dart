@@ -1,9 +1,8 @@
-import 'package:clashy/event/base/data.dart';
 import 'package:clashy/pages/home/widget/home_bottom_padding.dart';
 import 'package:common/common.dart';
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../controller/clash_controller.dart';
 import 'clash_list_item.dart';

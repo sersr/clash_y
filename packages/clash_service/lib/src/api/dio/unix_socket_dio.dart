@@ -15,7 +15,6 @@ class UnixSocketAdapter implements HttpClientAdapter {
 
   HttpClient createUnixSocketClient() {
     final client = HttpClient();
-    HttpClientAdapter;
     client.connectionFactory = (uri, proxyHost, proxyPort) async {
       final future = connect(socketPath);
       final socket = await future;

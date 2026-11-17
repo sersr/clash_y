@@ -1,11 +1,10 @@
 import 'dart:io';
 
 import 'package:clash_service/clash_service.dart';
-import 'package:common/common.dart';
 import 'package:dio/dio.dart';
 import 'package:nop/nop.dart';
 
-import 'dio/unix_socket_dio.dart';
+import '../api/dio/unix_socket_dio.dart';
 
 abstract final class _Apis {
   static const clashEnv = 'baseInfo/env';
@@ -128,20 +127,5 @@ class _RetryInterceptor extends Interceptor {
     } else {
       handler.reject(DioException(requestOptions: options, error: error));
     }
-  }
-}
-
-extension ProfileServiceX on Profile {
-  /// Builds the service payload for this profile.
-  ClashProfile toClashProfile(String configDir) {
-    return ClashProfile(
-      configDir: configDir,
-      id: id,
-      name: showName,
-      url: url,
-      updateInterval: updateInterval,
-      updateTime: updateTime,
-      script: SettingsHive.getScript(scriptId)?.script,
-    );
   }
 }

@@ -10,7 +10,8 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
   appSettings,
   settings,
   config,
-  window;
+  window,
+  webdav;
 
   static Iterable<StorageEnum> get items sync* {
     for (var item in values) {
@@ -21,6 +22,8 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
           yield* BaseConfig.values;
         case Hives.window:
           yield* WindowHive.values;
+        case Hives.webdav:
+          yield* WebDavHive.values;
         case .appSettings:
           yield* AppSettings.values;
       }
@@ -33,6 +36,22 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
   static Future<void> init(String path) {
     Hive.init(path);
     return _openAll().wait;
+  }
+}
+
+enum WebDavHive<T> with StorageEnum<T> {
+  settings<WebDavBackupSettings>(),
+  lastSyncAt<String>();
+
+  @override
+  StorageMixin get target => Hives.webdav;
+
+  @override
+  StorageTransform get transform {
+    return switch (this) {
+      .settings => .new(WebDavBackupSettings.fromJson, WebDavBackupSettings()),
+      .lastSyncAt => .base(''),
+    };
   }
 }
 

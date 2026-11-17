@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_windows
   gal
   permission_handler_windows
+  simple_secure_storage_windows
   tray_manager
   url_launcher_windows
 )

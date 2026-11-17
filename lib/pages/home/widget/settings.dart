@@ -47,6 +47,11 @@ class _SettingsState extends State<Settings> {
                 label: "Scripts",
                 onTap: () => NavRoutes.profileScriptPage().go(),
               ),
+              const SettingDiv(),
+              SettingItem(
+                label: "WebDAV Backup",
+                onTap: () => NavRoutes.webDavBackupPage().go(),
+              ),
             ],
           ),
         ),

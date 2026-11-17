@@ -1,13 +1,12 @@
 import 'dart:async';
 
+import 'package:clashy/event/clash_event.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
 
-import '../../../event/repository.dart';
-
 class ClashConnectionController with NopLifecycle {
-  late final Repository repository = getType();
+  late final ClashEvent clashEvent = getType();
   final AV<Connections?> _connections = .val(null);
   Connections? get connections => _connections.value;
 
@@ -18,7 +17,7 @@ class ClashConnectionController with NopLifecycle {
 
   void watchConnections() {
     _sub?.cancel();
-    _sub = repository.clashEvent
+    _sub = clashEvent.clashApi
         .watchConnections(interval.value)
         .listen(
           (event) {
@@ -42,7 +41,7 @@ class ClashConnectionController with NopLifecycle {
   }
 
   Future<void> closeConnection(String id) async {
-    await repository.closeConnection(id);
+    await clashEvent.closeConnection(id);
   }
 
   @override

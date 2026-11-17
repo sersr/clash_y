@@ -29,7 +29,7 @@ void configureMacOSRuntimeLibraries({
   ClashProcess.configureWakeMonitorLibraryPath(wakeMonitorLibraryPath);
 }
 
-final router = MyRouter()
+final _router = MyRouter()
   ..get('/', (req) => .ok('Clash VPN!'))
   ..get('/version', (req) => .ok(version))
   ..mount('/baseInfo', BaseInfo.router.call)
@@ -83,7 +83,7 @@ Future<void> clashServer() async {
   final handler = const Pipeline()
       .addMiddleware(jsonMiddleware)
       .addMiddleware(loggingMiddleware())
-      .addHandler(router.call);
+      .addHandler(_router.call);
 
   if (!Platform.isWindows) {
     final file = fs.currentDirectory.childFile(clashSocket);

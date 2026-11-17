@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:common/common.dart';
+import 'package:clash_service/api.dart';
 import 'package:nop/nop.dart';
 
 final class AutoUpdateProfile {

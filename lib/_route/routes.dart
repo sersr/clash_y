@@ -9,6 +9,7 @@ import '../pages/clash_settings/clash_settings.dart';
 import '../pages/clash_settings/script_edit.dart';
 import '../pages/clash_settings/script_select.dart';
 import '../pages/home/home.dart';
+import '../pages/webdav_backup/webdav_backup.dart';
 
 part 'routes.g.dart';
 
@@ -20,9 +21,7 @@ part 'routes.g.dart';
     .new(page: ScriptEdit),
     .new(page: ScriptSelect),
     .new(page: ClashSettings),
+    .new(page: WebDavBackupPage),
   ],
 )
-// ignore: unused_element
-abstract final class _Routes {}
-
 NRouter get router => Routes.router;

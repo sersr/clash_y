@@ -3,13 +3,11 @@ import 'dart:io' as io;
 import 'package:code_assets/code_assets.dart';
 import 'package:data_assets/data_assets.dart';
 import 'package:file/file.dart';
-import 'package:file/local.dart' as f;
 import 'package:hooks/hooks.dart';
 import 'package:path/path.dart';
 
+import 'clash_service.dart';
 import 'src/tray_asset.dart';
-
-const fs = f.LocalFileSystem();
 
 extension on HookInputUserDefines {
   bool get isCli {
