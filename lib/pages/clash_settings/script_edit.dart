@@ -47,7 +47,7 @@ class _ScriptEditState extends State<ScriptEdit> {
 
   void save() {
     final id = controller.id ?? Uuid().v4();
-    SettingsHive.scripts.al.aMap[id] = .new(
+    SettingsHive.scripts.val.al[id] = .new(
       id: id,
       script: controller.controller.text,
       name: controller.scriptName,
@@ -109,6 +109,7 @@ class _ScriptEditState extends State<ScriptEdit> {
     return CodeEditor(
       controller: controller.controller,
       padding: .only(right: 12.w),
+      wordWrap: false,
       indicatorBuilder:
           (context, editingController, chunkController, notifier) {
             return Row(

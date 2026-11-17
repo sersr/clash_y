@@ -137,7 +137,7 @@ class _NewConfigState extends State<_NewConfig> {
   final editName = TextEditingController();
   final editUrl = TextEditingController();
   final editInterval = TextEditingController();
-  final script = ProfileScriptModel(id: '').al;
+  final script = ProfileScriptModel(id: '').val;
 
   @override
   void initState() {

@@ -15,6 +15,8 @@ class ProfileConfigUpdaterTest {
           enable: true
           nameserver:
             - 223.5.5.5
+        geox-url:
+          geoip: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat
         tun:
           enable: true
           stack: system
@@ -26,6 +28,8 @@ class ProfileConfigUpdaterTest {
         mode: rule
         dns:
           enable: false
+        geox-url:
+          geoip: https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat
         proxy-groups:
           - name: auto
             type: url-test
@@ -44,6 +48,12 @@ class ProfileConfigUpdaterTest {
         assertTrue(merged.contains("mixed-port: 7891"), merged)
         assertTrue(merged.contains("mode: global"), merged)
         assertTrue(merged.contains("stack: system"), merged)
+        assertTrue(
+            merged.contains(
+                "geoip: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat",
+            ),
+            merged,
+        )
         assertFalse(merged.contains("mixed-port: 7890"), merged)
         // Subscription content survives.
         assertTrue(merged.contains("proxy-groups:"), merged)
@@ -58,6 +68,12 @@ class ProfileConfigUpdaterTest {
 
         assertTrue(merged.contains("tun:"), merged)
         assertTrue(merged.contains("mixed-port: 7891"), merged)
+        assertTrue(
+            merged.contains(
+                "geoip: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat",
+            ),
+            merged,
+        )
     }
 
     @Test

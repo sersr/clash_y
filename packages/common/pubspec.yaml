@@ -54,6 +54,8 @@ dependencies:
     path: ../app_colors
   quickjs_runtime: ^0.4.9
   simple_webdav_client: ^0.3.0
+  clash_service:
+    path: ../clash_service
 
 dev_dependencies:
   flutter_test:

@@ -6,9 +6,9 @@ import 'package:yaml_edit/yaml_edit.dart';
 
 /// Top-level keys owned by the app.
 ///
-/// The app writes the device specific settings (listening ports, TUN, DNS,
-/// controller socket...) into `config.yaml`; subscription updates must keep
-/// those values instead of whatever the provider ships.
+/// The app writes device-specific settings (ports, TUN, DNS, controller
+/// socket...) and GeoX CDN URLs into `config.yaml`; subscription updates must
+/// keep those values instead of whatever the provider ships.
 const configOverrideKeys = [
   'external-controller-unix',
   'external-controller-pipe',
@@ -19,6 +19,7 @@ const configOverrideKeys = [
   'allow-lan',
   'tun',
   'dns',
+  'geox-url',
 ];
 
 /// Keeps the [configOverrideKeys] of [current] in [downloaded].

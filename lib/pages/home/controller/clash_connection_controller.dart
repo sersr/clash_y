@@ -14,7 +14,7 @@ class ClashConnectionController with NopLifecycle {
   StreamSubscription<Connections>? _sub;
 
   bool get listening => _sub != null;
-  final interval = Duration(seconds: 1).al;
+  final interval = Duration(seconds: 1).val;
 
   void watchConnections() {
     _sub?.cancel();

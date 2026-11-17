@@ -93,6 +93,7 @@ internal object ConfigUpdater {
         "allow-lan",
         "tun",
         "dns",
+        "geox-url",
     )
 
     /**

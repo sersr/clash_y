@@ -17,7 +17,7 @@ class ConfigsController with NopLifecycle {
   /// Periodic profile refreshes, keyed by profile id.
   final _autoUpdates = <String, AutoUpdateProfile>{};
 
-  AMap<String, Profile> get profiles => BaseConfig.profiles.al.aMap;
+  final AMap<String, Profile> profiles = BaseConfig.profiles.val.al;
   bool isCurrent(Profile profile) {
     return BaseConfig.currentProfileData.value.isCurrent(profile);
   }
@@ -84,11 +84,7 @@ class ConfigsController with NopLifecycle {
     final profile = profiles.value[id];
     if (profile == null) return false;
 
-    final apply = isCurrent(profile) && !clash.isRunning;
-    final res = await repository.clashEvent.reloadConfigs(
-      profile,
-      updateCurrent: apply,
-    );
+    final res = await repository.clashEvent.reloadConfigs(profile);
     if (res == null) {
       return false;
     }
@@ -111,11 +107,16 @@ class ConfigsController with NopLifecycle {
       updateInterval: updateIntervalM,
       scriptId: scriptId,
     );
+    final isEmpty = data.isEmpty;
     data[id] = profile;
-    updateConfigData(profile);
+    if (isEmpty) {
+      reloadConfig(profile);
+    } else {
+      updateConfigData(profile);
+    }
   }
 
-  void updateProfile(Profile profile) {
+  void updateProfile(Profile profile) async {
     final newProfile = profiles.update(profile.id!, (v) {
       return v.copyWith(
         url: profile.url,
@@ -126,35 +127,34 @@ class ConfigsController with NopLifecycle {
     });
 
     if (isCurrent(newProfile)) {
-      BaseConfig.currentProfile.value = newProfile.id ?? '';
-      repository.clashEvent.reloadCurrentConfig();
-      clash.syncProfileWithService();
+      reloadConfig(newProfile);
+    } else {
+      updateConfigData(newProfile, refresh: false);
+    }
+  }
+
+  void sync(Profile newProfile) async {
+    if (isCurrent(newProfile)) {
+      await [
+        repository.clashEvent.updateConfig(newProfile),
+        clash.syncProfileWithService(),
+      ].wait;
+
+      clash.getData();
     }
   }
 
   Future<void> reloadConfig(Profile profile) async {
-    if (await repository.clashEvent.reloadConfigs(
-          profile,
-          updateCurrent: true,
-        ) ==
-        true) {
-      await release(const Duration(milliseconds: 300));
-      if (isCurrent(profile) && clash.isRunning) {
-        await clash.syncProfileWithService();
-      }
-      clash.getData();
-    }
+    BaseConfig.currentProfile.value = profile.id ?? '';
+
+    await repository.clashEvent.reloadConfigs(profile);
+    await release(const Duration(milliseconds: 300));
+    sync(profile);
   }
 
-  Future<void> updateConfigData(Profile profile) async {
-    await repository.clashEvent.reloadConfigs(
-      profile,
-      updateCurrent: false,
-      refresh: true,
-    );
+  Future<void> updateConfigData(Profile profile, {bool refresh = true}) async {
+    await repository.clashEvent.reloadConfigs(profile, refresh: refresh);
     await release(const Duration(milliseconds: 300));
-    if (isCurrent(profile)) {
-      clash.getData();
-    }
+    sync(profile);
   }
 }

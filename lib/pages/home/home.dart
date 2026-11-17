@@ -22,7 +22,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   late ClashController clashMainNotifier = getType();
   late ClashConnectionController clashConnectionsNotifier = getType();
 
-  final index = 0.al;
+  final index = 0.val;
 
   @override
   void initState() {

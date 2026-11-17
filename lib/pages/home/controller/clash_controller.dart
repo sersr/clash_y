@@ -12,6 +12,8 @@ import 'package:nop/nop.dart';
 class ClashController with NopLifecycle {
   ClashController();
 
+  static String get unixSockPath => G.unixSocketPath;
+
   static const _resumeRefreshCooldown = Duration(seconds: 30);
 
   late final Repository repository = getType();
@@ -21,7 +23,7 @@ class ClashController with NopLifecycle {
   ValueNotifier<int> getSelector(String key) {
     return _mainChangedNotifier.putIfAbsent(key, () {
       _delayQueue.run(() => getDelay(key));
-      return (-1).al;
+      return (-1).val;
     });
   }
 
@@ -29,16 +31,16 @@ class ClashController with NopLifecycle {
   ProxiesData? get data => _data.value;
   final AV<DateTime?> _lastRefreshTime = .val(null);
   DateTime? get lastRefreshTime => _lastRefreshTime.value;
-  final _isRunning = false.al;
+  final _isRunning = false.val;
   bool get isRunning => _isRunning.value;
 
   AV<bool> get isRunningRaw => _isRunning;
 
-  final _isStarting = false.al;
+  final _isStarting = false.val;
   bool get isStarting => _isStarting.value;
 
   final map = <String, int?>{};
-  late final ss = map.al;
+  late final ss = map.val;
   String getName(String proxyName) {
     if (data case var data?) {
       for (var item in data.proxies) {
@@ -67,7 +69,7 @@ class ClashController with NopLifecycle {
         );
         final accepted = await ClashService.startCore(
           profile,
-          controllerSocketPath: BaseConfig.unixSockPath.value,
+          controllerSocketPath: unixSockPath,
         );
         if (accepted) {
           coreStarted = true;
@@ -80,8 +82,8 @@ class ClashController with NopLifecycle {
         final profile = await _currentProfile();
         final serviceStarted = await ClashService.start(
           profile,
-          controllerSocketPath: BaseConfig.unixSockPath.value,
-          trayClashSocket: BaseConfig.unixSockPath.value,
+          controllerSocketPath: unixSockPath,
+          trayClashSocket: unixSockPath,
         );
         if (!serviceStarted) {
           _reportError('Failed to start the Clash service.');
@@ -154,8 +156,8 @@ class ClashController with NopLifecycle {
         disallowedApplications: mode == .blackList
             ? SettingsHive.disAllowApplications.value
             : const <String>[],
-        controllerSocketPath: BaseConfig.unixSockPath.value,
-        trayClashSocket: BaseConfig.unixSockPath.value,
+        controllerSocketPath: unixSockPath,
+        trayClashSocket: unixSockPath,
       );
       if (!started) {
         await _queryRunningState();
@@ -276,7 +278,7 @@ class ClashController with NopLifecycle {
       } else {
         await ClashService.updateProfile(
           clashProfile,
-          controllerSocketPath: BaseConfig.unixSockPath.value,
+          controllerSocketPath: unixSockPath,
         );
       }
     } catch (e) {

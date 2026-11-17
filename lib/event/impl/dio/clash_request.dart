@@ -21,7 +21,7 @@ final class ClashRequest {
     init();
   }
   String get appConfigPath => paths.appConfigPath;
-  String get unixSocketPath => BaseConfig.unixSockPath.value;
+  String get unixSocketPath => G.unixSocketPath;
   final Repository repo;
   final Paths paths;
   late Dio _dio;
@@ -225,7 +225,7 @@ final class ClashRequest {
     Log.i('all Configs: $data');
   }
 
-  FutureOr<void> updateConfig(Profile profile) async {
+  Future<void> updateConfig(Profile profile) async {
     try {
       await syncConfigDotYaml(profile);
       await reloadCurrentConfig();
@@ -243,7 +243,7 @@ final class ClashRequest {
         );
         final accepted = await ClashService.reloadCoreConfig(
           profile,
-          controllerSocketPath: BaseConfig.unixSockPath.value,
+          controllerSocketPath: unixSocketPath,
         );
         if (!accepted) {
           Log.e('failed to request Android core configuration reload');
@@ -309,11 +309,7 @@ final class ClashRequest {
     return BaseConfig.profiles.value[id] ?? profile;
   }
 
-  FutureOr<bool?> reloadConfigs(
-    Profile profile, {
-    bool updateCurrent = false,
-    bool refresh = false,
-  }) async {
+  FutureOr<bool?> reloadConfigs(Profile profile, {bool refresh = false}) async {
     if (profile.url == null) return false;
 
     final res = await EventQueue.run(reloadConfigs, () async {
@@ -377,7 +373,7 @@ final class ClashRequest {
           );
 
           if (profile.id case var id?) {
-            BaseConfig.profiles.al.aMap[id] = profile;
+            BaseConfig.profiles.val.al[id] = profile;
           }
         } catch (e, s) {
           Log.e('$e,$s');
@@ -385,18 +381,10 @@ final class ClashRequest {
         }
       }
 
-      final exists = await file.exists();
-      if (updateCurrent) {
-        BaseConfig.currentProfile.value = profile.id ?? '';
-        if (exists) {
-          await updateConfig(profile);
-          return true;
-        }
-      }
       if (isError) {
         throw 'update url error.';
       }
-      return false;
+      return true;
     });
 
     return res;

@@ -19,15 +19,13 @@ import 'pages/home/controller/configs_controller.dart';
 Future<bool> initMain() async {
   try {
     initLog();
+
     await [G.init()].wait;
-    if (Platform.isIOS) {
-      BaseConfig.unixSockPath.value = await ClashService.iosControlSocketPath;
-    }
     initController();
     if (Platform.isMacOS) {
       try {
         await ClashService.ensureTrayStarted(
-          clashSocket: BaseConfig.unixSockPath.value,
+          clashSocket: G.unixSocketPath,
         );
       } catch (e) {
         Log.e('start macOS tray failed: $e');

@@ -6,6 +6,15 @@ import 'package:nop/utils.dart';
 import 'package:yaml/yaml.dart';
 import 'package:yaml_writer/yaml_writer.dart';
 
+const _geoRulesCdnBaseUrl =
+    'https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release';
+const _defaultGeoXUrls = <String, String>{
+  'geoip': '$_geoRulesCdnBaseUrl/geoip.dat',
+  'geosite': '$_geoRulesCdnBaseUrl/geosite.dat',
+  'mmdb': '$_geoRulesCdnBaseUrl/geoip.metadb',
+  'asn': '$_geoRulesCdnBaseUrl/GeoLite2-ASN.mmdb',
+};
+
 Map<String, Object?> defaultDnsConfig() {
   return {
     'enable': true,
@@ -77,7 +86,7 @@ Future<Map<String, dynamic>> getConfigMap(String path) async {
 }
 
 void _updateProfileData(Map<String, dynamic> data) {
-  final unixSocketPath = BaseConfig.unixSockPath.value;
+  final unixSocketPath = G.unixSocketPath;
 
   if (defaultTargetPlatform == .windows) {
     data['external-controller-pipe'] = unixSocketPath;
@@ -90,6 +99,7 @@ void _updateProfileData(Map<String, dynamic> data) {
   data['mode'] = SettingsHive.mode.value.name;
   data['ipv6'] = SettingsHive.ipv6.value;
   data['allow-lan'] = SettingsHive.allowLan.value;
+  data['geox-url'] = _defaultGeoXUrls;
 
   final tun = data['tun'] ??= <String, dynamic>{};
   tun

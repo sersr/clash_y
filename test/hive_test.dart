@@ -6,7 +6,7 @@ void main() {
     await G.initTest();
 
     for (var item in Hives.items) {
-      item.al;
+      item.val;
     }
   });
 }

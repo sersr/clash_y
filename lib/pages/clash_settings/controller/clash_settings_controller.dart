@@ -6,7 +6,7 @@ import 'package:material_ui/material_ui.dart';
 class ClashSettingsController with NopLifecycle {
   late final repo = getType<Repository>();
 
-  final _listenable = Listenable.merge(SettingsHive.values.map((e) => e.al));
+  final _listenable = Listenable.merge(SettingsHive.values.map((e) => e.val));
 
   @override
   void nopInit() {

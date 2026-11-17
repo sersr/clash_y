@@ -143,16 +143,6 @@ class ClashVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val receiver = intent?.getResultReceiver()
-        try {
-            startForegroundCompat()
-        } catch (t: Throwable) {
-            val message = "Failed to start foreground service: ${t.message ?: t.javaClass.simpleName}"
-            Log.e(TAG, message, t)
-            sendResult(receiver, false, message)
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
         return when (intent?.action) {
             VpnServiceContract.ACTION_START, null -> {
                 // intent == null：系统 sticky 重启（进程被杀后自启）。
@@ -203,10 +193,8 @@ class ClashVpnService : VpnService() {
     override fun onRevoke() {
         Log.i(TAG, "VPN permission revoked")
         // 授权被撤销：持久化开关同步关闭，避免 sticky 重启再拉起
-        cancelPendingAutoStart()
-        cancelProfileUpdate()
-        profileUpdate = null
-        clearPersistedProfile()
+        cancelPendingWork()
+        clearProfileUpdateState()
         setEnabled(false)
         writeVpnActive(false)
         executor.execute {
@@ -249,8 +237,7 @@ class ClashVpnService : VpnService() {
         Log.i(TAG, "onDestroy")
         // 先撤掉退避任务：executor 随后 shutdownNow，迟到的任务会抛
         // RejectedExecutionException 并在主线程崩溃
-        cancelPendingAutoStart()
-        cancelProfileUpdate()
+        cancelPendingWork()
         cleanup()
         executor.shutdownNow()
         super.onDestroy()
@@ -522,6 +509,16 @@ class ClashVpnService : VpnService() {
         Log.i(TAG, "cancelled the pending backoff start")
     }
 
+    private fun cancelPendingWork() {
+        cancelPendingAutoStart()
+        cancelProfileUpdate()
+    }
+
+    private fun clearProfileUpdateState() {
+        profileUpdate = null
+        clearPersistedProfile()
+    }
+
     // ---------------------------------------------------------------------
     // Profile auto update（App 未运行时由本进程刷新 config.yaml）
     // ---------------------------------------------------------------------
@@ -647,6 +644,20 @@ class ClashVpnService : VpnService() {
             disallowedApplications,
         )
         if (error == null) {
+            try {
+                startForegroundCompat()
+            } catch (t: Throwable) {
+                val message =
+                    "Failed to show VPN foreground notification: ${t.message ?: t.javaClass.simpleName}"
+                Log.e(TAG, message, t)
+                setEnabled(false)
+                writeVpnActive(false)
+                cleanup()
+                stopForegroundCompat()
+                sendResult(receiver, false, message)
+                stopSelf()
+                return
+            }
             sendResult(receiver, true)
             scheduleProfileUpdate()
             return
@@ -724,17 +735,13 @@ class ClashVpnService : VpnService() {
     private fun handleStop(intent: Intent?) {
         val receiver = intent?.getResultReceiver()
         // 手动停止是一次干净的收场：撤掉排队中的退避启动并清风暴计数
-        cancelPendingAutoStart()
-        cancelProfileUpdate()
-        profileUpdate = null
-        clearPersistedProfile()
+        cancelPendingWork()
+        clearProfileUpdateState()
         prefs.edit().putInt(KEY_STORM_LEVEL, 0).apply()
         executor.execute {
             // 先关持久化开关：即使随后进程被杀，sticky 重启也不会再拉起
             setEnabled(false)
-            val error = stopCore()
-            releaseNativeTunFd()
-            closeTunDescriptor()
+            val error = cleanup()
             writeVpnActive(false)
             val message = error ?: ""
             sendResult(receiver, message.isEmpty(), message)
@@ -816,10 +823,11 @@ class ClashVpnService : VpnService() {
         }
     }
 
-    private fun cleanup() {
-        stopCore()
+    private fun cleanup(): String? {
+        val error = stopCore()
         releaseNativeTunFd()
         closeTunDescriptor()
+        return error
     }
 
     @Synchronized
@@ -961,7 +969,6 @@ class ClashVpnService : VpnService() {
 
     @Synchronized
     private fun startForegroundCompat() {
-        if (foregroundStarted) return
         startForeground(NOTIFICATION_ID, buildNotification())
         foregroundStarted = true
     }

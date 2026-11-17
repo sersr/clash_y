@@ -64,13 +64,14 @@ mixin StorageEnum<D> on Enum {
   StorageMixin get target;
 
   D get value {
-    if (al is D) {
-      return al as D;
+    final v = val;
+    if (v is D) {
+      return v as D;
     }
-    return al.value;
+    return v.value;
   }
 
-  AutoValueNotifier<D> get al {
+  AutoValueNotifier<D> get val {
     return target.readLate<D>(key, _transform) as AutoValueNotifier<D>;
   }
 
@@ -79,7 +80,7 @@ mixin StorageEnum<D> on Enum {
   StorageTransform _transform() => transform;
 
   set value(D value) {
-    al.value = value;
+    val.value = value;
   }
 
   StorageTransform get transform;

@@ -1,5 +1,6 @@
 import 'package:clashy/_route/routes.dart';
 import 'package:common/common.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -16,6 +17,10 @@ class _ClashAppState extends State<ClashApp> {
       routerConfig: router,
       restorationScopeId: 'clashy',
       debugShowCheckedModeBanner: false,
+      onNavigationNotification: (notification) {
+        SystemNavigator.setFrameworkHandlesBack(true);
+        return true;
+      },
       theme: ThemeData.light().copyWith(
         extensions: [AppColorsType.light.colors],
       ),

@@ -1,9 +1,7 @@
 import 'package:common/common.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:path/path.dart';
 
 part 'hive/model.dart';
 part 'hive/settings.dart';
@@ -41,8 +39,7 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
 enum BaseConfig<T> with StorageEnum<T> {
   currentProfile<String>(),
   profiles<Map<String, Profile>>(),
-  baseConfig<MihomoRootConfig>(),
-  unixSockPath<String>();
+  baseConfig<MihomoRootConfig>();
 
   @override
   StorageMixin get target => Hives.config;
@@ -56,19 +53,13 @@ enum BaseConfig<T> with StorageEnum<T> {
         return .map(Profile.fromJson, <String, Profile>{});
       case .baseConfig:
         return .new(MihomoRootConfig.fromJson, MihomoRootConfig());
-      case .unixSockPath:
-        return .base(
-          defaultTargetPlatform == .windows
-              ? r"\\.\pipe\clashy.pipe"
-              : join(G.appCachePath, 'clash_config', 'socket_clash.sock'),
-        );
     }
   }
 
   static final currentProfileData = () {
     final id = currentProfile.value;
     return profiles.value[id] ?? Profile();
-  }.al;
+  }.val;
 }
 
 enum WindowHive<T> with StorageEnum<T> {

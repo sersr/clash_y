@@ -7,15 +7,19 @@ import 'package:flutter_nop/flutter_nop.dart';
 import 'package:install_apps/install_apps.dart';
 
 class ApplicationListController with NopLifecycle, AlScopeManager {
-  final _applications = <InstalledApplication>[].al;
+  final _applications = <InstalledApplication>[].val;
   List<InstalledApplication> get applications => _applications.value;
 
-  final AList<String> whiteList = SettingsHive.allowApplications.al.aList;
-  final AList<String> blackList = SettingsHive.disAllowApplications.al.aList;
-  final mode = SettingsHive.applicationListMode.value.al;
+  final AList<String> whiteList = SettingsHive.allowApplications.value
+      .toList()
+      .val;
+  final AList<String> blackList = SettingsHive.disAllowApplications.value
+      .toList()
+      .val;
+  final mode = SettingsHive.applicationListMode.value.val;
 
-  final showSystemApps = false.al;
-  final showNoInternetApps = false.al;
+  final showSystemApps = false.val;
+  final showNoInternetApps = false.val;
 
   late final _isSellectAll = () {
     final list = selectedPackages;
@@ -63,10 +67,10 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
   List<InstalledApplication> get visibleApplications =>
       _filtedApplications.value;
 
-  final _loading = true.al;
+  final _loading = true.val;
   bool get loading => _loading.value;
 
-  final _searchText = ''.al;
+  final _searchText = ''.val;
   String get searchText => _searchText.value;
 
   final AV<String?> _loadError = .val(null);
@@ -78,7 +82,7 @@ class ApplicationListController with NopLifecycle, AlScopeManager {
       return true;
     }
     final cacheWhite = SettingsHive.allowApplications.value;
-    if (!equal.equals(cacheWhite, whiteList)) {
+    if (!equal.equals(cacheWhite, whiteList.value)) {
       return true;
     }
     return mode.value != SettingsHive.applicationListMode.value;

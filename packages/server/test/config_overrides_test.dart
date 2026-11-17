@@ -15,6 +15,8 @@ dns:
   enable: true
   nameserver:
     - 223.5.5.5
+geox-url:
+  geoip: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat
 tun:
   enable: true
   stack: system
@@ -25,6 +27,8 @@ mixed-port: 7890
 mode: rule
 dns:
   enable: false
+geox-url:
+  geoip: https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat
 proxy-groups:
   - name: auto
     type: url-test
@@ -44,6 +48,10 @@ proxies:
       expect(merged['ipv6'], false);
       expect(merged['allow-lan'], true);
       expect((merged['dns'] as Map)['enable'], true);
+      expect(
+        (merged['geox-url'] as Map)['geoip'],
+        'https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat',
+      );
       expect((merged['tun'] as Map)['stack'], 'system');
       // Provider content survives.
       expect((merged['proxy-groups'] as List).length, 1);
@@ -58,6 +66,21 @@ proxies:
         expect(applyConfigOverrides(downloaded, 'proxies: []\n'), downloaded);
       },
     );
+
+    test('adds the app geox-url when the downloaded config omits it', () {
+      const current = '''
+geox-url:
+  geoip: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat
+''';
+      const downloaded = 'proxies: []\n';
+
+      final merged = loadYaml(applyConfigOverrides(downloaded, current)) as Map;
+
+      expect(
+        (merged['geox-url'] as Map)['geoip'],
+        'https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat',
+      );
+    });
 
     test('rejects a downloaded document that is not a map', () {
       expect(
