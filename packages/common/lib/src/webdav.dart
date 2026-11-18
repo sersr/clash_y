@@ -57,6 +57,10 @@ class WebDavSyncResult {
 class WebDavBackupService {
   static Future<void>? _secureStorageInitialization;
 
+  Iterable<Hives> get _backupHives => Hives.values.where(
+    (hive) => hive != Hives.webdav && hive != Hives.window,
+  );
+
   WebDavBackupSettings loadSettings() => WebDavHive.settings.value;
 
   Future<void> saveSettings(
@@ -83,11 +87,6 @@ class WebDavBackupService {
       autoSync: settings.autoSync,
     );
     WebDavHive.settings.value = normalized;
-  }
-
-  Future<DateTime?> lastSyncAt() async {
-    final value = WebDavHive.lastSyncAt.value;
-    return DateTime.tryParse(value);
   }
 
   Future<void> testConnection() async {
@@ -135,43 +134,35 @@ class WebDavBackupService {
       final remotePath = _remoteArchivePath(settings.remotePath);
       if (!await client.exists(remotePath)) {
         await client.writeFile(localArchive.path, remotePath);
-        await _saveLastSyncAt();
         return const WebDavSyncResult(message: 'Uploaded local backup.');
       }
 
       await client.readFile(remotePath, remoteArchive.path);
       final decodedRemote = await _decodeSnapshot(remoteArchive);
       try {
-        if (await lastSyncAt() == null) {
+        if (!localSnapshot.hasLocalData) {
           await _restoreSnapshot(decodedRemote.archive);
-          await _saveLastSyncAt();
           return const WebDavSyncResult(
             message: 'Restored remote backup on first sync.',
             restored: true,
           );
         }
 
-        if (localSnapshot.modifiedAt.isAfter(decodedRemote.modifiedAt) ||
-            (localSnapshot.modifiedAt.isAtSameMomentAs(
-                  decodedRemote.modifiedAt,
-                ) &&
-                localSnapshot.sha256 != decodedRemote.sha256)) {
-          await client.writeFile(localArchive.path, remotePath);
-          await _saveLastSyncAt();
-          return const WebDavSyncResult(message: 'Uploaded local backup.');
+        if (localSnapshot.sha256 == decodedRemote.sha256) {
+          return const WebDavSyncResult(
+            message: 'Backups are already in sync.',
+          );
         }
 
         if (decodedRemote.modifiedAt.isAfter(localSnapshot.modifiedAt)) {
           await _restoreSnapshot(decodedRemote.archive);
-          await _saveLastSyncAt();
           return const WebDavSyncResult(
             message: 'Restored newer remote backup.',
             restored: true,
           );
         }
-
-        await _saveLastSyncAt();
-        return const WebDavSyncResult(message: 'Backups are already in sync.');
+        await client.writeFile(localArchive.path, remotePath);
+        return const WebDavSyncResult(message: 'Uploaded newer local backup.');
       } finally {
         await decodedRemote.input.close();
       }
@@ -253,19 +244,16 @@ class WebDavBackupService {
 
   Future<_LocalSnapshot> _writeSnapshot(File outputFile) async {
     await outputFile.parent.create(recursive: true);
-    await Future.wait(
-      Hives.values
-          .where((hive) => hive != Hives.webdav)
-          .map((hive) => hive.box.flush()),
-    );
+    await Future.wait(_backupHives.map((hive) => hive.box.flush()));
 
     final hiveData = <String, Object?>{};
-    for (final hive in Hives.values.where((hive) => hive != Hives.webdav)) {
-      final box = hive.box;
+    var hasLocalData = false;
+    for (final hive in _backupHives) {
       final values = SplayTreeMap<String, dynamic>();
-      for (final key in box.keys) {
-        values[key.toString()] = box.get(key);
+      for (final key in hive.box.keys) {
+        values[key.toString()] = hive.box.get(key);
       }
+      if (values.isNotEmpty) hasLocalData = true;
       hiveData[hive.name] = values;
     }
 
@@ -284,14 +272,12 @@ class WebDavBackupService {
     }
 
     final hiveDirectory = Directory(p.join(G.appSubPath, 'hives'));
-    if (await hiveDirectory.exists()) {
-      await for (final entity in hiveDirectory.list(followLinks: false)) {
-        if (await FileSystemEntity.type(entity.path, followLinks: false) !=
-            FileSystemEntityType.file) {
-          continue;
-        }
-        final modified = (await File(entity.path).stat()).modified;
-        if (modified.isAfter(latestModified)) latestModified = modified;
+    for (final hive in _backupHives) {
+      final source = File(p.join(hiveDirectory.path, '${hive.name}.hive'));
+      if (!await source.exists()) continue;
+      final stat = await source.stat();
+      if (stat.modified.isAfter(latestModified)) {
+        latestModified = stat.modified;
       }
     }
 
@@ -319,7 +305,7 @@ class WebDavBackupService {
     }
 
     final digest = await sha256.bind(outputFile.openRead()).first;
-    return _LocalSnapshot(latestModified, digest.toString());
+    return _LocalSnapshot(latestModified, digest.toString(), hasLocalData);
   }
 
   Future<_DecodedSnapshot> _decodeSnapshot(File file) async {
@@ -413,15 +399,12 @@ class WebDavBackupService {
     final hiveData = Map<String, dynamic>.from(
       jsonDecode(utf8.decode(hiveSnapshot.content)) as Map,
     );
-    final supportedBoxes = Hives.values
-        .where((hive) => hive != Hives.webdav)
-        .map((hive) => hive.name)
-        .toSet();
+    final supportedBoxes = _backupHives.map((hive) => hive.name).toSet();
     if (hiveData.keys.any((name) => !supportedBoxes.contains(name))) {
       throw const FormatException('Backup contains an unknown Hive box.');
     }
     final restoredBoxes = <String, Map<String, dynamic>>{};
-    for (final hive in Hives.values.where((hive) => hive != Hives.webdav)) {
+    for (final hive in _backupHives) {
       final values = hiveData[hive.name];
       if (values != null && values is! Map) {
         throw const FormatException('Backup contains invalid Hive data.');
@@ -470,10 +453,10 @@ class WebDavBackupService {
       }
     }
 
-    for (final hive in Hives.values.where((hive) => hive != Hives.webdav)) {
-      final box = hive.box;
-      await box.clear();
-      await box.putAll(restoredBoxes[hive.name]!);
+    for (final hive in _backupHives) {
+      await hive.box.clear();
+      await hive.box.putAll(restoredBoxes[hive.name]!);
+      await hive.box.flush();
     }
     for (final item in Hives.items) {
       item.target.refresh(item.key, item.transform);
@@ -513,17 +496,14 @@ class WebDavBackupService {
       }
     }
   }
-
-  Future<void> _saveLastSyncAt() async {
-    WebDavHive.lastSyncAt.value = DateTime.now().toUtc().toIso8601String();
-  }
 }
 
 class _LocalSnapshot {
-  const _LocalSnapshot(this.modifiedAt, this.sha256);
+  const _LocalSnapshot(this.modifiedAt, this.sha256, this.hasLocalData);
 
   final DateTime modifiedAt;
   final String sha256;
+  final bool hasLocalData;
 }
 
 class _DecodedSnapshot {

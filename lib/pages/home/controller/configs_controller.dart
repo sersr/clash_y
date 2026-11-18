@@ -84,11 +84,8 @@ class ConfigsController with NopLifecycle {
     final profile = profiles.value[id];
     if (profile == null) return false;
 
-    final res = await ClashApi.reloadConfigs(profile, profile.filePath);
-    if (res == null) {
-      return false;
-    }
-    return true;
+    final res = await clashEvent.reloadConfigs(profile);
+    return res;
   }
 
   Future<void> addNewConfigUrl(
@@ -147,13 +144,13 @@ class ConfigsController with NopLifecycle {
   Future<void> reloadConfig(Profile profile) async {
     BaseConfig.currentProfile.value = profile.id ?? '';
 
-    await ClashApi.reloadConfigs(profile, profile.filePath);
+    await clashEvent.reloadConfigs(profile);
     await release(const Duration(milliseconds: 300));
     sync(profile);
   }
 
   Future<void> updateConfigData(Profile profile, {bool refresh = true}) async {
-    await ClashApi.reloadConfigs(profile, profile.filePath, refresh: refresh);
+    await clashEvent.reloadConfigs(profile, refresh: refresh);
     await release(const Duration(milliseconds: 300));
     sync(profile);
   }

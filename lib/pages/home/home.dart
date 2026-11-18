@@ -119,6 +119,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           shape: StadiumBorder(
             side: .new(color: Colors.white, width: 2.r),
           ),
+          shadows: [
+            .new(color: const Color.fromARGB(45, 98, 98, 98), blurRadius: 20.r),
+          ],
         ),
         child: Container(
           constraints: .new(maxWidth: 600.w),
@@ -137,7 +140,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       body: Stack(
         children: [
           HomeBottomPadding(
-            padding: homePadding + 50.h,
+            padding: homePadding + 55.h,
             child: Cs(() {
               return IndexedStack(index: index.value, children: children);
             }),

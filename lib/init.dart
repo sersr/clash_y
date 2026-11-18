@@ -21,7 +21,8 @@ Future<bool> initMain() async {
   try {
     initLog();
 
-    await [G.init(), _initTray()].wait;
+    await [G.init()].wait;
+    _initTray();
     initController();
 
     _registerMacOsShutdownHandler();

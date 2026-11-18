@@ -14,6 +14,7 @@ class Profile with Equatable {
     this.total,
     this.expire,
     this.scriptId,
+    this.isError,
   });
 
   final String? id;
@@ -29,6 +30,7 @@ class Profile with Equatable {
   final int? download;
   final int? total;
   final int? expire;
+  final bool? isError;
 
   String get showName {
     final n = name;
@@ -70,6 +72,7 @@ class Profile with Equatable {
     required String? name,
     required int? updateInterval,
     required String? scriptId,
+    bool isError = false,
     String? rawName,
     DateTime? updateTime,
     int? upload,
@@ -89,6 +92,7 @@ class Profile with Equatable {
       download: download ?? this.download,
       total: total ?? this.total,
       expire: expire ?? this.expire,
+      isError: isError,
     );
   }
 

@@ -16,7 +16,10 @@ final class AutoUpdateProfile {
   void close() {
     _timer?.cancel();
     _closed = true;
+    _next = .zero;
   }
+
+  Duration _next = .zero;
 
   void autoUpdateProfile() {
     _timer?.cancel();
@@ -37,7 +40,7 @@ final class AutoUpdateProfile {
 
     interval = interval.clamp(0, rawInt);
 
-    var delay = Duration(minutes: interval);
+    var delay = Duration(minutes: interval) + _next;
     _timer = Timer(delay, _onUpdate);
   }
 
@@ -46,9 +49,13 @@ final class AutoUpdateProfile {
     try {
       if (await refresh()) {
         autoUpdateProfile();
+        _next = .zero;
+        return;
       }
+      _next += .new(minutes: 30);
     } catch (e) {
       _closed = true;
+      _next += .new(minutes: 30);
       Log.e(e);
     }
   }

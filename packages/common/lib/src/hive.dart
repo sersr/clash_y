@@ -40,8 +40,7 @@ enum Hives with StorageMixin, StorageMixinEnumBox, StorageMixinHive {
 }
 
 enum WebDavHive<T> with StorageEnum<T> {
-  settings<WebDavBackupSettings>(),
-  lastSyncAt<String>();
+  settings<WebDavBackupSettings>();
 
   @override
   StorageMixin get target => Hives.webdav;
@@ -50,7 +49,6 @@ enum WebDavHive<T> with StorageEnum<T> {
   StorageTransform get transform {
     return switch (this) {
       .settings => .new(WebDavBackupSettings.fromJson, WebDavBackupSettings()),
-      .lastSyncAt => .base(''),
     };
   }
 }

@@ -34,6 +34,9 @@ abstract final class TrayInstaller {
 
     final appPath = _bundlePath;
     final trayPath = _traySrc;
+    if (!await File(trayPath).exists()) {
+      throw StateError('无法找到 macOS Tray 程序: $trayPath');
+    }
     final arguments = [
       trayPath,
       '--app',
@@ -56,17 +59,53 @@ abstract final class TrayInstaller {
 
     if (isConfigured && existing.exitCode == 0) {
       if ((existing.stdout as String).contains('state = running')) return;
-      await _runLaunchctl(['kickstart', service]);
+      await _runLaunchctl(['kickstart', '-k', service]);
       return;
     }
 
     if (!isConfigured) {
       await plist.writeAsString(contents, flush: true);
     }
+    await _validatePlist(plist);
+
     if (existing.exitCode == 0) {
-      await _runLaunchctl(['bootout', service]);
+      await _runLaunchctlOptional(['bootout', service]);
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
-    await _runLaunchctl(['bootstrap', domain, plist.path]);
+
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final result = await Process.run('launchctl', [
+        'bootstrap',
+        domain,
+        plist.path,
+      ]);
+      if (result.exitCode == 0) {
+        await _runLaunchctlOptional(['kickstart', '-k', service]);
+        return;
+      }
+      if (attempt < 2) {
+        await Future<void>.delayed(Duration(milliseconds: 250 * (attempt + 1)));
+      } else {
+        throw ProcessException(
+          'launchctl',
+          ['bootstrap', domain, plist.path],
+          '${result.stderr}',
+          result.exitCode,
+        );
+      }
+    }
+  }
+
+  static Future<void> _validatePlist(File plist) async {
+    final result = await Process.run('/usr/bin/plutil', ['-lint', plist.path]);
+    if (result.exitCode != 0) {
+      throw ProcessException(
+        '/usr/bin/plutil',
+        ['-lint', plist.path],
+        '${result.stderr}',
+        result.exitCode,
+      );
+    }
   }
 
   static Future<String> _currentUserId() async {
@@ -116,5 +155,9 @@ abstract final class TrayInstaller {
         result.exitCode,
       );
     }
+  }
+
+  static Future<void> _runLaunchctlOptional(List<String> arguments) async {
+    await Process.run('launchctl', arguments);
   }
 }

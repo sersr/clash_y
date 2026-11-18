@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:clashy/event/clash_event.dart';
 import 'package:common/common.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:share_plus/share_plus.dart' as share;
 
 class WebDavBackupController with NopLifecycle {
   final _service = WebDavBackupService();
@@ -91,8 +94,70 @@ class WebDavBackupController with NopLifecycle {
 
   Future<void> synchronize() => _runSync();
 
+  Future<void> saveArchiveExternally() async {
+    if (busy.value) return;
+    busy.value = true;
+    status.value = 'Preparing ZIP backup...';
+    Directory? temporaryDirectory;
+    try {
+      temporaryDirectory = await Directory.systemTemp.createTemp(
+        'clashy-backup-',
+      );
+      final archive = await _service.exportArchive(
+        '${temporaryDirectory.path}/clashy-backup.zip',
+      );
+      final bytes = await archive.readAsBytes();
+      await temporaryDirectory.delete(recursive: true);
+      temporaryDirectory = null;
+      final savedUri = await FilePicker.saveFile(
+        fileName: 'clashy-backup.zip',
+        bytes: bytes,
+        mimeType: 'application/zip',
+        dialogTitle: 'Save Clashy backup',
+      );
+      status.value = savedUri == null
+          ? 'ZIP backup save cancelled.'
+          : 'ZIP backup saved to $savedUri';
+    } catch (error, stackTrace) {
+      Log.e('Save ZIP backup externally failed: $error\n$stackTrace');
+      status.value = 'Could not save ZIP backup externally: $error';
+    } finally {
+      if (temporaryDirectory != null && await temporaryDirectory.exists()) {
+        await temporaryDirectory.delete(recursive: true);
+      }
+      busy.value = false;
+    }
+  }
+
   Future<void> exportArchive() async {
     if (busy.value) return;
+    if (Platform.isAndroid || Platform.isIOS) {
+      busy.value = true;
+      status.value = 'Preparing ZIP backup...';
+      try {
+        final directory = await Directory.systemTemp.createTemp(
+          'clashy-backup-',
+        );
+        final archive = await _service.exportArchive(
+          '${directory.path}/clashy-backup.zip',
+        );
+        await share.SharePlus.instance.share(
+          share.ShareParams(
+            title: 'Clashy backup',
+            files: [XFile(archive.path, mimeType: 'application/zip')],
+          ),
+        );
+        status.value =
+            'ZIP backup ready. Choose a destination in the share sheet.';
+      } catch (error, stackTrace) {
+        Log.e('Export ZIP backup failed: $error\n$stackTrace');
+        status.value = 'Could not export ZIP backup: $error';
+      } finally {
+        busy.value = false;
+      }
+      return;
+    }
+
     final location = await getSaveLocation(
       suggestedName: 'clashy-backup.zip',
       acceptedTypeGroups: const [
@@ -167,12 +232,7 @@ class WebDavBackupController with NopLifecycle {
   Future<void> _maybeAutoSync() async {
     if (!autoSync.value || busy.value) return;
     try {
-      final lastSync = await _service.lastSyncAt();
-      if (lastSync == null ||
-          DateTime.now().toUtc().difference(lastSync) >=
-              const Duration(days: 1)) {
-        await _runSync(automatic: true);
-      }
+      await _runSync(automatic: true);
     } catch (error, stackTrace) {
       Log.e('Check automatic WebDAV sync failed: $error\n$stackTrace');
       status.value = 'Could not check automatic sync: $error';

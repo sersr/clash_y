@@ -3,6 +3,7 @@ import 'package:common/common.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 
 class ClashApp extends StatefulWidget {
   const ClashApp({super.key});
@@ -13,6 +14,7 @@ class ClashApp extends StatefulWidget {
 
 class _ClashAppState extends State<ClashApp> {
   Widget _build(BuildContext context) {
+    CupertinoPageTransitionsBuilder;
     return MaterialApp.router(
       routerConfig: router,
       restorationScopeId: 'clashy',

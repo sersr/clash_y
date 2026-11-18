@@ -83,7 +83,7 @@ final class ClashEvent with NopLifecycle {
     return BaseConfig.profiles.value[id] ?? profile;
   }
 
-  FutureOr<bool?> reloadConfigs(Profile profile, {bool refresh = false}) async {
+  Future<bool> reloadConfigs(Profile profile, {bool refresh = false}) async {
     if (profile.url == null) return false;
 
     final res = await EventQueue.run(profile.id, () async {
@@ -92,7 +92,7 @@ final class ClashEvent with NopLifecycle {
       if (url == null) return false;
 
       var file = getFile(url);
-      var isError = false;
+
       final fileExists = await file.exists();
       if (!fileExists || profile.shouldUpdate() || refresh) {
         try {
@@ -118,7 +118,7 @@ final class ClashEvent with NopLifecycle {
 
           final baseName = file.path;
 
-          if (fileData != null) {
+          if (fileData != null && fileData.isNotEmpty) {
             final fileTemp = file.parent.childFile('$baseName.temp');
             if (!await fileTemp.exists()) {
               await fileTemp.create(recursive: true);
@@ -143,18 +143,21 @@ final class ClashEvent with NopLifecycle {
             url: profile.url,
             scriptId: profile.scriptId,
           );
-
-          if (profile.id case var id?) {
-            BaseConfig.profiles.val.al[id] = profile;
-          }
         } catch (e, s) {
           Log.e('$e,$s');
-          isError = true;
+          profile = profile.copyWith(
+            isError: true,
+            updateTime: DateTime.now(),
+            name: profile.name,
+            updateInterval: profile.updateInterval,
+            url: profile.url,
+            scriptId: profile.scriptId,
+          );
         }
       }
 
-      if (isError) {
-        throw 'update url error.';
+      if (profile.id case var id?) {
+        BaseConfig.profiles.val.al[id] = profile;
       }
       return true;
     });

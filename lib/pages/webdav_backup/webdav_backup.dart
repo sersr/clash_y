@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:clashy/pages/home/widget/setting_item.dart';
 import 'package:clashy/pages/webdav_backup/controller/webdav_backup_controller.dart';
 import 'package:common/common.dart';
@@ -87,6 +88,15 @@ class _WebDavBackupPageState extends State<WebDavBackupPage> {
                 onTap: controller.exportArchive,
                 child: const SizedBox(),
               ),
+              if (defaultTargetPlatform == TargetPlatform.android ||
+                  defaultTargetPlatform == TargetPlatform.iOS) ...[
+                const SettingDiv(),
+                SettingItem(
+                  label: 'Save ZIP externally',
+                  onTap: controller.saveArchiveExternally,
+                  child: const SizedBox(),
+                ),
+              ],
               const SettingDiv(),
               SettingItem(
                 label: 'Restore ZIP backup',

@@ -116,7 +116,12 @@ abstract final class ClashService {
           'is required on macOS',
         );
       }
-      await TrayInstaller.ensureConfigured(clashSocket: clashSocket);
+      try {
+        await TrayInstaller.ensureConfigured(clashSocket: clashSocket);
+      } catch (error, stackTrace) {
+        stderr.writeln('启动 macOS Tray 失败，继续运行 Clash core: $error');
+        stderr.writeln(stackTrace);
+      }
       return true;
     }
 

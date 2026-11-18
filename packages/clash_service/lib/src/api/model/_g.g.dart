@@ -131,6 +131,7 @@ Profile _$ProfileFromJson(Map<String, dynamic> json) => Profile(
   total: (json['total'] as num?)?.toInt(),
   expire: (json['expire'] as num?)?.toInt(),
   scriptId: json['scriptId'] as String?,
+  isError: json['isError'] as bool?,
 );
 
 Map<String, dynamic> _$ProfileToJson(Profile instance) => <String, dynamic>{
@@ -145,6 +146,7 @@ Map<String, dynamic> _$ProfileToJson(Profile instance) => <String, dynamic>{
   'download': instance.download,
   'total': instance.total,
   'expire': instance.expire,
+  'isError': instance.isError,
 };
 
 ProxyItem _$ProxyItemFromJson(Map<String, dynamic> json) => ProxyItem(
