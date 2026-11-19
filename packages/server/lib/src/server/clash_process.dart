@@ -11,10 +11,12 @@ import 'package:ffi/ffi.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart' as p;
 import 'package:quickjs_runtime/quickjs_runtime.dart';
+import 'package:server/app_support.dart';
 import 'package:yaml/yaml.dart';
 import 'package:yaml_writer/yaml_writer.dart';
 
 import 'config_overrides.dart';
+import 'macos_tun_helper.dart';
 import 'models/models.dart';
 
 final _clashQueue = TaskQueue();
@@ -22,8 +24,7 @@ final _stateQueue = TaskQueue();
 
 abstract final class ClashProcess {
   static const _wakeNetworkSettleDelay = Duration(seconds: 5);
-  static const _stateFilePath =
-      '/Library/Application Support/Clashy/clash-state.json';
+  static final _stateFilePath = _resolveStateFilePath();
 
   static final _stateFile = File(_stateFilePath);
   static ReceivePort? _wakeEvents;
@@ -35,6 +36,13 @@ abstract final class ClashProcess {
   static ClashProfile? _profile;
   static Timer? _profileTimer;
   static var _vpnEnabled = false;
+
+  static String _resolveStateFilePath() {
+    if (!Platform.isMacOS) {
+      return '/Library/Application Support/Clashy/clash-state.json';
+    }
+    return p.join(clashyApplicationSupportDirectory, 'clash-state.json');
+  }
 
   static Future<void> restorePersistedClash() async {
     if (!Platform.isMacOS || !await _stateFile.exists()) return;
@@ -450,6 +458,15 @@ abstract final class ClashProcess {
       }
     }
 
+    if (Platform.isMacOS && vpnEnabled) {
+      try {
+        await MacOSTunHelper.ensureRegistered();
+      } catch (error) {
+        Log.e('register macOS TUN helper failed: $error');
+        return 'register macOS TUN helper failed: $error';
+      }
+    }
+
     final interfacesBeforeStart = Platform.isMacOS
         ? await _listTunInterfaces()
         : const <String>{};
@@ -461,7 +478,9 @@ abstract final class ClashProcess {
         final nativeConfigDir = configDir
             .toNativeUtf8(allocator: arena)
             .cast<Char>();
-        final res = vpnEnabled
+        final res = Platform.isMacOS
+            ? startTun(nativeConfigDir, vpnEnabled ? -1 : 0)
+            : vpnEnabled
             ? start(nativeConfigDir)
             : startTun(nativeConfigDir, 0);
         if (res != nullptr) {

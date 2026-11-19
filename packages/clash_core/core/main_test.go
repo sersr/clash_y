@@ -9,8 +9,7 @@ import (
 	"github.com/metacubex/mihomo/hub/executor"
 )
 
-// TestSetHomeDirReadsConfigDir guards the "-d configDir" contract: after
-// setHomeDir, the config is loaded from <configDir>/config.yaml.
+// TestSetHomeDirReadsConfigDir guards the "-d configDir" contract.
 func TestSetHomeDirReadsConfigDir(t *testing.T) {
 	dir := t.TempDir()
 
@@ -31,25 +30,18 @@ func TestSetHomeDirReadsConfigDir(t *testing.T) {
 	if cfg.General.MixedPort != 1234 {
 		t.Fatalf("expected mixed-port 1234, got %d", cfg.General.MixedPort)
 	}
-
-	// startTun relies on these fields to drive the TUN listener.
-	applyTunOptions(cfg, 0)
-	if !cfg.General.Tun.Enable {
-		t.Fatal("expected tun.enable to be forced on")
-	}
 }
 
-// TestApplyTunOptionsUsesFileDescriptor covers the Android VpnService contract:
-// a positive fd replaces whatever the config file declared, while 0 keeps it so
-// that the core can create the device itself.
-func TestApplyTunOptionsUsesFileDescriptor(t *testing.T) {
+func TestBuildFdTunOptionsForAndroid(t *testing.T) {
 	dir := t.TempDir()
-
 	cfgPath := filepath.Join(dir, configFileName)
-	if err := os.WriteFile(cfgPath, []byte("tun:\n  enable: false\n  file-descriptor: 7\n"), 0o644); err != nil {
+	if err := os.WriteFile(
+		cfgPath,
+		[]byte("tun:\n  auto-detect-interface: true\n"),
+		0o644,
+	); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-
 	if err := setHomeDir(dir); err != nil {
 		t.Fatalf("setHomeDir: %v", err)
 	}
@@ -58,26 +50,15 @@ func TestApplyTunOptionsUsesFileDescriptor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse config from configDir: %v", err)
 	}
-	if cfg.General.Tun.FileDescriptor != 7 {
-		t.Fatalf("expected the config file fd 7 to be parsed, got %d", cfg.General.Tun.FileDescriptor)
+	options := buildFdTunOptions(cfg, 42, "android")
+	if !options.Enable || options.AutoRoute || options.AutoDetectInterface {
+		t.Fatalf("unexpected Android TUN options: %+v", options)
 	}
-
-	applyTunOptions(cfg, 42)
-	if !cfg.General.Tun.Enable {
-		t.Fatal("expected tun.enable to be forced on")
+	if options.MTU != 9000 {
+		t.Fatalf("expected Android VPN MTU 9000, got %d", options.MTU)
 	}
-	if cfg.General.Tun.FileDescriptor != 42 {
-		t.Fatalf("expected the VpnService fd 42 to win, got %d", cfg.General.Tun.FileDescriptor)
-	}
-
-	cfg, err = executor.Parse()
-	if err != nil {
-		t.Fatalf("parse config from configDir: %v", err)
-	}
-
-	applyTunOptions(cfg, 0)
-	if cfg.General.Tun.FileDescriptor != 7 {
-		t.Fatalf("expected the config file fd to be preserved, got %d", cfg.General.Tun.FileDescriptor)
+	if options.FileDescriptor != 42 {
+		t.Fatalf("expected VpnService fd 42, got %d", options.FileDescriptor)
 	}
 }
 
@@ -131,10 +112,43 @@ func TestBuildFdTunOptionsForIOS(t *testing.T) {
 			if options.MTU != 1500 {
 				t.Fatalf("expected iOS packet-flow MTU 1500, got %d", options.MTU)
 			}
+			if !options.AutoDetectInterface {
+				t.Fatal("expected iOS to preserve automatic interface detection")
+			}
 			if options.FileDescriptor != 42 {
 				t.Fatalf("expected packet-flow fd 42, got %d", options.FileDescriptor)
 			}
 		})
+	}
+}
+
+func TestBuildDesktopFdTunOptionsUsesDesktopConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, configFileName)
+	if err := os.WriteFile(
+		cfgPath,
+		[]byte("tun:\n  mtu: 1420\n  auto-detect-interface: false\n"),
+		0o644,
+	); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := setHomeDir(dir); err != nil {
+		t.Fatalf("setHomeDir: %v", err)
+	}
+
+	cfg, err := executor.Parse()
+	if err != nil {
+		t.Fatalf("parse config from configDir: %v", err)
+	}
+	options := buildDesktopFdTunOptions(cfg, 42)
+	if options.MTU != 1420 {
+		t.Fatalf("expected desktop TUN MTU 1420, got %d", options.MTU)
+	}
+	if !options.AutoDetectInterface {
+		t.Fatal("expected desktop TUN to auto-detect the physical interface")
+	}
+	if options.FileDescriptor != 42 {
+		t.Fatalf("expected desktop TUN fd 42, got %d", options.FileDescriptor)
 	}
 }
 

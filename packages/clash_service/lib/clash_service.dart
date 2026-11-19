@@ -9,7 +9,6 @@ import 'src/service/api.dart';
 import 'src/service/clash_service_linux.dart';
 import 'src/service/clash_service_ios.dart';
 import 'src/service/clash_service_macos_cmd.dart';
-import 'src/service/clash_service_macos_tray.dart';
 
 export 'package:server/server.dart';
 
@@ -20,15 +19,9 @@ abstract final class ClashService {
   static Future<String> get iosControlSocketPath =>
       IOSVpnService.controlSocketPath;
 
-  /// 确保 macOS 状态栏 Tray 已在当前用户的图形会话中启动。
-  static Future<void> ensureTrayStarted({required String clashSocket}) async {
-    if (!Platform.isMacOS) return;
-    await TrayInstaller.ensureConfigured(clashSocket: clashSocket);
-  }
-
   /// 桌面端后台服务是否已安装。
   static Future<bool> isInstalled() async {
-    if (Platform.isMacOS) return HelperInstaller.isInstalled();
+    if (Platform.isMacOS) return MacOSServiceProcess.isInstalled();
     if (Platform.isLinux) return isSystemdServiceInstalled();
     if (Platform.isWindows) return isServiceInstalled();
     if (Platform.isAndroid) return true;
@@ -42,7 +35,7 @@ abstract final class ClashService {
     bool clashyIsRunning = false,
   }) async {
     if (!Platform.isMacOS) return false;
-    return HelperInstaller.hasOtherVpnConnection(
+    return MacOSServiceProcess.hasOtherVpnConnection(
       checkTunnelRoutes: !clashyIsRunning,
     );
   }
@@ -65,8 +58,7 @@ abstract final class ClashService {
     bool allowList = false,
     List<String> allowedApplications = const [],
     List<String> disallowedApplications = const [],
-    String? trayClashSocket,
-    String? controllerSocketPath,
+    required String controllerSocketPath,
   }) async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.start(
@@ -88,7 +80,9 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
-      if (!await _startDesktopService(trayClashSocket: trayClashSocket)) {
+      if (!await _startDesktopService(
+        controllerSocketPath: controllerSocketPath,
+      )) {
         return false;
       }
       if (!await ClashServiceApi.isClashRunning()) {
@@ -102,25 +96,12 @@ abstract final class ClashService {
     return false;
   }
 
-  static Future<bool> _startDesktopService({String? trayClashSocket}) async {
+  static Future<bool> _startDesktopService({
+    required String controllerSocketPath,
+  }) async {
     if (Platform.isMacOS) {
-      await HelperInstaller.install();
-      if (!await HelperInstaller.isRunning()) return false;
-      final clashSocket = trayClashSocket;
-      if (clashSocket == null) {
-        throw ArgumentError.value(
-          trayClashSocket,
-          'trayClashSocket',
-          'is required on macOS',
-        );
-      }
-      try {
-        await TrayInstaller.ensureConfigured(clashSocket: clashSocket);
-      } catch (error, stackTrace) {
-        stderr.writeln('启动 macOS Tray 失败，继续运行 Clash core: $error');
-        stderr.writeln(stackTrace);
-      }
-      return true;
+      await MacOSServiceProcess.install(clashSocketPath: controllerSocketPath);
+      return MacOSServiceProcess.isRunning();
     }
 
     if (Platform.isLinux) {
@@ -167,8 +148,7 @@ abstract final class ClashService {
   /// before the user turns the VPN on.
   static Future<bool> startCore(
     ClashProfile profile, {
-    String? controllerSocketPath,
-    String? trayClashSocket,
+    required String controllerSocketPath,
   }) async {
     if (Platform.isAndroid) {
       return android.AndroidVpnService.startCore(
@@ -183,7 +163,9 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
-      if (!await _startDesktopService(trayClashSocket: trayClashSocket)) {
+      if (!await _startDesktopService(
+        controllerSocketPath: controllerSocketPath,
+      )) {
         return false;
       }
       if (await ClashServiceApi.isClashRunning()) return true;
@@ -252,10 +234,10 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS) {
-      if (!await HelperInstaller.isRunning()) return true;
+      if (!await MacOSServiceProcess.isRunning()) return true;
 
-      await HelperInstaller.stop();
-      return !await HelperInstaller.isRunning();
+      await MacOSServiceProcess.stop();
+      return !await MacOSServiceProcess.isRunning();
     }
 
     if (Platform.isLinux) {
@@ -294,10 +276,8 @@ abstract final class ClashService {
     }
 
     if (Platform.isMacOS) {
-      if (!await HelperInstaller.isInstalled()) return true;
-
-      await HelperInstaller.uninstall();
-      return !await HelperInstaller.isInstalled();
+      await MacOSServiceProcess.uninstall();
+      return !await MacOSServiceProcess.isRunning();
     }
 
     if (Platform.isLinux) {

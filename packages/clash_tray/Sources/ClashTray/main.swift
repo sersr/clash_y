@@ -87,19 +87,27 @@ private func readChunk(_ fd: Int32) -> Data? {
     return Data(buffer[0..<count])
 }
 
-/// 读取一个 HTTP 响应体（支持 chunked），连接关闭即结束。
-private func readBody(_ fd: Int32) -> Data? {
+private struct HTTPResponse {
+    let statusCode: Int
+    let body: Data
+}
+
+private func readResponse(_ fd: Int32) -> HTTPResponse? {
     var raw = Data()
     while let chunk = readChunk(fd) {
         raw.append(chunk)
     }
     guard let headerEnd = raw.range(of: Data("\r\n\r\n".utf8)) else { return nil }
     let head = String(decoding: raw[..<headerEnd.lowerBound], as: UTF8.self)
+    guard let statusLine = head.components(separatedBy: "\r\n").first else { return nil }
+    let statusParts = statusLine.split(separator: " ")
+    guard statusParts.count > 1, let status = Int(statusParts[1]) else { return nil }
     let body = Data(raw[headerEnd.upperBound...])
-    if head.lowercased().contains("transfer-encoding: chunked") {
-        return decodeChunked(body)
-    }
-    return body
+    let responseBody =
+        head.lowercased().contains("transfer-encoding: chunked")
+        ? decodeChunked(body)
+        : body
+    return HTTPResponse(statusCode: status, body: responseBody)
 }
 
 private func decodeChunked(_ data: Data) -> Data {
@@ -126,6 +134,17 @@ private func decodeChunked(_ data: Data) -> Data {
 
 // MARK: - Clash API
 
+private struct ProxyGroup: Equatable {
+    let name: String
+    let type: String
+    let options: [String]
+    let selected: String?
+
+    var supportsManualSelection: Bool {
+        ["Selector", "URLTest", "Fallback"].contains(type)
+    }
+}
+
 private struct ClashClient {
     let serviceSocket: String?
     let clashSocket: String?
@@ -137,8 +156,9 @@ private struct ClashClient {
         defer { close(fd) }
         let request = "GET /clash/status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
         guard writeAll(fd, Data(request.utf8)) else { return false }
-        guard let body = readBody(fd),
-            let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        guard let response = readResponse(fd),
+            (200..<300).contains(response.statusCode),
+            let json = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any]
         else { return false }
         return json["success"] as? Bool ?? (json["data"] as? Bool ?? false)
     }
@@ -152,7 +172,125 @@ private struct ClashClient {
             "POST /clash/stop HTTP/1.1\r\nHost: localhost\r\n"
             + "Content-Type: application/json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
         _ = writeAll(fd, Data(request.utf8))
-        _ = readBody(fd)
+        _ = readResponse(fd)
+    }
+
+    func currentMode() -> String? {
+        guard let response = request(method: "GET", path: "/configs"),
+            (200..<300).contains(response.statusCode),
+            let json = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any],
+            let mode = json["mode"] as? String
+        else {
+            return nil
+        }
+        return mode.lowercased()
+    }
+
+    func proxyGroups() -> [ProxyGroup]? {
+        guard let response = request(method: "GET", path: "/proxies"),
+            (200..<300).contains(response.statusCode),
+            let json = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any],
+            let proxies = json["proxies"] as? [String: Any]
+        else {
+            fputs("Failed to load proxy groups from Clash API\n", stderr)
+            return nil
+        }
+
+        return proxies.compactMap { name, value in
+            guard
+                let proxy = value as? [String: Any],
+                let type = proxy["type"] as? String,
+                let options = proxy["all"] as? [String]
+            else {
+                return nil
+            }
+            return ProxyGroup(
+                name: name,
+                type: type,
+                options: options,
+                selected: proxy["now"] as? String
+            )
+        }.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    func selectMode(_ mode: String) -> Bool {
+        guard let body = jsonBody(["mode": mode]),
+            let response = request(method: "PATCH", path: "/configs", body: body)
+        else {
+            fputs("Failed to change Clash mode to \(mode)\n", stderr)
+            return false
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            fputs(
+                "Clash mode change failed with HTTP \(response.statusCode)\n",
+                stderr
+            )
+            return false
+        }
+        return true
+    }
+
+    func selectProxy(group: String, proxy: String) -> Bool {
+        guard
+            let encodedGroup = group.addingPercentEncoding(
+                withAllowedCharacters: CharacterSet(
+                    charactersIn:
+                        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+                )
+            ),
+            let body = jsonBody(["name": proxy]),
+            let response = request(
+                method: "PUT",
+                path: "/proxies/\(encodedGroup)",
+                body: body
+            )
+        else {
+            fputs("Failed to select proxy \(proxy) in group \(group)\n", stderr)
+            return false
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            fputs(
+                "Proxy selection failed for \(group) with HTTP \(response.statusCode)\n",
+                stderr
+            )
+            return false
+        }
+        return true
+    }
+
+    private func request(
+        method: String,
+        path: String,
+        body: Data? = nil
+    ) -> HTTPResponse? {
+        guard let clashSocket, let fd = openUnixSocket(clashSocket) else {
+            return nil
+        }
+        defer { close(fd) }
+
+        var headers = "\(method) \(path) HTTP/1.1\r\nHost: localhost\r\n"
+        if let body {
+            headers += "Content-Type: application/json\r\n"
+            headers += "Content-Length: \(body.count)\r\n"
+        } else if method != "GET" {
+            headers += "Content-Length: 0\r\n"
+        }
+        headers += "Connection: close\r\n\r\n"
+        var requestData = Data(headers.utf8)
+        if let body { requestData.append(body) }
+        guard writeAll(fd, requestData) else { return nil }
+        return readResponse(fd)
+    }
+
+    private func jsonBody(_ object: [String: String]) -> Data? {
+        do {
+            return try JSONSerialization.data(withJSONObject: object)
+        } catch {
+            fputs("Failed to encode Clash API request: \(error)\n", stderr)
+            return nil
+        }
     }
 
     /// 订阅 mihomo 的 `/traffic`，每行一个 JSON；返回时表示流已断开。
@@ -261,16 +399,18 @@ private func templateTrayImage(from image: NSImage, size: NSSize) -> NSImage? {
     let bytesPerRow = width * 4
     var sourcePixels = [UInt8](repeating: 0, count: height * bytesPerRow)
     let didRenderSource = sourcePixels.withUnsafeMutableBytes { pixels -> Bool in
-        guard let context = CGContext(
-            data: pixels.baseAddress,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: bytesPerRow,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                | CGBitmapInfo.byteOrder32Big.rawValue
-        ) else {
+        guard
+            let context = CGContext(
+                data: pixels.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                    | CGBitmapInfo.byteOrder32Big.rawValue
+            )
+        else {
             return false
         }
         context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
@@ -285,9 +425,11 @@ private func templateTrayImage(from image: NSImage, size: NSSize) -> NSImage? {
         let red = Int(sourcePixels[offset])
         let green = Int(sourcePixels[offset + 1])
         let blue = Int(sourcePixels[offset + 2])
-        let saturation = CGFloat(max(red, green, blue) - min(red, green, blue))
+        let saturation =
+            CGFloat(max(red, green, blue) - min(red, green, blue))
             / CGFloat(sourceAlpha)
-        let opacity = min(max((saturation - 0.08) / 0.16, 0), 1)
+        let opacity =
+            min(max((saturation - 0.08) / 0.16, 0), 1)
             * CGFloat(sourceAlpha) / 255
         let alpha = UInt8((opacity * 255).rounded())
         maskPixels[offset] = alpha
@@ -433,7 +575,13 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var contentView: TrayContentView!
     private var menu: NSMenu!
+    private var modeItems: [String: NSMenuItem] = [:]
+    private var showAppItem: NSMenuItem!
+    private var proxyGroupSeparator: NSMenuItem!
     private var vpnItem: NSMenuItem!
+    private var proxyGroupItems: [NSMenuItem] = []
+    private var cachedProxyGroups: [ProxyGroup]?
+    private var isRunning = false
     private var clickWork: DispatchWorkItem?
     private var lastClickAt: Date?
 
@@ -441,6 +589,7 @@ private final class TrayController: NSObject, NSApplicationDelegate {
         buildStatusItem()
         buildMenu()
         startMonitor()
+        startMenuMonitor()
     }
 
     private func buildStatusItem() {
@@ -498,16 +647,33 @@ private final class TrayController: NSObject, NSApplicationDelegate {
 
     private func buildMenu() {
         menu = NSMenu()
-        menu.addItem(
+
+        showAppItem = menu.addItem(
             withTitle: "显示 Clashy", action: #selector(openApp), keyEquivalent: ""
-        ).target = self
+        )
         menu.addItem(.separator())
+
+        showAppItem.target = self
+        for (title, mode) in [("Rule", "rule"), ("Global", "global"), ("Direct", "direct")] {
+            let item = menu.addItem(
+                withTitle: title,
+                action: #selector(selectModeFromMenu),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = mode
+            item.isEnabled = false
+            modeItems[mode] = item
+        }
+        menu.addItem(.separator())
+        let loadingItem = menu.addItem(withTitle: "正在加载代理组…", action: nil, keyEquivalent: "")
+        loadingItem.isEnabled = false
+        proxyGroupItems = [loadingItem]
+
+        proxyGroupSeparator = NSMenuItem.separator()
+        menu.addItem(proxyGroupSeparator)
         vpnItem = menu.addItem(withTitle: "关闭 VPN", action: #selector(stopVpn), keyEquivalent: "")
         vpnItem.target = self
-        menu.addItem(.separator())
-        menu.addItem(
-            withTitle: "退出菜单栏图标", action: #selector(quitAgent), keyEquivalent: ""
-        ).target = self
     }
 
     // MARK: Clicks
@@ -570,6 +736,39 @@ private final class TrayController: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func selectModeFromMenu(_ sender: NSMenuItem) {
+        guard let mode = sender.representedObject as? String else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self, self.client.selectMode(mode) else { return }
+            let selectedMode = self.client.currentMode()
+            DispatchQueue.main.async {
+                if let selectedMode {
+                    self.updateSelectedMode(selectedMode)
+                }
+            }
+        }
+    }
+
+    @objc private func selectProxyFromMenu(_ sender: NSMenuItem) {
+        guard
+            let selection = sender.representedObject as? [String],
+            selection.count == 2
+        else {
+            return
+        }
+        let group = selection[0]
+        let proxy = selection[1]
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self, self.client.selectProxy(group: group, proxy: proxy) else {
+                return
+            }
+            guard let groups = self.client.proxyGroups() else { return }
+            DispatchQueue.main.async {
+                self.updateProxyGroups(groups)
+            }
+        }
+    }
+
     @objc private func quitAgent() {
         NSApp.terminate(nil)
     }
@@ -580,6 +779,36 @@ private final class TrayController: NSObject, NSApplicationDelegate {
         let thread = Thread { [weak self] in self?.monitorLoop() }
         thread.name = "clashy-tray-monitor"
         thread.start()
+    }
+
+    private func startMenuMonitor() {
+        let thread = Thread { [weak self] in self?.menuMonitorLoop() }
+        thread.name = "clashy-tray-menu-monitor"
+        thread.start()
+    }
+
+    private func menuMonitorLoop() {
+        while true {
+            guard client.isRunning() else {
+                DispatchQueue.main.async { [weak self] in self?.setRunning(false) }
+                Thread.sleep(forTimeInterval: 3)
+                continue
+            }
+
+            let mode = client.currentMode()
+            let groups = client.proxyGroups()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.setRunning(true)
+                if let mode {
+                    self.updateSelectedMode(mode)
+                }
+                if let groups {
+                    self.updateProxyGroups(groups)
+                }
+            }
+            Thread.sleep(forTimeInterval: 3)
+        }
     }
 
     private func monitorLoop() {
@@ -601,7 +830,78 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     }
 
     private func setRunning(_ value: Bool) {
+        isRunning = value
         vpnItem?.isEnabled = value
+        modeItems.values.forEach { $0.isEnabled = value }
+        for groupItem in proxyGroupItems {
+            groupItem.isEnabled = value && groupItem.submenu != nil
+            groupItem.submenu?.items.forEach { item in
+                guard item.action != nil else { return }
+                item.isEnabled = value && item.tag == 1
+            }
+        }
+    }
+
+    private func updateSelectedMode(_ mode: String) {
+        for (name, item) in modeItems {
+            item.state = name == mode ? .on : .off
+        }
+    }
+
+    private func updateProxyGroups(_ groups: [ProxyGroup]) {
+        guard groups != cachedProxyGroups else { return }
+        cachedProxyGroups = groups
+        for item in proxyGroupItems {
+            menu.removeItem(item)
+        }
+        proxyGroupItems.removeAll()
+
+        let renderedGroups =
+            groups.isEmpty
+            ? [
+                ProxyGroup(
+                    name: "暂无代理组",
+                    type: "",
+                    options: [],
+                    selected: nil
+                )
+            ] : groups
+
+        for group in renderedGroups {
+            let groupItem = NSMenuItem(title: group.name, action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            if group.options.isEmpty {
+                let emptyItem = NSMenuItem(
+                    title: "暂无可用节点",
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                emptyItem.isEnabled = false
+                submenu.addItem(emptyItem)
+            } else {
+                for proxy in group.options {
+                    let item = NSMenuItem(
+                        title: proxy,
+                        action: #selector(selectProxyFromMenu),
+                        keyEquivalent: ""
+                    )
+                    item.target = self
+                    item.representedObject = [group.name, proxy]
+                    item.tag = group.supportsManualSelection ? 1 : 0
+                    item.state = group.selected == proxy ? .on : .off
+                    item.isEnabled = isRunning && group.supportsManualSelection
+                    submenu.addItem(item)
+                }
+            }
+            groupItem.submenu = submenu
+            groupItem.isEnabled = isRunning
+            if !group.supportsManualSelection {
+                groupItem.toolTip = "此代理组不支持手动切换"
+            }
+            let insertionIndex = menu.index(of: proxyGroupSeparator)
+            menu.insertItem(groupItem, at: insertionIndex)
+            proxyGroupItems.append(groupItem)
+        }
     }
 
     private func updateSpeed(up: Int, down: Int) {

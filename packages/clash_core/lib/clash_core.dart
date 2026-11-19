@@ -14,13 +14,9 @@ void configureMacOSLibraryPath(String path) {
 ffi.Pointer<ffi.Char> start(ffi.Pointer<ffi.Char> configDir) =>
     _useDynamicLibrary ? macos.start(configDir) : native.start(configDir);
 
-/// Starts the core like start(), but forces `tun.enable` to true. While the core
-/// is running this only (re)creates the TUN listener.
-///
-/// fd is the descriptor of the tun device an Android VpnService already
-/// established, and must be transferred to the core: it takes ownership and
-/// closes it on shutdown, so do not close the ParcelFileDescriptor as well.
-/// Pass 0 (or a negative value) when the core may create the device itself.
+/// Starts the core with TUN enabled when given a TUN descriptor.
+/// A positive fd is Android's VpnService descriptor; -1 requests a
+/// helper-managed descriptor on macOS; 0 starts the core with TUN disabled.
 ffi.Pointer<ffi.Char> startTun(ffi.Pointer<ffi.Char> configDir, int fd) =>
     _useDynamicLibrary
     ? macos.startTun(configDir, fd)

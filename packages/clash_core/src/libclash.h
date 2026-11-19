@@ -18,13 +18,11 @@ extern "C" {
 // `mihomo -d configDir`. TUN follows whatever the config file declares.
 char *start(char *configDir);
 
-// Starts the core like start(), but forces `tun.enable` to true. While the core
-// is running this only (re)creates the TUN listener.
+// Starts the core with TUN enabled when given a TUN descriptor. A zero fd
+// starts the core with TUN disabled.
 //
-// fd is the descriptor of the tun device an Android VpnService already
-// established, and must be transferred to the core: it takes ownership and
-// closes it on shutdown, so do not close the ParcelFileDescriptor as well.
-// Pass 0 (or a negative value) when the core may create the device itself.
+// Android supplies its VpnService descriptor. On macOS, -1 asks the privileged
+// helper to create and provide the descriptor.
 char *startTun(char *configDir, int fd);
 
 // Stops the core and closes every listener, including TUN.

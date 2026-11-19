@@ -2,7 +2,11 @@ module mihomo-so
 
 go 1.21
 
-require github.com/metacubex/mihomo v1.19.31
+require (
+	github.com/metacubex/mihomo v1.19.31
+	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb
+	golang.org/x/sys v0.30.0
+)
 
 replace github.com/metacubex/mihomo => ./mihomo
 
@@ -128,13 +132,11 @@ require (
 	gitlab.com/yawning/bsaes.git v0.0.0-20190805113838-0a714cd429ec // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
-	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e // indirect
 	golang.org/x/mod v0.20.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.10.0 // indirect

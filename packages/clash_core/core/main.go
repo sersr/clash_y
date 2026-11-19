@@ -55,9 +55,10 @@ import (
 const configFileName = "config.yaml"
 
 var (
-	mu          sync.Mutex
-	started     bool
-	tunListener *sing_tun.Listener
+	mu              sync.Mutex
+	started         bool
+	tunListener     *sing_tun.Listener
+	tunBrokerActive bool
 )
 
 // main is required by -buildmode=c-shared and never runs.
@@ -72,8 +73,15 @@ func start(configDir *C.char) *C.char {
 	defer mu.Unlock()
 
 	enableEmbeddedConfigUpdates()
+	if runtime.GOOS == "darwin" {
+		return startDesktop(configDir)
+	}
+	return startMobile(configDir)
+}
+
+func startMobile(configDir *C.char) *C.char {
 	if !started {
-		resetTunListener()
+		resetMobileTunListener()
 	}
 
 	if err := setHomeDir(C.GoString(configDir)); err != nil {
@@ -88,20 +96,29 @@ func start(configDir *C.char) *C.char {
 	return nil
 }
 
-func resetTunListener() {
-	// ReCreateTun serializes against config reloads and clears mihomo's cached
-	// configuration without modifying the mihomo subproject.
-	listener.ReCreateTun(LC.Tun{}, tunnel.Tunnel)
+func startDesktop(configDir *C.char) *C.char {
+	if !started {
+		if err := resetDesktopTunListener(); err != nil {
+			return cError(err)
+		}
+	}
+
+	if err := setHomeDir(C.GoString(configDir)); err != nil {
+		return cError(err)
+	}
+
+	if err := hub.Parse(nil); err != nil {
+		return cError(fmt.Errorf("start core: %w", err))
+	}
+
+	started = true
+	return nil
 }
 
-// startTun starts the core like start() but forces tun.enable to true, using
-// the remaining TUN options declared in configDir/config.yaml.
-//
-// fd is the descriptor of the tun device that an Android VpnService already
-// established. The core takes ownership of it and closes it on stop(), so hand
-// over detachFd() instead of keeping a ParcelFileDescriptor open as well. Pass 0
-// (or a negative value) when the core may create the device itself, in which
-// case the file-descriptor from the config file is kept.
+// startTun starts the core with TUN enabled when given a TUN descriptor.
+// A positive fd is an externally established descriptor, supplied by Android's
+// VpnService. On macOS, -1 asks the privileged helper for a descriptor. A zero
+// fd starts the core with TUN disabled.
 //
 // Every call re-reads configDir/config.yaml and applies the full mihomo
 // configuration, so ports, proxies, rules, controller and TUN are always
@@ -113,7 +130,13 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 	defer mu.Unlock()
 
 	enableEmbeddedConfigUpdates()
+	if runtime.GOOS == "darwin" {
+		return startDesktopTun(configDir, int(fd))
+	}
+	return startMobileTun(configDir, int(fd))
+}
 
+func startMobileTun(configDir *C.char, fd int) *C.char {
 	if err := setHomeDir(C.GoString(configDir)); err != nil {
 		return cError(err)
 	}
@@ -127,7 +150,6 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 		return cError(errors.New("external-controller-unix is not configured in config.yaml; configDir may not have been loaded"))
 	}
 
-	// Recreate the whole runtime on every startTun call.
 	if tunListener != nil {
 		_ = tunListener.Close()
 		tunListener = nil
@@ -138,9 +160,8 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 	}
 
 	// Let mihomo apply the complete config except TUN. TUN is created below
-	// directly through sing_tun.New, exactly like FlClash does, so mixed/system
-	// stacks can bind to the VpnService address and are not limited by hub's
-	// route/listener bookkeeping.
+	// directly through sing_tun.New, so the externally established interface
+	// remains under the mobile VPN service's control.
 	cfg.General.Tun.Enable = false
 	hub.ApplyConfig(cfg)
 
@@ -149,9 +170,68 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 		return nil
 	}
 
-	options := buildFdTunOptions(cfg, int(fd), runtime.GOOS)
+	options := buildFdTunOptions(cfg, fd, runtime.GOOS)
 	listener, err := sing_tun.New(options, tunnel.Tunnel)
 	if err != nil {
+		executor.Shutdown()
+		return cError(fmt.Errorf("start tun: %w", err))
+	}
+
+	tunListener = listener
+	started = true
+	return nil
+}
+
+func startDesktopTun(configDir *C.char, fd int) *C.char {
+	if err := setHomeDir(C.GoString(configDir)); err != nil {
+		return cError(err)
+	}
+
+	cfg, err := executor.Parse()
+	if err != nil {
+		return cError(fmt.Errorf("parse config: %w", err))
+	}
+
+	if fd != 0 && (cfg.Controller == nil || cfg.Controller.ExternalControllerUnix == "") {
+		return cError(errors.New("external-controller-unix is not configured in config.yaml; configDir may not have been loaded"))
+	}
+
+	if err := resetDesktopTunListener(); err != nil {
+		return cError(err)
+	}
+	if started {
+		executor.Shutdown()
+		started = false
+	}
+
+	tunFD := fd
+	if tunFD == -1 {
+		tunFD, err = acquireMacOSTun(cfg)
+		if err != nil {
+			return cError(fmt.Errorf("acquire macOS TUN: %w", err))
+		}
+		tunBrokerActive = true
+	}
+
+	cfg.General.Tun.Enable = false
+	hub.ApplyConfig(cfg)
+
+	if tunFD <= 0 {
+		started = true
+		return nil
+	}
+
+	options := buildDesktopFdTunOptions(cfg, tunFD)
+	listener, err := sing_tun.New(options, tunnel.Tunnel)
+	if err != nil {
+		_ = closeMacOSTunFD(tunFD)
+		if tunBrokerActive {
+			if deactivateErr := deactivateMacOSTun(); deactivateErr != nil {
+				err = errors.Join(err, deactivateErr)
+			} else {
+				tunBrokerActive = false
+			}
+		}
 		executor.Shutdown()
 		return cError(fmt.Errorf("start tun: %w", err))
 	}
@@ -178,13 +258,18 @@ func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
 		device = "clashy"
 	}
 
+	autoDetectInterface := cfg.General.Tun.AutoDetectInterface
+	if goos == "android" {
+		autoDetectInterface = false
+	}
+
 	return LC.Tun{
 		Enable:              true,
 		Device:              device,
 		Stack:               stack,
 		DNSHijack:           dnsHijack,
 		AutoRoute:           false,
-		AutoDetectInterface: false,
+		AutoDetectInterface: autoDetectInterface,
 		Inet4Address: []netip.Prefix{
 			netip.MustParsePrefix("172.19.0.1/30"),
 		},
@@ -196,28 +281,45 @@ func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
 	}
 }
 
-// applyTunOptions forces TUN on. A positive fd makes sing-tun adopt that
-// descriptor, which is how a VpnService supplied interface is used: sing-tun
-// then leaves addresses, routes and rules to the system that created it.
-func applyTunOptions(cfg *config.Config, fd int) {
-	cfg.General.Tun.Enable = true
-
-	// Android VpnService owns routing and interface selection. Disabling these
-	// avoids sing-tun's Android netlink monitor, which is unavailable to normal
-	// Android apps and otherwise makes TUN creation fail.
-	cfg.General.Tun.AutoRoute = false
-	cfg.General.Tun.AutoDetectInterface = false
-	cfg.General.Tun.MTU = 1500
-	cfg.General.Tun.Inet4Address = []netip.Prefix{
-		netip.MustParsePrefix("172.19.0.1/30"),
+func buildDesktopFdTunOptions(cfg *config.Config, fd int) LC.Tun {
+	stack := cfg.General.Tun.Stack
+	if stack.String() == "unknown" {
+		stack = constant.TunGvisor
 	}
-	cfg.General.Tun.Inet6Address = []netip.Prefix{
-		netip.MustParsePrefix("fdfe:dcba:9876::1/126"),
-	}
-	cfg.General.Tun.DNSHijack = []string{"0.0.0.0:53"}
 
-	if fd > 0 {
-		cfg.General.Tun.FileDescriptor = fd
+	mtu := cfg.General.Tun.MTU
+	if mtu == 0 {
+		mtu = 9000
+	}
+	device := cfg.General.Tun.Device
+	if device == "" {
+		device = "clashy"
+	}
+
+	inet4Address := cfg.General.Tun.Inet4Address
+	if len(inet4Address) == 0 {
+		inet4Address = []netip.Prefix{
+			netip.MustParsePrefix("172.19.0.1/30"),
+		}
+	}
+	inet6Address := cfg.General.Tun.Inet6Address
+	if len(inet6Address) == 0 {
+		inet6Address = []netip.Prefix{
+			netip.MustParsePrefix("fdfe:dcba:9876::1/126"),
+		}
+	}
+
+	return LC.Tun{
+		Enable:              true,
+		Device:              device,
+		Stack:               stack,
+		DNSHijack:           []string{"172.19.0.2:53"},
+		AutoRoute:           false,
+		AutoDetectInterface: true,
+		Inet4Address:        inet4Address,
+		Inet6Address:        inet6Address,
+		MTU:                 mtu,
+		FileDescriptor:      fd,
 	}
 }
 
@@ -228,11 +330,17 @@ func stop() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
+	if runtime.GOOS == "darwin" {
+		return stopDesktop()
+	}
+	return stopMobile()
+}
+
+func stopMobile() *C.char {
 	if tunListener != nil {
 		_ = tunListener.Close()
 		tunListener = nil
 	}
-
 	if started {
 		executor.Shutdown()
 		started = false
@@ -240,6 +348,21 @@ func stop() *C.char {
 
 	listener.Cleanup()
 	started = false
+	return nil
+}
+
+func stopDesktop() *C.char {
+	resetErr := resetDesktopTunListener()
+	if started {
+		executor.Shutdown()
+		started = false
+	}
+
+	listener.Cleanup()
+	started = false
+	if resetErr != nil {
+		return cError(resetErr)
+	}
 	return nil
 }
 
@@ -252,10 +375,50 @@ func stopTun() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
-	resetTunListener()
+	if runtime.GOOS == "darwin" {
+		return stopDesktopTun()
+	}
+	return stopMobileTun()
+}
+
+func stopMobileTun() *C.char {
+	resetMobileTunListener()
 	tunnel.OnSuspend()
 	started = false
 	return nil
+}
+
+func stopDesktopTun() *C.char {
+	if err := resetDesktopTunListener(); err != nil {
+		return cError(err)
+	}
+	tunnel.OnSuspend()
+	started = false
+	return nil
+}
+
+func resetMobileTunListener() {
+	listener.ReCreateTun(LC.Tun{}, tunnel.Tunnel)
+}
+
+func resetDesktopTunListener() error {
+	var errs []error
+	if tunBrokerActive {
+		if err := deactivateMacOSTun(); err != nil {
+			errs = append(errs, err)
+		} else {
+			tunBrokerActive = false
+		}
+	}
+	if tunListener != nil {
+		if err := tunListener.Close(); err != nil {
+			errs = append(errs, err)
+		}
+		tunListener = nil
+	}
+	// ReCreateTun clears mihomo's cached TUN configuration.
+	listener.ReCreateTun(LC.Tun{}, tunnel.Tunnel)
+	return errors.Join(errs...)
 }
 
 // freeString releases a string returned by this library.

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:clash_service/clash_service.dart' show ClashService;
 import 'package:clashy/app_window.dart';
 import 'package:clashy/pages/application_list/controller/application_list_controller.dart';
 import 'package:clashy/pages/clash_settings/controller/profile_script_controller.dart';
@@ -20,12 +19,11 @@ import 'pages/webdav_backup/controller/webdav_backup_controller.dart';
 Future<bool> initMain() async {
   try {
     initLog();
+    _registerMacOsShutdownHandler();
 
     await [G.init()].wait;
-    _initTray();
     initController();
 
-    _registerMacOsShutdownHandler();
     return true;
   } catch (e) {
     Log.e("init error: $e");
@@ -49,16 +47,6 @@ void initController() {
   router.put(() => ProfileScriptController());
   router.put(() => WebDavBackupController());
   router.put(() => ClashEvent());
-}
-
-Future<void> _initTray() async {
-  if (Platform.isMacOS) {
-    try {
-      await ClashService.ensureTrayStarted(clashSocket: G.unixSocketPath);
-    } catch (e) {
-      Log.e('start macOS tray failed: $e');
-    }
-  }
 }
 
 void _registerMacOsShutdownHandler() {

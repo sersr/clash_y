@@ -82,11 +82,17 @@ Future<void> clashServer() async {
     final file = fs.currentDirectory.childFile(clashSocket);
     file.parent.createSync(recursive: true);
 
-    try {
-      if (file.existsSync()) {
+    if (file.existsSync()) {
+      try {
         file.deleteSync();
+      } on FileSystemException catch (error) {
+        throw FileSystemException(
+          'Failed to remove stale Clash service socket: ${error.message}',
+          file.path,
+          error.osError,
+        );
       }
-    } catch (_) {}
+    }
   }
 
   final server = HttpServer.listenOn(await bind(clashSocket));
@@ -94,9 +100,18 @@ Future<void> clashServer() async {
   io.serveRequests(server, handler, poweredByHeader: 'clash VPN');
 
   if (!Platform.isWindows) {
-    // 4. 设置权限（统一用 chmod / chown）
-    await Process.run('chmod', ['666', clashSocket]);
-    await Process.run('chown', ['root:wheel', clashSocket]);
+    final chmod = await Process.run('/bin/chmod', ['666', clashSocket]);
+    if (chmod.exitCode != 0) {
+      throw ProcessException(
+        '/bin/chmod',
+        ['666', clashSocket],
+        '${chmod.stderr}',
+        chmod.exitCode,
+      );
+    }
+    if (!Platform.isMacOS) {
+      await Process.run('chown', ['root:wheel', clashSocket]);
+    }
     print('Serving at http://${server.address.host}:${server.port}');
   }
 

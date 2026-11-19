@@ -83,7 +83,6 @@ class ClashController with NopLifecycle {
     final started = await ClashService.startCore(
       profile,
       controllerSocketPath: unixSockPath,
-      trayClashSocket: unixSockPath,
     );
     if (!started) {
       throw StateError('Failed to start the Clash core.');
@@ -161,7 +160,6 @@ class ClashController with NopLifecycle {
             ? SettingsHive.disAllowApplications.value
             : const <String>[],
         controllerSocketPath: unixSockPath,
-        trayClashSocket: unixSockPath,
       );
       if (!started) {
         await _queryRunningState();

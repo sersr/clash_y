@@ -1,7 +1,6 @@
 import 'dart:io' as io;
 
 import 'package:code_assets/code_assets.dart';
-import 'package:data_assets/data_assets.dart';
 import 'package:file/file.dart';
 import 'package:file/local.dart';
 import 'package:hooks/hooks.dart';
@@ -64,121 +63,171 @@ Future<void> buildWakeMonitor(
   );
 }
 
+Future<void> buildTrayExecutable(
+  BuildInput input,
+  BuildOutputBuilder output,
+) async {
+  if (!input.config.buildCodeAssets) return;
+  if (input.config.code.targetOS != .macOS) return;
+
+  final serverDir = _fs.currentDirectory.childDirectory(input.packageRoot.path);
+  final targetOs = input.config.code.targetOS;
+  final architecture = switch (input.config.code.targetArchitecture) {
+    Architecture.arm64 => 'arm64',
+    Architecture.x64 => 'x86_64',
+    _ => throw UnsupportedError(
+      'Unsupported macOS tray architecture: '
+      '${input.config.code.targetArchitecture.name}',
+    ),
+  };
+  final triple = '$architecture-apple-macosx12.0';
+  final trayDir = _fs.currentDirectory
+      .childDirectory(input.packageRoot.path)
+      .parent
+      .childDirectory('clash_tray');
+  final result = await io.Process.run('swift', [
+    'build',
+    '--package-path',
+    trayDir.path,
+    '--triple',
+    triple,
+    '-c',
+    'release',
+    '--product',
+    'ClashTray',
+  ]);
+  if (result.exitCode != 0) {
+    throw Exception('swift build failed: ClashTray.\n${result.stderr}');
+  }
+
+  final binPathResult = await io.Process.run('swift', [
+    'build',
+    '--package-path',
+    trayDir.path,
+    '--triple',
+    triple,
+    '-c',
+    'release',
+    '--show-bin-path',
+  ]);
+  if (binPathResult.exitCode != 0) {
+    throw Exception(
+      'swift build failed to locate ClashTray output.\n'
+      '${binPathResult.stderr}',
+    );
+  }
+  final sourceExecutable = _fs
+      .directory((binPathResult.stdout as String).trim())
+      .childFile('ClashTray');
+  final exeDir = serverDir
+      .childDirectory('build')
+      .childDirectory('cli')
+      .childDirectory('${targetOs}_${input.config.code.targetArchitecture}')
+      .childDirectory('bundle')
+      .childDirectory('bin');
+  exeDir.createSync(recursive: true);
+  final trayExecutable = exeDir.childFile(clashTrayExecutableName);
+  sourceExecutable.copySync(trayExecutable.path);
+  final chmodResult = await io.Process.run('/bin/chmod', [
+    '755',
+    trayExecutable.path,
+  ]);
+  if (chmodResult.exitCode != 0) {
+    throw io.ProcessException(
+      '/bin/chmod',
+      ['755', trayExecutable.path],
+      '${chmodResult.stderr}',
+      chmodResult.exitCode,
+    );
+  }
+
+  final traySources = trayDir.childDirectory('Sources');
+  if (await traySources.exists()) {
+    for (final item in traySources.listSync(recursive: true)) {
+      if (item case File file) {
+        output.dependencies.add(Uri.file(file.absolute.path));
+      }
+    }
+  }
+  output.dependencies.add(
+    Uri.file(trayDir.childFile('Package.swift').absolute.path),
+  );
+}
+
 /// 在守护进程中运行的服务
 Future<void> buildClashServer(
   BuildInput input,
   BuildOutputBuilder output,
 ) async {
-  if (!input.config.buildDataAssets) return;
+  if (!input.config.buildCodeAssets) return;
 
   if (!input.config.code.targetOS.isDesktop) return;
 
   final targetOs = input.config.code.targetOS;
   final arc = input.config.code.targetArchitecture;
 
-  final packageName = input.packageName;
-
-  final serverDir = _fs.currentDirectory;
-
-  final result = await io.Process.run('dart', [
-    'build',
-    'cli',
-  ], workingDirectory: serverDir.path);
-
-  if (result.exitCode != 0) {
-    throw Exception('dart build cli failed: server.\n${result.stderr}');
-  }
+  final serverDir = _fs.currentDirectory.childDirectory(input.packageRoot.path);
 
   final exeDir = _fs.currentDirectory.childDirectory(
     join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle', 'bin'),
   );
 
-  final clashLibDir = _fs.currentDirectory.childDirectory(
-    join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle', 'lib'),
-  );
-
-  final libDir = serverDir.childDirectory('lib');
-  if (await libDir.exists()) {
-    final list = await libDir.list(recursive: true).toList();
-    for (var item in list) {
-      if (item case File f) {
-        if (f.basename.endsWith('.dart')) {
-          output.dependencies.add(Uri.file(f.absolute.path));
-        }
-      }
-    }
-  }
-
-  final bins = await exeDir.list().toList();
-
-  final suf = targetOs.dylibFileName('').split('.').last;
-  for (var item in bins) {
-    if (item case File f) {
-      output.assets.data.add(
-        DataAsset(
-          package: packageName,
-          name: 'bin/${f.basename}',
-          file: Uri.file(item.path, windows: targetOs == .windows),
-        ),
-      );
-    }
-  }
-
-  final libs = await clashLibDir.list().toList();
-
-  for (var item in libs) {
-    if (item case File f when f.basename.endsWith('.$suf')) {
-      output.assets.data.add(
-        DataAsset(
-          package: packageName,
-          name: 'lib/${f.basename}',
-          file: Uri.file(item.path, windows: targetOs == .windows),
-        ),
-      );
-    }
-  }
-
   if (targetOs == .macOS) {
-    // 用户级状态栏程序：由 clashyService daemon 直接启动，app 退出后图标仍在。
-    final trayDir = _fs.currentDirectory
-        .childDirectory(input.packageRoot.path)
-        .parent
-        .childDirectory('clash_tray');
-    final trayResult = await io.Process.run('swift', [
+    final goArchitecture = switch (arc) {
+      Architecture.arm64 => 'arm64',
+      Architecture.x64 => 'amd64',
+      _ => throw UnsupportedError(
+        'Unsupported macOS helper architecture: ${arc.name}',
+      ),
+    };
+    final coreDir = serverDir.parent
+        .childDirectory('clash_core')
+        .childDirectory('core');
+    final helperPath = exeDir.childFile('clashyTunHelper');
+    helperPath.parent.createSync(recursive: true);
+    final helperArguments = [
       'build',
-      '--package-path',
-      trayDir.path,
-      '-c',
-      'release',
-      '--product',
-      'ClashTray',
-    ]);
-    if (trayResult.exitCode != 0) {
-      throw Exception('swift build failed: ClashTray.\n${trayResult.stderr}');
+      '-trimpath',
+      '-o',
+      helperPath.path,
+      './cmd/clashy_tun_helper',
+    ];
+    final helperResult = await io.Process.run(
+      'go',
+      helperArguments,
+      workingDirectory: coreDir.path,
+      environment: {
+        ...io.Platform.environment,
+        'CGO_ENABLED': '0',
+        'GOOS': 'darwin',
+        'GOARCH': goArchitecture,
+      },
+    );
+    if (helperResult.exitCode != 0) {
+      throw io.ProcessException(
+        'go',
+        helperArguments,
+        '${helperResult.stdout}\n${helperResult.stderr}',
+        helperResult.exitCode,
+      );
     }
 
-    output.assets.data.add(
-      DataAsset(
-        package: packageName,
-        name: clashTrayAssetName,
-        file: Uri.file(
-          join(trayDir.path, '.build', 'release', 'ClashTray'),
-          windows: false,
-        ),
-      ),
+    output.dependencies.add(
+      Uri.file(coreDir.childFile('go.mod').absolute.path),
     );
-
-    final traySources = trayDir.childDirectory('Sources');
-    if (await traySources.exists()) {
-      for (final item in traySources.listSync(recursive: true)) {
+    output.dependencies.add(
+      Uri.file(coreDir.childFile('go.sum').absolute.path),
+    );
+    for (final sourceDirectory in [
+      coreDir.childDirectory('tunbroker'),
+      coreDir.childDirectory('cmd').childDirectory('clashy_tun_helper'),
+    ]) {
+      for (final item in sourceDirectory.listSync(recursive: true)) {
         if (item case File file) {
           output.dependencies.add(Uri.file(file.absolute.path));
         }
       }
     }
-    output.dependencies.add(
-      Uri.file(trayDir.childFile('Package.swift').absolute.path),
-    );
   }
 }
 

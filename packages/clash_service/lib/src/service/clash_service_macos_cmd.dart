@@ -1,54 +1,60 @@
-import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:server/server.dart' show clashSocket;
+import 'package:server/tray_asset.dart';
 
-
-const _package = 'packages/server';
-class HelperInstaller {
-  static const _serviceId = 'com.aote.clashy.helper';
-  static const _plistPath =
-      '/Library/LaunchDaemons/com.aote.clashy.helper.plist';
-  static const _helperDst =
-      '/Library/PrivilegedHelperTools/com.aote.clashy.helper';
-  static const _helperClashlibDst =
-      '/Library/PrivilegedHelperTools/com.aote.clashy.helper.clash';
-  static const _helperWakeMonitorDst =
-      '/Library/PrivilegedHelperTools/com.aote.clashy.helper.wake';
-  static const _logFile = '/var/log/clashy-install.log';
-  static const _serviceLogFile = '/var/log/clashy-service.log';
-  static const _serviceErrorLogFile = '/var/log/clashy-service-error.log';
-
-  /// bundle 内源文件相对路径（相对于 .app 根目录）
-  static const _helperRel =
+abstract final class MacOSServiceProcess {
+  static const _serviceLabel = 'com.aote.clashy.service';
+  static const _helperRelativePath =
       'Contents/Frameworks/App.framework/Versions/A/Resources/flutter_assets/'
-      '$_package/bin/clashyService';
-  static const _clashRel =
+      'packages/clash_service/bin/clashyService';
+  static const _tunHelperRelativePath =
       'Contents/Frameworks/App.framework/Versions/A/Resources/flutter_assets/'
-      '$_package/lib/libclash.dylib';
+      'packages/clash_service/bin/clashyTunHelper';
 
-  /// 当前 .app bundle 的绝对路径
   static String get _bundlePath {
-    final exe = Platform.resolvedExecutable;
-    final idx = exe.indexOf('/Contents/MacOS/');
-    if (idx < 0) throw StateError('无法解析 App bundle 路径: $exe');
-    return exe.substring(0, idx);
+    final executable = Platform.resolvedExecutable;
+    final marker = executable.indexOf('/Contents/MacOS/');
+    if (marker < 0) {
+      throw StateError('无法解析 App bundle 路径: $executable');
+    }
+    return executable.substring(0, marker);
   }
 
-  static String get _helperSrc => '$_bundlePath/$_helperRel';
-  static String get _clashSrc => '$_bundlePath/$_clashRel';
+  static String get _helperPath => '$_bundlePath/$_helperRelativePath';
+  static String get _tunHelperPath =>
+      p.join(_bundlePath, _tunHelperRelativePath);
+  static String get _trayPath =>
+      p.join(p.dirname(_helperPath), clashTrayExecutableName);
 
-  /// helper 是否已安装并运行
+  static String get _launchAgentPath =>
+      p.join(_homeDirectory, 'Library', 'LaunchAgents', '$_serviceLabel.plist');
+
+  static String get _homeDirectory {
+    final home = Platform.environment['HOME'];
+    if (home == null || home.isEmpty) {
+      throw StateError('HOME is not set for the macOS app process');
+    }
+    return home;
+  }
+
   static Future<bool> isInstalled() async {
-    final r = await Process.run('launchctl', ['print', 'system/$_serviceId']);
-    return r.exitCode == 0;
+    try {
+      await _validateBundleAssets();
+      return true;
+    } on FileSystemException {
+      return false;
+    } on StateError {
+      return false;
+    }
   }
 
-  /// daemon 是否正在运行
   static Future<bool> isRunning() async {
-    final r = await Process.run('launchctl', ['print', 'system/$_serviceId']);
-    if (r.exitCode != 0) return false;
-    return (r.stdout as String).contains('state = running');
+    final domain = await _guiDomain();
+    final status = await _launchAgentStatus(domain);
+    return status != null && RegExp(r'\bstate = running\b').hasMatch(status);
   }
 
   static Future<bool> hasOtherVpnConnection({
@@ -92,31 +98,213 @@ class HelperInstaller {
     });
   }
 
-  /// LaunchDaemon 当前配置是否与 app bundle 路径生成的 plist 一致。
-  static Future<bool> _isUpToDate(String expectedPlist) async {
-    try {
-      final plist = File(_plistPath);
-      if (!await plist.exists()) return false;
-      return await plist.readAsString() == expectedPlist;
-    } on FileSystemException {
-      return false;
+  static Future<void> install({required String clashSocketPath}) async {
+    await _validateBundleAssets();
+    final domain = await _guiDomain();
+    final plistFile = File(_launchAgentPath);
+    final expectedPlist = _launchAgentPlist(clashSocketPath);
+    final plistIsCurrent =
+        await plistFile.exists() &&
+        await plistFile.readAsString() == expectedPlist;
+    final status = await _launchAgentStatus(domain);
+    final isLoaded = status != null;
+    final isRunning =
+        status != null && RegExp(r'\bstate = running\b').hasMatch(status);
+    if (plistIsCurrent && isRunning) {
+      await _waitUntilRunning(domain);
+      return;
     }
+
+    await plistFile.parent.create(recursive: true);
+    final temporaryPlist = File('$_launchAgentPath.tmp');
+    await temporaryPlist.writeAsString(expectedPlist, flush: true);
+    await temporaryPlist.rename(_launchAgentPath);
+
+    await _runLaunchctlSetup(
+      domain: domain,
+      plistPath: _launchAgentPath,
+      bootOutFirst: isLoaded,
+    );
+    await _waitUntilRunning(domain);
+  }
+
+  static String _launchAgentPlist(String clashSocketPath) =>
+      '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$_serviceLabel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${_xmlEscape(_helperPath)}</string>
+    <string>--app</string>
+    <string>${_xmlEscape(_bundlePath)}</string>
+    <string>--service-socket</string>
+    <string>${_xmlEscape(clashSocket)}</string>
+    <string>--clash-socket</string>
+    <string>${_xmlEscape(clashSocketPath)}</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${_xmlEscape(_bundlePath)}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
+''';
+
+  static Future<String> _guiDomain() async {
+    final result = await Process.run('/usr/bin/id', ['-u']);
+    if (result.exitCode != 0) {
+      throw ProcessException(
+        '/usr/bin/id',
+        const ['-u'],
+        '${result.stderr}',
+        result.exitCode,
+      );
+    }
+    final uid = (result.stdout as String).trim();
+    if (!RegExp(r'^[1-9]\d*$').hasMatch(uid)) {
+      throw FormatException('Unexpected user ID for LaunchAgent: $uid');
+    }
+    return 'gui/$uid';
+  }
+
+  static Future<String?> _launchAgentStatus(String domain) async {
+    final result = await Process.run('/bin/launchctl', [
+      'print',
+      '$domain/$_serviceLabel',
+    ]);
+    if (result.exitCode != 0) return null;
+    return result.stdout as String;
+  }
+
+  static Future<void> _runLaunchctl(List<String> arguments) async {
+    final result = await Process.run('/bin/launchctl', arguments);
+    if (result.exitCode != 0) {
+      throw ProcessException(
+        '/bin/launchctl',
+        arguments,
+        '${result.stderr}',
+        result.exitCode,
+      );
+    }
+  }
+
+  static Future<void> _runLaunchctlSetup({
+    required String domain,
+    required String plistPath,
+    required bool bootOutFirst,
+  }) async {
+    const script = '''
+set -eu
+domain="\$1"
+label="\$2"
+plist="\$3"
+if [ "\$4" = "1" ]; then
+  /bin/launchctl bootout "\$domain/\$label"
+fi
+/bin/launchctl enable "\$domain/\$label"
+/bin/launchctl bootstrap "\$domain" "\$plist"
+''';
+    final arguments = [
+      '-c',
+      script,
+      'clashy-launch-agent',
+      domain,
+      _serviceLabel,
+      plistPath,
+      if (bootOutFirst) '1' else '0',
+    ];
+    final result = await Process.run('/bin/sh', arguments);
+    if (result.exitCode != 0) {
+      throw ProcessException(
+        '/bin/sh',
+        arguments,
+        '${result.stderr}',
+        result.exitCode,
+      );
+    }
+  }
+
+  static String _xmlEscape(String value) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
+
+  static Future<void> _waitUntilRunning(String domain) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
+    while (DateTime.now().isBefore(deadline)) {
+      final status = await _launchAgentStatus(domain);
+      if (status != null &&
+          RegExp(r'\bstate = running\b').hasMatch(status) &&
+          await _isServiceSocketReady()) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    throw StateError('macOS clashyService did not become ready.');
+  }
+
+  static Future<bool> _isServiceSocketReady() async {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(
+        InternetAddress(clashSocket, type: InternetAddressType.unix),
+        0,
+        timeout: const Duration(milliseconds: 500),
+      );
+      return true;
+    } on SocketException {
+      return false;
+    } on TimeoutException {
+      return false;
+    } finally {
+      socket?.destroy();
+    }
+  }
+
+  static Future<void> stop() async {
+    final domain = await _guiDomain();
+    await _stop(domain);
+  }
+
+  static Future<void> _stop(String domain) async {
+    if (await _launchAgentStatus(domain) == null) return;
+    await _runLaunchctl(['bootout', '$domain/$_serviceLabel']);
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (DateTime.now().isBefore(deadline)) {
+      if (await _launchAgentStatus(domain) == null &&
+          !await _isServiceSocketReady()) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    throw StateError('macOS clashyService did not stop after launchd bootout.');
+  }
+
+  static Future<void> uninstall() async {
+    final domain = await _guiDomain();
+    await _stop(domain);
+    await _runLaunchctl(['disable', '$domain/$_serviceLabel']);
+    final plistFile = File(_launchAgentPath);
+    if (await plistFile.exists()) await plistFile.delete();
   }
 
   static Future<void> _validateBundleAssets() async {
     final bundlePath = p.normalize(p.absolute(_bundlePath));
     if (!p.basename(bundlePath).endsWith('.app')) {
-      throw StateError(
-        'macOS service requires an app bundle in a system-protected location',
-      );
+      throw StateError('macOS service requires an app bundle');
     }
 
-    final assets = <(String, FileSystemEntityType)>[
-      (_helperSrc, FileSystemEntityType.file),
-      (_clashSrc, FileSystemEntityType.file),
-    ];
-    final checkedModes = <String, int>{};
-    for (final (assetPath, expectedType) in assets) {
+    final assets = [_helperPath, _tunHelperPath, _trayPath];
+    final checkedPaths = <String>{};
+    for (final assetPath in assets) {
       final path = p.normalize(p.absolute(assetPath));
       if (!p.isWithin(bundlePath, path)) {
         throw StateError(
@@ -124,9 +312,7 @@ class HelperInstaller {
         );
       }
 
-      var current = '/';
-      for (final component in p.relative(path, from: '/').split('/')) {
-        current = p.join(current, component);
+      for (final current in _pathComponents(path)) {
         final type = await FileSystemEntity.type(current, followLinks: false);
         if (type == FileSystemEntityType.link ||
             type == FileSystemEntityType.notFound) {
@@ -134,301 +320,72 @@ class HelperInstaller {
             'macOS service path is missing or contains a symlink: $current',
           );
         }
-        final mode = checkedModes[current] ?? await _readMode(current);
-        checkedModes[current] = mode;
-        if ((current == bundlePath || p.isWithin(bundlePath, current)) &&
-            (mode & 0x12) != 0) {
-          throw StateError(
-            'macOS service path must not be writable by other users: '
-            '$current',
-          );
-        }
-        if (assetPath == _helperSrc && current == path && (mode & 0x40) == 0) {
-          throw StateError('macOS service helper is not executable: $path');
-        }
+        checkedPaths.add(current);
       }
 
       if (await FileSystemEntity.type(path, followLinks: false) !=
-          expectedType) {
+          FileSystemEntityType.file) {
         throw StateError('macOS service asset is missing: $path');
+      }
+    }
+
+    final modes = await _readModes(checkedPaths.toList());
+    for (final assetPath in assets) {
+      final path = p.normalize(p.absolute(assetPath));
+      for (final current in _pathComponents(path)) {
+        final mode = modes[current];
+        if (mode == null) {
+          throw StateError('Missing permissions for service path: $current');
+        }
+        final insideBundle =
+            current == bundlePath || p.isWithin(bundlePath, current);
+        if (insideBundle && (mode & 0x12) != 0) {
+          throw StateError(
+            'macOS service path must not be writable by other users: $current',
+          );
+        }
+        if (current == path && (mode & 0x40) == 0) {
+          throw StateError('macOS service executable is not executable: $path');
+        }
       }
     }
   }
 
-  static Future<int> _readMode(String path) async {
-    final result = await Process.run('/usr/bin/stat', ['-f', '%Lp', path]);
+  static List<String> _pathComponents(String path) {
+    var current = '/';
+    return p.relative(path, from: '/').split('/').map((component) {
+      current = p.join(current, component);
+      return current;
+    }).toList();
+  }
+
+  static Future<Map<String, int>> _readModes(List<String> paths) async {
+    final arguments = ['-f', '%Lp', ...paths];
+    final result = await Process.run('/usr/bin/stat', arguments);
     if (result.exitCode != 0) {
       throw ProcessException(
         '/usr/bin/stat',
-        ['-f', '%Lp', path],
+        arguments,
         '${result.stderr}',
         result.exitCode,
       );
     }
-    final permissions = (result.stdout as String).trim();
-    if (!RegExp(r'^[0-7]{3,4}$').hasMatch(permissions)) {
+    final permissions = (result.stdout as String).trim().split('\n');
+    if (permissions.length != paths.length) {
       throw FormatException(
-        'Unexpected stat output for $path: ${result.stdout}',
+        'Unexpected stat output for ${paths.length} paths: ${result.stdout}',
       );
+    }
+    return {
+      for (var index = 0; index < paths.length; index++)
+        paths[index]: _parseMode(paths[index], permissions[index]),
+    };
+  }
+
+  static int _parseMode(String path, String permissions) {
+    if (!RegExp(r'^[0-7]{3,4}$').hasMatch(permissions)) {
+      throw FormatException('Unexpected stat output for $path: $permissions');
     }
     return int.parse(permissions, radix: 8);
   }
-
-  /// 安装 helper（弹系统密码框）。
-  ///
-  /// LaunchDaemon 直接运行 app bundle 中的 helper。配置只依赖 bundle 路径，
-  /// 避免 clean 后重编译的二进制哈希变化导致重复请求管理员授权。
-  static Future<void> install() async {
-    await _validateBundleAssets();
-    final plist = await _launchDaemonPlist();
-    if (await _isUpToDate(plist)) {
-      if (!await isRunning()) {
-        await _runPrivileged(_buildStartScript());
-      }
-    } else {
-      await _runPrivileged(_buildInstallScript(plist));
-    }
-    await _waitUntilRunning();
-  }
-
-  static Future<void> _waitUntilRunning() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 30));
-    while (DateTime.now().isBefore(deadline)) {
-      if (await isRunning()) return;
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-    }
-
-    throw StateError(
-      'macOS helper did not enter the running state. '
-      'See $_serviceLogFile and $_serviceErrorLogFile.',
-    );
-  }
-
-  /// 停止 helper（弹系统密码框），仅停止 daemon，保留已安装文件
-  static Future<void> stop() async {
-    await _runPrivileged(_buildStopScript());
-  }
-
-  /// 卸载 helper（弹系统密码框）
-  static Future<void> uninstall() async {
-    await _runPrivileged(_buildUninstallScript());
-  }
-
-  /// 读取安装日志
-  static Future<String> readLog() async {
-    final f = File(_logFile);
-    if (!await f.exists()) return '(暂无日志)';
-    return f.readAsString();
-  }
-
-  // ==================== 脚本内容 ====================
-
-  static String _buildInstallScript(String plistContents) {
-    final plistBase64 = base64.encode(utf8.encode(plistContents));
-    return '''
-#!/bin/bash
-
-log() { echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$*" | tee -a "$_logFile"; }
-
-log "========== install-helper 开始 =========="
-
-if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
-    log "停止并卸载旧实例..."
-    if ! launchctl bootout "system/$_serviceId"; then
-        log "❌ bootout 旧实例失败，取消覆盖安装"
-        exit 1
-    fi
-    sleep 1
-fi
-
-printf '%s' '$plistBase64' | /usr/bin/base64 -D > "$_plistPath"
-if [ \$? -ne 0 ]; then
-    log "❌ 生成 LaunchDaemon plist 失败"
-    exit 1
-fi
-
-if ! plutil -lint "$_plistPath" >/dev/null; then
-    log "❌ LaunchDaemon plist 无效"
-    exit 1
-fi
-
-chown root:wheel "$_plistPath"
-chmod 644 "$_plistPath"
-log "plist 已写入 $_plistPath"
-
-rm -f "$_helperDst" "$_helperClashlibDst" "$_helperWakeMonitorDst"
-
-launchctl bootstrap system "$_plistPath" || log "bootstrap 失败，退出码 \$?"
-launchctl enable "system/$_serviceId" 2>/dev/null || true
-launchctl kickstart -kp "system/$_serviceId" 2>/dev/null || log "kickstart 失败"
-
-if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
-    log "✅ 服务已加载"
-else
-    log "❌ 服务未加载"
-    exit 1
-fi
-
-i=0
-while [ \$i -lt 30 ]; do
-    if launchctl print "system/$_serviceId" 2>/dev/null | grep -q "state = running"; then
-        log "✅ 服务已进入运行状态"
-        exit 0
-    fi
-    sleep 1
-    i=\$((i + 1))
-done
-
-log "❌ 服务未能进入运行状态"
-launchctl print "system/$_serviceId" 2>&1 | tee -a "$_logFile"
-tail -50 "$_serviceErrorLogFile" "$_serviceLogFile" 2>/dev/null | tee -a "$_logFile"
-exit 1
-''';
-  }
-
-  static Future<String> _launchDaemonPlist() async {
-    final arguments = [_helperSrc, '--clash-library', _clashSrc];
-    final programArguments = arguments
-        .map((argument) => '<string>${_escapeXml(argument)}</string>')
-        .join();
-    return '''<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>$_serviceId</string>
-    <key>ProgramArguments</key>
-    <array>$programArguments</array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>$_serviceLogFile</string>
-    <key>StandardErrorPath</key>
-    <string>$_serviceErrorLogFile</string>
-    <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
-</dict>
-</plist>
-''';
-  }
-
-  static String _escapeXml(String value) => value
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&apos;');
-
-  /// 文件已一致时仅启动服务，不复制
-  static String _buildStartScript() {
-    return '''
-#!/bin/bash
-
-log() { echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$*" | tee -a "$_logFile"; }
-
-log "========== start-helper 开始 =========="
-
-if [ ! -f "$_plistPath" ]; then
-    log "❌ 找不到 plist: $_plistPath"
-    exit 1
-fi
-
-if launchctl print "system/$_serviceId" 2>/dev/null | grep -q "state = running"; then
-    log "✅ 服务已在运行"
-    exit 0
-fi
-
-if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
-    launchctl kickstart "system/$_serviceId" 2>/dev/null || log "kickstart 失败"
-else
-    launchctl bootstrap system "$_plistPath" || log "bootstrap 失败，退出码 \$?"
-fi
-launchctl enable "system/$_serviceId" 2>/dev/null || true
-
-i=0
-while [ \$i -lt 30 ]; do
-    if launchctl print "system/$_serviceId" 2>/dev/null | grep -q "state = running"; then
-        log "✅ 服务已进入运行状态"
-        exit 0
-    fi
-    sleep 1
-    i=\$((i + 1))
-done
-
-log "❌ 服务未能进入运行状态"
-launchctl print "system/$_serviceId" 2>&1 | tee -a "$_logFile"
-tail -50 "$_serviceErrorLogFile" "$_serviceLogFile" 2>/dev/null | tee -a "$_logFile"
-exit 1
-''';
-  }
-
-  /// 仅停止 daemon，保留 plist 与 app bundle 资源
-  static String _buildStopScript() {
-    return '''
-#!/bin/bash
-
-log() { echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$*" | tee -a "$_logFile"; }
-
-log "========== stop-helper 开始 =========="
-
-if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
-    if launchctl bootout "system/$_serviceId" 2>/dev/null; then
-        log "✅ 服务已停止"
-    else
-        log "❌ bootout 失败"
-        exit 1
-    fi
-else
-    log "服务未在运行"
-fi
-exit 0
-''';
-  }
-
-  static String _buildUninstallScript() {
-    return '''
-#!/bin/bash
-
-if launchctl print "system/$_serviceId" >/dev/null 2>&1; then
-    launchctl bootout "system/$_serviceId" 2>/dev/null || true
-fi
-
-rm -f "$_plistPath" "$_helperDst" "$_helperClashlibDst" "$_helperWakeMonitorDst"
-echo "已卸载 $_serviceId"
-''';
-  }
-
-  // ==================== 提权执行 ====================
-
-  static Future<void> _runPrivileged(String script) async {
-    // base64 编码，彻底避开引号/换行转义问题
-    final b64 = base64.encode(utf8.encode(script));
-
-    // base64 字符集是 A-Za-z0-9+/=，没有单引号，可安全放进 shell 单引号
-    final shellCmd = "echo '$b64' | base64 -d | bash";
-
-    // AppleScript 用双引号，内部 shell 命令已经用单引号隔离，无冲突
-    final appleScript =
-        'do shell script "$shellCmd" with administrator privileges';
-
-    final r = await Process.run('osascript', ['-e', appleScript]);
-    print('${r.stdout}\n${r.stderr}\ncode: ${r.exitCode}');
-    if (r.exitCode != 0) {
-      final err = (r.stderr as String).trim();
-      // 用户点了取消
-      if (err.contains('User canceled') || err.contains('-128')) {
-        throw const HelperInstallCanceled();
-      }
-      throw Exception('提权执行失败: $err ${r.stdout}');
-    }
-  }
-}
-
-class HelperInstallCanceled implements Exception {
-  const HelperInstallCanceled();
-  @override
-  String toString() => '用户取消了安装';
 }
