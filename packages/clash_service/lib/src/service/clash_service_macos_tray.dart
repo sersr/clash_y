@@ -1,8 +1,7 @@
 import 'dart:io';
 
 import 'package:server/server.dart' as service_server show clashSocket;
-
-import '../tray_asset.dart';
+import 'package:server/tray_asset.dart';
 
 /// 保存状态栏程序配置，并从当前用户的图形会话启动 Tray。
 abstract final class TrayInstaller {

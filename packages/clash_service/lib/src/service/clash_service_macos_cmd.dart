@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+
+const _package = 'packages/server';
 class HelperInstaller {
   static const _serviceId = 'com.aote.clashy.helper';
   static const _plistPath =
@@ -20,13 +22,10 @@ class HelperInstaller {
   /// bundle 内源文件相对路径（相对于 .app 根目录）
   static const _helperRel =
       'Contents/Frameworks/App.framework/Versions/A/Resources/flutter_assets/'
-      'packages/clash_service/bin/clashyService';
+      '$_package/bin/clashyService';
   static const _clashRel =
       'Contents/Frameworks/App.framework/Versions/A/Resources/flutter_assets/'
-      'packages/clash_service/lib/libclash.dylib';
-  static const _wakeMonitorRel =
-      'Contents/Frameworks/App.framework/Versions/A/Resources/flutter_assets/'
-      'packages/clash_service/lib/clash_wake_monitor.dylib';
+      '$_package/lib/libclash.dylib';
 
   /// 当前 .app bundle 的绝对路径
   static String get _bundlePath {
@@ -38,7 +37,6 @@ class HelperInstaller {
 
   static String get _helperSrc => '$_bundlePath/$_helperRel';
   static String get _clashSrc => '$_bundlePath/$_clashRel';
-  static String get _wakeMonitorSrc => '$_bundlePath/$_wakeMonitorRel';
 
   /// helper 是否已安装并运行
   static Future<bool> isInstalled() async {
@@ -116,7 +114,6 @@ class HelperInstaller {
     final assets = <(String, FileSystemEntityType)>[
       (_helperSrc, FileSystemEntityType.file),
       (_clashSrc, FileSystemEntityType.file),
-      (_wakeMonitorSrc, FileSystemEntityType.file),
     ];
     final checkedModes = <String, int>{};
     for (final (assetPath, expectedType) in assets) {
@@ -290,13 +287,7 @@ exit 1
   }
 
   static Future<String> _launchDaemonPlist() async {
-    final arguments = [
-      _helperSrc,
-      '--clash-library',
-      _clashSrc,
-      '--wake-monitor-library',
-      _wakeMonitorSrc,
-    ];
+    final arguments = [_helperSrc, '--clash-library', _clashSrc];
     final programArguments = arguments
         .map((argument) => '<string>${_escapeXml(argument)}</string>')
         .join();

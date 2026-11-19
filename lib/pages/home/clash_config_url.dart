@@ -6,7 +6,7 @@ import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../controller/configs_controller.dart';
+import 'controller/configs_controller.dart';
 
 class ClashProfiles extends StatefulWidget {
   const new({super.key});

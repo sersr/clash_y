@@ -1,0 +1,13 @@
+name: ClashWakeMonitorBindings
+description: |
+  Bindings for the Clashy macOS wake monitor.
+
+  Regenerate with `dart run ffigen --config ffigen_wake_monitor.yaml`.
+output: 'lib/src/clash_wake_monitor_bindings_generated.dart'
+headers:
+  entry-points:
+    - 'src/clash_wake_monitor.h'
+  include-directives:
+    - 'src/clash_wake_monitor.h'
+ffi-native:
+  asset-id: 'package:server/src/clash_wake_monitor_bindings_generated.dart'

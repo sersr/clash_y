@@ -1,5 +1,5 @@
 import 'package:clashy/pages/home/widget/home_bottom_padding.dart';
-import 'package:clashy/pages/home/widget/settings.dart';
+import 'package:clashy/pages/home/settings.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
@@ -7,9 +7,9 @@ import 'package:material_ui/material_ui.dart';
 
 import 'controller/clash_connection_controller.dart';
 import 'controller/clash_controller.dart';
-import 'widget/clash_config_url.dart';
-import 'widget/clash_connections.dart';
-import 'widget/clash_home.dart';
+import 'clash_config_url.dart';
+import 'clash_connections.dart';
+import 'clash_home.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});

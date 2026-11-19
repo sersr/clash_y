@@ -112,20 +112,6 @@ packages:
       relative: true
     source: path
     version: "0.0.1"
-  clash_service:
-    dependency: "direct main"
-    description:
-      path: "../clash_service"
-      relative: true
-    source: path
-    version: "1.0.0"
-  clash_service_android:
-    dependency: transitive
-    description:
-      path: "../clash_service_android"
-      relative: true
-    source: path
-    version: "0.0.1"
   cli_config:
     dependency: transitive
     description:
@@ -143,7 +129,7 @@ packages:
     source: hosted
     version: "0.4.2"
   code_assets:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: code_assets
       sha256: "1ef22a0be3af9370bd9481ac76db114db92bfe75d5ca2b2d7bc911764478a4d9"
@@ -207,7 +193,7 @@ packages:
     source: hosted
     version: "3.1.14"
   data_assets:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: data_assets
       sha256: "8bfdbf25ec8a0f4b5a3c993042c4ab9996ba354f0b03d40f4e360f3730d71cae"
@@ -347,30 +333,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.0"
-  jni:
-    dependency: transitive
-    description:
-      name: jni
-      sha256: "2e91e6087291affd10b31b6c872f3e3ac7dc5d93b51b5ba485d930c8f08bde6c"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.2"
-  jni_flutter:
-    dependency: transitive
-    description:
-      name: jni_flutter
-      sha256: "0dd33d67797560f66e961a6053882d4df54bd345bf063b8fe7ea133f7ad8b191"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.4+1"
-  jni_util:
-    dependency: transitive
-    description:
-      name: jni_util
-      sha256: "1ba86da04a5f2bf18fde2edb235587e70c5b0fc5bd4ba955f46b00942c3fc35f"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.0"
   json_annotation:
     dependency: "direct main"
     description:
@@ -507,14 +469,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.0"
-  plugin_platform_interface:
-    dependency: transitive
-    description:
-      name: plugin_platform_interface
-      sha256: "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.8"
   pool:
     dependency: transitive
     description:
@@ -819,4 +773,3 @@ packages:
     version: "2.1.0"
 sdks:
   dart: ">=3.14.0-200.0.dev <4.0.0"
-  flutter: ">=3.35.6"

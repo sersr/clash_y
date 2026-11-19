@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:clash_service_android/clash_service_android.dart' as android;
 import 'package:file/local.dart' as f;
+import 'package:server/clash_service_windows.dart';
 import 'package:server/server.dart' show ApiResp, ClashProfile;
 
 import 'src/service/api.dart';
@@ -9,11 +10,8 @@ import 'src/service/clash_service_linux.dart';
 import 'src/service/clash_service_ios.dart';
 import 'src/service/clash_service_macos_cmd.dart';
 import 'src/service/clash_service_macos_tray.dart';
-import 'src/service/clash_service_windows.dart';
 
 export 'package:server/server.dart';
-
-export 'src/service/clash_service_windows.dart';
 
 const fs = f.LocalFileSystem();
 

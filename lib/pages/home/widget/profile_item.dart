@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:clashy/pages/home/controller/configs_controller.dart';
-import 'package:clashy/pages/home/widget/clash_config_url.dart';
+import 'package:clashy/pages/home/clash_config_url.dart';
 import 'package:common/common.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';

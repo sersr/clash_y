@@ -4,8 +4,8 @@ import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../controller/clash_controller.dart';
-import 'clash_list_item.dart';
+import 'controller/clash_controller.dart';
+import 'widget/clash_list_item.dart';
 
 class ClashHome extends StatefulWidget {
   const new({super.key});

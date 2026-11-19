@@ -1,15 +1,11 @@
 import 'dart:ffi' as ffi;
-import 'dart:io' show Platform;
 
 import 'src/clash_core.dart' as native;
 import 'src/clash_core_macos.dart' as macos;
 
-bool get _useDynamicLibrary => Platform.isMacOS;
+bool get _useDynamicLibrary => macos.dylibIsValid;
 
 void configureMacOSLibraryPath(String path) {
-  if (!_useDynamicLibrary) {
-    throw UnsupportedError('The macOS Clash library is only used on macOS');
-  }
   macos.configureLibraryPath(path);
 }
 

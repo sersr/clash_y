@@ -1,10 +1,10 @@
 import 'package:hooks/hooks.dart';
-import 'package:clash_service/build.dart';
+
+import '_build.dart';
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
-    await [
-      buildClashServer(input, output),
-    ].wait;
+    await buildWakeMonitor(input, output);
+    await buildClashServer(input, output);
   });
 }

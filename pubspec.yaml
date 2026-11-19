@@ -65,8 +65,6 @@ dependency_overrides:
     path: ../packages/flutter_nop
   nop:
     path: ../packages/nop
-  clash_core:
-    path: packages/clash_core
   overlays:
     path: ../packages/overlays
   ui_widgets:

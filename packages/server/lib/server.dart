@@ -18,15 +18,8 @@ export 'src/server/response.dart';
 
 const version = '0.0.1';
 
-void configureMacOSRuntimeLibraries({
-  required String clashLibraryPath,
-  required String wakeMonitorLibraryPath,
-}) {
-  if (!Platform.isMacOS) {
-    throw UnsupportedError('macOS runtime libraries are only used on macOS');
-  }
+void configureMacOSRuntimeLibraries({required String clashLibraryPath}) {
   configureMacOSLibraryPath(clashLibraryPath);
-  ClashProcess.configureWakeMonitorLibraryPath(wakeMonitorLibraryPath);
 }
 
 final _router = MyRouter()

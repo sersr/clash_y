@@ -7,6 +7,8 @@ import 'dart:ffi' as ffi;
 String? _libraryPath;
 ffi.DynamicLibrary? _loadedLibrary;
 
+bool get dylibIsValid => _libraryPath != null;
+
 ffi.DynamicLibrary get _lib {
   final path = _libraryPath;
   if (path == null) {

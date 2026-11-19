@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:clash_core/clash_core.dart';
+import 'package:server/src/clash_wake_monitor_bindings_generated.dart';
 import 'package:dio/dio.dart';
 import 'package:ffi/ffi.dart';
 import 'package:nop/nop.dart';
@@ -23,7 +24,6 @@ abstract final class ClashProcess {
   static const _wakeNetworkSettleDelay = Duration(seconds: 5);
   static const _stateFilePath =
       '/Library/Application Support/Clashy/clash-state.json';
-  static String? _wakeMonitorLibraryPath;
 
   static final _stateFile = File(_stateFilePath);
   static ReceivePort? _wakeEvents;
@@ -35,13 +35,6 @@ abstract final class ClashProcess {
   static ClashProfile? _profile;
   static Timer? _profileTimer;
   static var _vpnEnabled = false;
-
-  static void configureWakeMonitorLibraryPath(String path) {
-    if (path.isEmpty) {
-      throw ArgumentError.value(path, 'path', 'cannot be empty');
-    }
-    _wakeMonitorLibraryPath = path;
-  }
 
   static Future<void> restorePersistedClash() async {
     if (!Platform.isMacOS || !await _stateFile.exists()) return;
@@ -128,14 +121,6 @@ abstract final class ClashProcess {
         _wakeSubscription != null) {
       return;
     }
-    final libraryPath = _wakeMonitorLibraryPath;
-    if (libraryPath == null) {
-      throw StateError('wake monitor library path has not been configured');
-    }
-    if (!await File(libraryPath).exists()) {
-      throw StateError('wake monitor library is missing: $libraryPath');
-    }
-
     final events = ReceivePort();
     _wakeEvents = events;
     _wakeSubscription = events.listen((message) {
@@ -145,30 +130,23 @@ abstract final class ClashProcess {
         Log.e('macOS wake monitor failed: ${message['error']}');
       }
     });
-    _wakeMonitor = await Isolate.spawn(_watchMacOSWake, (
+    _wakeMonitor = await Isolate.spawn(
+      _watchMacOSWake,
       events.sendPort,
-      libraryPath,
-    ), debugName: 'clashy-macos-wake-monitor');
+      debugName: 'clashy-macos-wake-monitor',
+    );
   }
 
   @pragma('vm:entry-point')
-  static void _watchMacOSWake((SendPort, String) args) {
-    final (sendPort, libraryPath) = args;
+  static void _watchMacOSWake(SendPort sendPort) {
     try {
-      final library = DynamicLibrary.open(libraryPath);
-      final start = library.lookupFunction<Int32 Function(), int Function()>(
-        'clashy_wake_monitor_start',
-      );
-      final wait = library.lookupFunction<Int32 Function(), int Function()>(
-        'clashy_wake_monitor_wait',
-      );
-      if (start() != 0) {
+      if (clashy_wake_monitor_start() != 0) {
         throw StateError('IOKit power notification registration failed');
       }
 
       sendPort.send('ready');
       while (true) {
-        if (wait() != 0) {
+        if (clashy_wake_monitor_wait() != 0) {
           throw StateError('IOKit wake notification wait failed');
         }
         sendPort.send('wake');

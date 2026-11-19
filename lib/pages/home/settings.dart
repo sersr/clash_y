@@ -4,8 +4,8 @@ import 'package:common/common.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_nop/router.dart';
 
-import '../../../_route/routes.dart';
-import 'setting_item.dart';
+import '../../_route/routes.dart';
+import 'widget/setting_item.dart';
 
 class Settings extends StatefulWidget {
   const new({super.key});

@@ -6,58 +6,61 @@ import 'package:file/file.dart';
 import 'package:file/local.dart';
 import 'package:hooks/hooks.dart';
 import 'package:path/path.dart';
-
-import 'src/tray_asset.dart';
+import 'package:server/tray_asset.dart';
 
 const _fs = LocalFileSystem();
 
-extension on HookInputUserDefines {
-  bool get isCli {
-    return this['isCli'] == true;
-  }
-}
-
-/// 注册守护进程 ffi
-Future<void> buildMacOSDaemon(
+Future<void> buildWakeMonitor(
   BuildInput input,
   BuildOutputBuilder output,
 ) async {
   if (!input.config.buildCodeAssets) return;
-
   if (input.config.code.targetOS != .macOS) return;
-  final isCli = input.userDefines.isCli;
-  if (isCli) {
-    print("ignore");
-    return;
-  }
 
-  final packageName = input.packageName;
-
-  // 使用 swift build 编译 SPM 包
+  final wakeMonitorDir = _fs.currentDirectory
+      .childDirectory(input.packageRoot.path)
+      .parent
+      .childDirectory('clash_wake_monitor');
   final result = await io.Process.run('swift', [
     'build',
     '--package-path',
-    'packages/clash_service_drawin',
+    wakeMonitorDir.path,
     '-c',
     'release',
-  ], workingDirectory: input.packageRoot.path);
-
+    '--product',
+    'ClashWakeMonitor',
+  ]);
   if (result.exitCode != 0) {
-    throw Exception('Swift build failed: ${result.stderr}');
+    throw Exception('swift build failed: ClashWakeMonitor.\n${result.stderr}');
   }
 
-  // 定位编译产物 .dylib
-  final dylibPath =
-      '${input.packageRoot.path}/packages/clash_service_drawin/.build/release/libclash-service.dylib';
-
-  input.config.code.linkModePreference;
   output.assets.code.add(
     CodeAsset(
-      package: packageName,
-      name: 'src/service/clash_service_macos.dart',
+      package: input.packageName,
+      name: 'src/clash_wake_monitor_bindings_generated.dart',
       linkMode: DynamicLoadingBundled(),
-      file: Uri.file(dylibPath, windows: false),
+      file: Uri.file(
+        join(
+          wakeMonitorDir.path,
+          '.build',
+          'release',
+          'libClashWakeMonitor.dylib',
+        ),
+        windows: false,
+      ),
     ),
+  );
+
+  final swiftSources = wakeMonitorDir.childDirectory('Sources');
+  if (await swiftSources.exists()) {
+    for (final item in swiftSources.listSync(recursive: true)) {
+      if (item case File file) {
+        output.dependencies.add(Uri.file(file.absolute.path));
+      }
+    }
+  }
+  output.dependencies.add(
+    Uri.file(wakeMonitorDir.childFile('Package.swift').absolute.path),
   );
 }
 
@@ -68,7 +71,6 @@ Future<void> buildClashServer(
 ) async {
   if (!input.config.buildDataAssets) return;
 
-  if (input.userDefines.isCli) return;
   if (!input.config.code.targetOS.isDesktop) return;
 
   final targetOs = input.config.code.targetOS;
@@ -76,10 +78,7 @@ Future<void> buildClashServer(
 
   final packageName = input.packageName;
 
-  final serverDir = _fs.currentDirectory
-      .childDirectory(input.packageRoot.path)
-      .parent
-      .childDirectory('server');
+  final serverDir = _fs.currentDirectory;
 
   final result = await io.Process.run('dart', [
     'build',
@@ -140,51 +139,6 @@ Future<void> buildClashServer(
   }
 
   if (targetOs == .macOS) {
-    final wakeMonitorDir = _fs.currentDirectory
-        .childDirectory(input.packageRoot.path)
-        .parent
-        .childDirectory('clash_wake_monitor');
-    final swiftResult = await io.Process.run('swift', [
-      'build',
-      '--package-path',
-      wakeMonitorDir.path,
-      '-c',
-      'release',
-      '--product',
-      'ClashWakeMonitor',
-    ]);
-    if (swiftResult.exitCode != 0) {
-      throw Exception(
-        'swift build failed: ClashWakeMonitor.\n${swiftResult.stderr}',
-      );
-    }
-
-    final wakeMonitorPath = join(
-      wakeMonitorDir.path,
-      '.build',
-      'release',
-      'libClashWakeMonitor.dylib',
-    );
-    output.assets.data.add(
-      DataAsset(
-        package: packageName,
-        name: 'lib/clash_wake_monitor.dylib',
-        file: Uri.file(wakeMonitorPath, windows: false),
-      ),
-    );
-
-    final swiftSources = wakeMonitorDir.childDirectory('Sources');
-    if (await swiftSources.exists()) {
-      for (final item in swiftSources.listSync(recursive: true)) {
-        if (item case File file) {
-          output.dependencies.add(Uri.file(file.absolute.path));
-        }
-      }
-    }
-    output.dependencies.add(
-      Uri.file(wakeMonitorDir.childFile('Package.swift').absolute.path),
-    );
-
     // 用户级状态栏程序：由 clashyService daemon 直接启动，app 退出后图标仍在。
     final trayDir = _fs.currentDirectory
         .childDirectory(input.packageRoot.path)

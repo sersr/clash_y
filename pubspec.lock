@@ -169,7 +169,7 @@ packages:
     source: hosted
     version: "0.7.2"
   clash_core:
-    dependency: "direct overridden"
+    dependency: transitive
     description:
       path: "packages/clash_core"
       relative: true

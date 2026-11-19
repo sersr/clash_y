@@ -4,7 +4,7 @@ import 'package:flutter_nop/flutter_nop.dart';
 import 'package:flutter_nop/router.dart';
 import 'package:common/common.dart';
 
-import '../controller/clash_connection_controller.dart';
+import 'controller/clash_connection_controller.dart';
 
 class ClashConnections extends StatefulWidget {
   const ClashConnections({super.key});
