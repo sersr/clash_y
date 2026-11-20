@@ -9,6 +9,29 @@ import 'package:server/tray_asset.dart';
 
 const _fs = LocalFileSystem();
 
+Directory _nativeBinDir(Directory cmdRoot) => cmdRoot
+    .childDirectory('build')
+    .childDirectory('native')
+    .childDirectory('bin');
+
+/// 仅在内容变化时覆盖，避免每次构建都更新 mtime 导致 hook 缓存失效。
+void _copyIfChanged(File source, File target) {
+  final sourceBytes = source.readAsBytesSync();
+  if (target.existsSync()) {
+    final targetBytes = target.readAsBytesSync();
+    if (_bytesEqual(sourceBytes, targetBytes)) return;
+  }
+  source.copySync(target.path);
+}
+
+bool _bytesEqual(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
 Future<void> buildWakeMonitor(
   BuildInput input,
   BuildOutputBuilder output,
@@ -70,8 +93,7 @@ Future<void> buildTrayExecutable(
   if (!input.config.buildCodeAssets) return;
   if (input.config.code.targetOS != .macOS) return;
 
-  final serverDir = _fs.currentDirectory.childDirectory(input.packageRoot.path);
-  final targetOs = input.config.code.targetOS;
+  final cmdRoot = _fs.currentDirectory.childDirectory(input.packageRoot.path);
   final architecture = switch (input.config.code.targetArchitecture) {
     Architecture.arm64 => 'arm64',
     Architecture.x64 => 'x86_64',
@@ -81,10 +103,7 @@ Future<void> buildTrayExecutable(
     ),
   };
   final triple = '$architecture-apple-macosx12.0';
-  final trayDir = _fs.currentDirectory
-      .childDirectory(input.packageRoot.path)
-      .parent
-      .childDirectory('clash_tray');
+  final trayDir = cmdRoot.parent.childDirectory('clash_tray');
   final result = await io.Process.run('swift', [
     'build',
     '--package-path',
@@ -119,15 +138,10 @@ Future<void> buildTrayExecutable(
   final sourceExecutable = _fs
       .directory((binPathResult.stdout as String).trim())
       .childFile('ClashTray');
-  final exeDir = serverDir
-      .childDirectory('build')
-      .childDirectory('cli')
-      .childDirectory('${targetOs}_${input.config.code.targetArchitecture}')
-      .childDirectory('bundle')
-      .childDirectory('bin');
+  final exeDir = _nativeBinDir(cmdRoot);
   exeDir.createSync(recursive: true);
   final trayExecutable = exeDir.childFile(clashTrayExecutableName);
-  sourceExecutable.copySync(trayExecutable.path);
+  _copyIfChanged(sourceExecutable, trayExecutable);
   final chmodResult = await io.Process.run('/bin/chmod', [
     '755',
     trayExecutable.path,
@@ -140,6 +154,7 @@ Future<void> buildTrayExecutable(
       chmodResult.exitCode,
     );
   }
+  output.dependencies.add(Uri.file(trayExecutable.absolute.path));
 
   final traySources = trayDir.childDirectory('Sources');
   if (await traySources.exists()) {
@@ -166,11 +181,9 @@ Future<void> buildClashServer(
   final targetOs = input.config.code.targetOS;
   final arc = input.config.code.targetArchitecture;
 
-  final serverDir = _fs.currentDirectory.childDirectory(input.packageRoot.path);
+  final cmdRoot = _fs.currentDirectory.childDirectory(input.packageRoot.path);
 
-  final exeDir = _fs.currentDirectory.childDirectory(
-    join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle', 'bin'),
-  );
+  final exeDir = _nativeBinDir(cmdRoot);
 
   if (targetOs == .macOS) {
     final goArchitecture = switch (arc) {
@@ -180,16 +193,19 @@ Future<void> buildClashServer(
         'Unsupported macOS helper architecture: ${arc.name}',
       ),
     };
-    final coreDir = serverDir.parent
+    final coreDir = cmdRoot.parent
         .childDirectory('clash_core')
         .childDirectory('core');
-    final helperPath = exeDir.childFile('clashyTunHelper');
+    final helperPath = exeDir.childFile(clashTunHelperExecutableName);
     helperPath.parent.createSync(recursive: true);
+    final tempHelperPath = helperPath.parent.childFile(
+      '$clashTunHelperExecutableName.tmp',
+    );
     final helperArguments = [
       'build',
       '-trimpath',
       '-o',
-      helperPath.path,
+      tempHelperPath.path,
       './cmd/clashy_tun_helper',
     ];
     final helperResult = await io.Process.run(
@@ -211,6 +227,9 @@ Future<void> buildClashServer(
         helperResult.exitCode,
       );
     }
+    _copyIfChanged(tempHelperPath, helperPath);
+    tempHelperPath.deleteSync();
+    output.dependencies.add(Uri.file(helperPath.absolute.path));
 
     output.dependencies.add(
       Uri.file(coreDir.childFile('go.mod').absolute.path),

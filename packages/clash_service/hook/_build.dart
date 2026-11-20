@@ -6,6 +6,7 @@ import 'package:file/file.dart';
 import 'package:file/local.dart';
 import 'package:hooks/hooks.dart';
 import 'package:path/path.dart';
+import 'package:server/tray_asset.dart';
 
 const _fs = LocalFileSystem();
 
@@ -23,7 +24,7 @@ Future<void> buildClashServer(
 
   final packageName = input.packageName;
 
-  final serverDir = _fs.currentDirectory
+  final cmdRoot = _fs.currentDirectory
       .childDirectory(input.packageRoot.path)
       .parent
       .childDirectory('cmd');
@@ -31,21 +32,19 @@ Future<void> buildClashServer(
   final result = await io.Process.run('dart', [
     'build',
     'cli',
-  ], workingDirectory: serverDir.path);
+  ], workingDirectory: cmdRoot.path);
 
   if (result.exitCode != 0) {
-    throw Exception('dart build cli failed: server.\n${result.stderr}');
+    throw Exception('dart build cli failed: cmd.\n${result.stderr}');
   }
 
-  final exeDir = _fs.currentDirectory.childDirectory(
-    join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle', 'bin'),
-  );
+  final bundleDir = cmdRoot
+      .childDirectory('build')
+      .childDirectory('cli')
+      .childDirectory('${targetOs}_$arc')
+      .childDirectory('bundle');
 
-  final clashLibDir = _fs.currentDirectory.childDirectory(
-    join(serverDir.path, 'build', 'cli', '${targetOs}_$arc', 'bundle', 'lib'),
-  );
-
-  final libDir = serverDir.childDirectory('lib');
+  final libDir = cmdRoot.childDirectory('lib');
   if (await libDir.exists()) {
     final list = await libDir.list(recursive: true).toList();
     for (var item in list) {
@@ -57,21 +56,35 @@ Future<void> buildClashServer(
     }
   }
 
-  final bins = await exeDir.list().toList();
-
   final suf = targetOs.dylibFileName('').split('.').last;
-  for (var item in bins) {
-    if (item case File f) {
-      output.assets.data.add(
-        DataAsset(
-          package: packageName,
-          name: 'bin/${f.basename}',
-          file: Uri.file(item.path, windows: targetOs == .windows),
+  final binDirs = [bundleDir.childDirectory('bin')];
+  if (targetOs == .macOS) {
+    binDirs.add(
+      _fs.currentDirectory.childDirectory(
+        join(
+          cmdRoot.path,
+          clashNativeBinDirRelativePath,
         ),
-      );
+      ),
+    );
+  }
+  for (final binDir in binDirs) {
+    if (!await binDir.exists()) continue;
+    final bins = await binDir.list().toList();
+    for (var item in bins) {
+      if (item case File f) {
+        output.assets.data.add(
+          DataAsset(
+            package: packageName,
+            name: 'bin/${f.basename}',
+            file: Uri.file(item.path, windows: targetOs == .windows),
+          ),
+        );
+      }
     }
   }
 
+  final clashLibDir = bundleDir.childDirectory('lib');
   final libs = await clashLibDir.list().toList();
 
   for (var item in libs) {
@@ -84,12 +97,6 @@ Future<void> buildClashServer(
         ),
       );
     }
-  }
-
-  if (targetOs == .macOS) {
-    output.dependencies.add(
-      Uri.file(serverDir.childFile('src/clashy_tray.h').absolute.path),
-    );
   }
 }
 

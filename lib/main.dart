@@ -7,7 +7,6 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:nop/utils.dart';
 
-import 'app_window.dart';
 import 'init.dart';
 import 'pages/app.dart';
 
