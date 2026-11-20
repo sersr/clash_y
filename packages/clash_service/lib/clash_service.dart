@@ -2,8 +2,9 @@ import 'dart:io';
 
 import 'package:clash_service_android/clash_service_android.dart' as android;
 import 'package:file/local.dart' as f;
+import 'package:nop/nop.dart';
 import 'package:server/clash_service_windows.dart';
-import 'package:server/server.dart' show ApiResp, ClashProfile;
+import 'package:server/server.dart' show ApiResp, ClashProfile, version;
 
 import 'src/service/api.dart';
 import 'src/service/clash_service_linux.dart';
@@ -38,6 +39,105 @@ abstract final class ClashService {
     return MacOSServiceProcess.hasOtherVpnConnection(
       checkTunnelRoutes: !clashyIsRunning,
     );
+  }
+
+  /// Reinstalls the desktop service if its running version is older than this app.
+  static Future<void> updateDesktopServiceIfOutdated({
+    required String controllerSocketPath,
+  }) async {
+    if (!Platform.isMacOS && !Platform.isLinux && !Platform.isWindows) return;
+    if (!await _isDesktopServiceRunning()) return;
+
+    final serviceVersion = await ClashServiceApi.getServiceVersion();
+    if (serviceVersion != null && !_isVersionOlder(serviceVersion, version)) {
+      return;
+    }
+
+    if (serviceVersion == null) {
+      Log.e('Could not read clashyService version; reinstalling the service.');
+    } else {
+      Log.e(
+        'clashyService $serviceVersion is older than $version; '
+        'reinstalling the service.',
+      );
+    }
+
+    await _reinstallDesktopService(controllerSocketPath);
+  }
+
+  static Future<bool> _isDesktopServiceRunning() async {
+    if (Platform.isMacOS) return MacOSServiceProcess.isRunning();
+    if (Platform.isLinux) return isSystemdServiceRunning();
+    if (Platform.isWindows) return isServiceRunning();
+    return false;
+  }
+
+  static Future<void> _reinstallDesktopService(
+    String controllerSocketPath,
+  ) async {
+    if (Platform.isMacOS) {
+      await MacOSServiceProcess.install(
+        clashSocketPath: controllerSocketPath,
+        forceRestart: true,
+      );
+      return;
+    }
+
+    if (Platform.isLinux) {
+      final exitCode = await installSystemdService(forceRestart: true);
+      if (exitCode != 0) {
+        throw StateError(
+          'Failed to reinstall the Linux clashyService (exit code $exitCode).',
+        );
+      }
+      return;
+    }
+
+    if (Platform.isWindows) {
+      if (!await stopService()) {
+        throw StateError('Failed to stop the outdated Windows clashyService.');
+      }
+      if (!await startService()) {
+        throw StateError('Failed to reinstall the Windows clashyService.');
+      }
+    }
+  }
+
+  static bool _isVersionOlder(String installed, String required) {
+    final installedParts = _versionParts(installed);
+    final requiredParts = _versionParts(required);
+    if (installedParts == null) return true;
+    if (requiredParts == null) {
+      throw FormatException('Invalid bundled clashyService version: $required');
+    }
+
+    for (
+      var index = 0;
+      index < installedParts.length || index < requiredParts.length;
+      index++
+    ) {
+      final installedPart = index < installedParts.length
+          ? installedParts[index]
+          : 0;
+      final requiredPart = index < requiredParts.length
+          ? requiredParts[index]
+          : 0;
+      if (installedPart != requiredPart) {
+        return installedPart < requiredPart;
+      }
+    }
+    return false;
+  }
+
+  static List<int>? _versionParts(String value) {
+    final parts = value.split('.');
+    final result = <int>[];
+    for (final part in parts) {
+      final number = int.tryParse(part);
+      if (number == null || number < 0) return null;
+      result.add(number);
+    }
+    return result;
   }
 
   /// Starts the Clash core and enables the VPN for [profile].

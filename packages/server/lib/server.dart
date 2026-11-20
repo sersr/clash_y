@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:clash_core/clash_core.dart' show configureMacOSLibraryPath;
 import 'package:dart_ipc/dart_ipc.dart';
 import 'package:nop/utils.dart';
 import 'package:shelf/shelf.dart';
@@ -17,10 +16,6 @@ export 'src/server/models/models.dart';
 export 'src/server/response.dart';
 
 const version = '0.0.1';
-
-void configureMacOSRuntimeLibraries({required String clashLibraryPath}) {
-  configureMacOSLibraryPath(clashLibraryPath);
-}
 
 final _router = MyRouter()
   ..get('/', (req) => .ok('Clash VPN!'))

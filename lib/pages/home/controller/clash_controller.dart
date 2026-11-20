@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:clash_service/clash_service.dart' hide fs;
+import 'package:clash_service/clash_service.dart';
 import 'package:clashy/event/clash_event.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
@@ -78,6 +78,10 @@ class ClashController with NopLifecycle {
   Future<bool> _startCoreForInitialization() async {
     final platform = defaultTargetPlatform;
     if (platform != TargetPlatform.android && !platform.isDesktop) return false;
+
+    await ClashService.updateDesktopServiceIfOutdated(
+      controllerSocketPath: G.unixSocketPath,
+    );
 
     final profile = await _currentProfile();
     final started = await ClashService.startCore(

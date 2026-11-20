@@ -80,5 +80,3 @@ hooks:
   user_defines:
     clash_core:
       isFlutter: true
-    server:
-      isFlutter: true

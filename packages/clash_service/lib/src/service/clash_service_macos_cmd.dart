@@ -98,7 +98,10 @@ abstract final class MacOSServiceProcess {
     });
   }
 
-  static Future<void> install({required String clashSocketPath}) async {
+  static Future<void> install({
+    required String clashSocketPath,
+    bool forceRestart = false,
+  }) async {
     await _validateBundleAssets();
     final domain = await _guiDomain();
     final plistFile = File(_launchAgentPath);
@@ -110,7 +113,7 @@ abstract final class MacOSServiceProcess {
     final isLoaded = status != null;
     final isRunning =
         status != null && RegExp(r'\bstate = running\b').hasMatch(status);
-    if (plistIsCurrent && isRunning) {
+    if (plistIsCurrent && isRunning && !forceRestart) {
       await _waitUntilRunning(domain);
       return;
     }
@@ -204,8 +207,24 @@ set -eu
 domain="\$1"
 label="\$2"
 plist="\$3"
+service_socket="\$5"
+service_is_reachable() {
+  printf '%s\\r\\n' 'GET /version HTTP/1.1' 'Host: localhost' 'Connection: close' '' |
+    /usr/bin/nc -U "\$service_socket" -w 1 >/dev/null 2>&1
+}
 if [ "\$4" = "1" ]; then
   /bin/launchctl bootout "\$domain/\$label"
+  attempts=0
+  while /bin/launchctl print "\$domain/\$label" >/dev/null 2>&1 ||
+    service_is_reachable
+  do
+    attempts=\$((attempts + 1))
+    if [ "\$attempts" -ge 30 ]; then
+      echo "Timed out waiting for clashyService to stop after bootout." >&2
+      exit 1
+    fi
+    /bin/sleep 0.1
+  done
 fi
 /bin/launchctl enable "\$domain/\$label"
 /bin/launchctl bootstrap "\$domain" "\$plist"
@@ -218,6 +237,7 @@ fi
       _serviceLabel,
       plistPath,
       if (bootOutFirst) '1' else '0',
+      clashSocket,
     ];
     final result = await Process.run('/bin/sh', arguments);
     if (result.exitCode != 0) {

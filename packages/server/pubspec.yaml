@@ -30,10 +30,7 @@ dependencies:
     path: ../clash_core
   # clash_service:
   #   path: ../clash_service
-  hooks: ^2.2.0
   dio: ^5.11.1
-  code_assets: ^2.0.0
-  data_assets: ^0.20.0
 
 dev_dependencies:
   build_runner: ^2.16.1

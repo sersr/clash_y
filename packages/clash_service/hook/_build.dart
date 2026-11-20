@@ -26,7 +26,7 @@ Future<void> buildClashServer(
   final serverDir = _fs.currentDirectory
       .childDirectory(input.packageRoot.path)
       .parent
-      .childDirectory('server');
+      .childDirectory('cmd');
 
   final result = await io.Process.run('dart', [
     'build',

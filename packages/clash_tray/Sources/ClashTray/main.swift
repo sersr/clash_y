@@ -582,6 +582,8 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     private var proxyGroupItems: [NSMenuItem] = []
     private var cachedProxyGroups: [ProxyGroup]?
     private var isRunning = false
+    private var isRefreshingMenuState = false
+    private var menuRefreshTimer: Timer?
     private var clickWork: DispatchWorkItem?
     private var lastClickAt: Date?
 
@@ -707,6 +709,7 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     }
 
     private func showMenu() {
+        refreshMenuState()
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
@@ -782,32 +785,36 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     }
 
     private func startMenuMonitor() {
-        let thread = Thread { [weak self] in self?.menuMonitorLoop() }
-        thread.name = "clashy-tray-menu-monitor"
-        thread.start()
+        refreshMenuState()
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
+            self?.refreshMenuState()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        menuRefreshTimer = timer
     }
 
-    private func menuMonitorLoop() {
-        while true {
-            guard client.isRunning() else {
-                DispatchQueue.main.async { [weak self] in self?.setRunning(false) }
-                Thread.sleep(forTimeInterval: 3)
-                continue
-            }
-
-            let mode = client.currentMode()
-            let groups = client.proxyGroups()
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.setRunning(true)
+    private func refreshMenuState() {
+        guard !isRefreshingMenuState else { return }
+        isRefreshingMenuState = true
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let running = self.client.isRunning()
+            let mode = running ? self.client.currentMode() : nil
+            let groups = running ? self.client.proxyGroups() : nil
+            DispatchQueue.main.async {
+                self.isRefreshingMenuState = false
+                self.setRunning(running)
                 if let mode {
                     self.updateSelectedMode(mode)
                 }
-                if let groups {
-                    self.updateProxyGroups(groups)
+                if running {
+                    if let groups {
+                        self.updateProxyGroups(groups)
+                    }
+                } else {
+                    self.updateProxyGroups([])
                 }
             }
-            Thread.sleep(forTimeInterval: 3)
         }
     }
 
@@ -856,18 +863,10 @@ private final class TrayController: NSObject, NSApplicationDelegate {
         }
         proxyGroupItems.removeAll()
 
-        let renderedGroups =
-            groups.isEmpty
-            ? [
-                ProxyGroup(
-                    name: "暂无代理组",
-                    type: "",
-                    options: [],
-                    selected: nil
-                )
-            ] : groups
+        proxyGroupSeparator.isHidden = groups.isEmpty
+        guard !groups.isEmpty else { return }
 
-        for group in renderedGroups {
+        for group in groups {
             let groupItem = NSMenuItem(title: group.name, action: nil, keyEquivalent: "")
             let submenu = NSMenu()
             if group.options.isEmpty {

@@ -7,13 +7,13 @@ const systemdUnitPath = '/etc/systemd/system/clashy-service.service';
 /// systemd unit 是否已安装。查询无需 root。
 Future<bool> isSystemdServiceInstalled() => File(systemdUnitPath).exists();
 
-/// 安装 systemd 服务（写入 unit + enable + start）。
+/// 安装或重启 systemd 服务（写入 unit + enable + start/restart）。
 ///
 /// 当前进程没有 root 权限时，通过 pkexec 弹出 polkit 密码框提权：
 /// 写入 unit 文件 -> daemon-reload -> enable -> start，一次授权完成。
 ///
 /// 返回退出码，0 表示成功。
-Future<int> installSystemdService() async {
+Future<int> installSystemdService({bool forceRestart = false}) async {
   final exePath = Platform.resolvedExecutable;
   // systemd ExecStart 路径含空格时需要引号
   final exec = exePath.contains(' ') ? '"$exePath"' : exePath;
@@ -39,7 +39,7 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
 systemctl enable clashy-service.service
-systemctl start clashy-service.service
+systemctl ${forceRestart ? 'restart' : 'start'} clashy-service.service
 ''';
 
   return _runAsRoot(script);

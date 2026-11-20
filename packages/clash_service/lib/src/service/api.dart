@@ -8,6 +8,7 @@ import '../api/dio/unix_socket_dio.dart';
 
 abstract final class _Apis {
   static const clashEnv = 'baseInfo/env';
+  static const serviceVersion = 'version';
   static const clashStart = 'clash';
   static const clashStartCore = 'clash/core';
   static const clashVpnStart = 'clash/vpn/start';
@@ -27,6 +28,23 @@ abstract final class ClashServiceApi {
   static Future<ApiResp> getClashEnv() async {
     final res = await _dio.get(_Apis.clashEnv);
     return .transform(res.data);
+  }
+
+  static Future<String?> getServiceVersion() async {
+    try {
+      final res = await _dio.get(_Apis.serviceVersion);
+      if (res.data case Map<String, dynamic> body) {
+        final response = ApiResp<String>.transform(body);
+        final serviceVersion = response.autoData();
+        if (response.success && serviceVersion != null) {
+          return serviceVersion;
+        }
+      }
+      Log.e('Invalid clashyService version response: ${res.data}');
+    } on DioException catch (error) {
+      Log.e('Failed to read clashyService version: $error');
+    }
+    return null;
   }
 
   static Future<ApiResp> startClash(ClashProfile profile) async {
