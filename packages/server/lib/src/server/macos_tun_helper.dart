@@ -10,6 +10,10 @@ abstract final class MacOSTunHelper {
   static const _installPath =
       '/Library/PrivilegedHelperTools/com.aote.clashy.tun-helper';
 
+  /// helper 监听的 unix socket，与 Go 侧 `tunbroker.SocketPath` 保持一致。
+  static const _socketPath = '/var/run/clashy-tun-helper.sock';
+  static const _socketReadyTimeout = Duration(seconds: 10);
+
   static Future<void> ensureRegistered() async {
     final executablePath = p.normalize(p.absolute(Platform.resolvedExecutable));
     final helperPath = p.join(p.dirname(executablePath), 'clashyTunHelper');
@@ -38,17 +42,47 @@ abstract final class MacOSTunHelper {
     final plistContent = await plistFile.exists()
         ? await plistFile.readAsString()
         : '';
-    final launchdStatus = await _launchdStatus();
-    if (bundledHash == installedHash &&
-        plistContent == expectedPlist &&
-        launchdStatus.exitCode == 0 &&
-        RegExp(r'\bstate = running\b')
-            .hasMatch(launchdStatus.stdout as String)) {
-      return;
+    final needsInstall =
+        bundledHash != installedHash ||
+        plistContent != expectedPlist ||
+        !(await _isLaunchdRunning());
+    if (needsInstall) {
+      await _install(helperPath, expectedPlist);
+      await _waitUntilReady();
     }
 
-    await _install(helperPath, expectedPlist);
-    await _waitUntilReady();
+    // launchd 报 running 只说明进程拉起来了；helper listen 好 socket 之前
+    // mihomo 一连就失败，所以还要等 socket 可用。
+    await _waitUntilSocketReady();
+  }
+
+  static Future<bool> _isLaunchdRunning() async {
+    final status = await _launchdStatus();
+    return status.exitCode == 0 &&
+        RegExp(r'\bstate = running\b').hasMatch(status.stdout as String);
+  }
+
+  /// 等待 helper 把 unix socket listen 起来；能连上才代表可以请求 TUN。
+  static Future<void> _waitUntilSocketReady() async {
+    final deadline = DateTime.now().add(_socketReadyTimeout);
+    Object? lastError;
+    while (true) {
+      try {
+        final socket = await Socket.connect(
+          InternetAddress(_socketPath, type: InternetAddressType.unix),
+          0,
+        ).timeout(const Duration(seconds: 2));
+        socket.destroy();
+        return;
+      } catch (error) {
+        lastError = error;
+        if (DateTime.now().isAfter(deadline)) break;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    }
+    throw StateError(
+      'macOS TUN helper socket is not ready: $_socketPath ($lastError)',
+    );
   }
 
   static Future<void> _install(String helperPath, String plist) async {

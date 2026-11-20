@@ -65,6 +65,8 @@ RespHandler jsonMiddleware(Handler handler) {
 }
 
 Future<void> clashServer() async {
+  ClashProcess.initialize();
+
   Log.defaultLogger.logPathFn = (path) => path;
   Log.defaultLogger.lines = 100;
 
@@ -109,8 +111,6 @@ Future<void> clashServer() async {
     }
     print('Serving at http://${server.address.host}:${server.port}');
   }
-
-  await ClashProcess.initialize();
 }
 
 String get clashSocket {

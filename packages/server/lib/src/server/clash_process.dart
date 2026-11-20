@@ -70,7 +70,8 @@ abstract final class ClashProcess {
         return;
       }
 
-      Log.w('restoring Clash from saved state');
+      _vpnEnabled = vpnEnabled;
+      Log.w('restoring Clash from saved state ${_stateFile.path}');
       final error = vpnEnabled
           ? await run(configDir)
           : await runCoreOnly(configDir);
@@ -278,14 +279,18 @@ abstract final class ClashProcess {
     });
   }
 
-  static Future<String?> stop() async {
+  /// 停止核心。
+  ///
+  /// [clearState] 为 false 时只停止核心、保留持久化状态，服务退出后下次
+  /// 启动仍能恢复原来的配置和 VPN 状态。
+  static Future<String?> stop({bool clearState = true}) async {
     final err = await _clashQueue.run(_stopSingle);
     if (err case var err? when err.isNotEmpty) return err;
     _profileTimer?.cancel();
     _profileTimer = null;
     _profile = null;
-    _vpnEnabled = false;
-    await _clearPersistedState();
+    if (clearState) _vpnEnabled = false;
+    if (clearState) await _clearPersistedState();
     return null;
   }
 
@@ -457,6 +462,7 @@ abstract final class ClashProcess {
         return null;
       }
     }
+    _vpnEnabled = vpnEnabled;
 
     if (Platform.isMacOS && vpnEnabled) {
       try {

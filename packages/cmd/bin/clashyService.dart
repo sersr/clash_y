@@ -63,7 +63,7 @@ Future<void> _runMacOSService((String, String, String) options) async {
       shuttingDown = true;
       trayProcess?.kill();
       try {
-        final error = await ClashProcess.stop();
+        final error = await ClashProcess.stop(clearState: false);
         if (error != null) {
           stderr.writeln('stop Clash before exiting failed: $error');
         }
