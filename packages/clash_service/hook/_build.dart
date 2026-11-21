@@ -57,17 +57,12 @@ Future<void> buildClashServer(
   }
 
   final suf = targetOs.dylibFileName('').split('.').last;
-  final binDirs = [bundleDir.childDirectory('bin')];
-  if (targetOs == .macOS) {
-    binDirs.add(
-      _fs.currentDirectory.childDirectory(
-        join(
-          cmdRoot.path,
-          clashNativeBinDirRelativePath,
-        ),
-      ),
-    );
-  }
+  final binDirs = [
+    bundleDir.childDirectory('bin'),
+    _fs.currentDirectory.childDirectory(
+      join(cmdRoot.path, clashNativeBinDirRelativePath),
+    ),
+  ];
   for (final binDir in binDirs) {
     if (!await binDir.exists()) continue;
     final bins = await binDir.list().toList();

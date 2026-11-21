@@ -9,6 +9,9 @@ const windowService = 'clashy_service';
 
 const _description = 'Clash VPN';
 
+/// 暴露给同包内其他模块（如 TUN helper 安装）使用的提权入口。
+Future<int> runWindowsElevated(String script) => _runElevated(script);
+
 /// 安装服务（未提权时弹 UAC 密码框，与 Linux pkexec 对等）。
 ///
 /// 用 `sc create/config` 写入服务配置，行为对应其他平台的 install：

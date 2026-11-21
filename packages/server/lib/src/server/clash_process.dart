@@ -16,11 +16,14 @@ import 'package:yaml/yaml.dart';
 import 'package:yaml_writer/yaml_writer.dart';
 
 import 'config_overrides.dart';
-import 'macos_tun_helper.dart';
+import 'desktop_tun_helper.dart';
 import 'models/models.dart';
 
 final _clashQueue = TaskQueue();
 final _stateQueue = TaskQueue();
+
+bool get _isDesktop =>
+    Platform.isMacOS || Platform.isLinux || Platform.isWindows;
 
 abstract final class ClashProcess {
   static const _wakeNetworkSettleDelay = Duration(seconds: 5);
@@ -38,10 +41,21 @@ abstract final class ClashProcess {
   static var _vpnEnabled = false;
 
   static String _resolveStateFilePath() {
-    if (!Platform.isMacOS) {
-      return '/Library/Application Support/Clashy/clash-state.json';
+    if (Platform.isMacOS) {
+      return p.join(clashyApplicationSupportDirectory, 'clash-state.json');
     }
-    return p.join(clashyApplicationSupportDirectory, 'clash-state.json');
+    if (Platform.isWindows) {
+      final appData = Platform.environment['APPDATA'];
+      if (appData != null && appData.isNotEmpty) {
+        return p.join(appData, 'Clashy', 'clash-state.json');
+      }
+    }
+    // Linux 及其他 POSIX 平台：遵循 XDG_CONFIG_HOME，缺省 ~/.config。
+    final configHome = Platform.environment['XDG_CONFIG_HOME'];
+    final base = configHome != null && configHome.isNotEmpty
+        ? configHome
+        : p.join(Platform.environment['HOME'] ?? '.', '.config');
+    return p.join(base, 'clashy', 'clash-state.json');
   }
 
   static Future<void> restorePersistedClash() async {
@@ -464,12 +478,15 @@ abstract final class ClashProcess {
     }
     _vpnEnabled = vpnEnabled;
 
-    if (Platform.isMacOS && vpnEnabled) {
+    if (_isDesktop && vpnEnabled) {
       try {
-        await MacOSTunHelper.ensureRegistered();
+        await DesktopTunHelper.ensureRegistered();
       } catch (error) {
-        Log.e('register macOS TUN helper failed: $error');
-        return 'register macOS TUN helper failed: $error';
+        // 没有 helper 就没有 TUN，不能让缓存里的 vpnEnabled 停留在 true。
+        // 否则 UI/唤醒恢复会以为 VPN 已经开启，实际却没有任何 tun 接口。
+        _vpnEnabled = false;
+        Log.e('register TUN helper failed: $error');
+        return 'register TUN helper failed: $error';
       }
     }
 
@@ -484,7 +501,7 @@ abstract final class ClashProcess {
         final nativeConfigDir = configDir
             .toNativeUtf8(allocator: arena)
             .cast<Char>();
-        final res = Platform.isMacOS
+        final res = _isDesktop
             ? startTun(nativeConfigDir, vpnEnabled ? -1 : 0)
             : vpnEnabled
             ? start(nativeConfigDir)

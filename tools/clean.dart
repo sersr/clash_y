@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file/file.dart';
 import 'package:file/local.dart';
 
@@ -23,4 +25,5 @@ void main() async {
   for (var item in list) {
     if (await item.exists()) await item.delete(recursive: true);
   }
+  await Process.run('flutter', ['clean']);
 }

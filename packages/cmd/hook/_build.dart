@@ -185,66 +185,69 @@ Future<void> buildClashServer(
 
   final exeDir = _nativeBinDir(cmdRoot);
 
-  if (targetOs == .macOS) {
-    final goArchitecture = switch (arc) {
-      Architecture.arm64 => 'arm64',
-      Architecture.x64 => 'amd64',
-      _ => throw UnsupportedError(
-        'Unsupported macOS helper architecture: ${arc.name}',
-      ),
-    };
-    final coreDir = cmdRoot.parent
-        .childDirectory('clash_core')
-        .childDirectory('core');
-    final helperPath = exeDir.childFile(clashTunHelperExecutableName);
-    helperPath.parent.createSync(recursive: true);
-    final tempHelperPath = helperPath.parent.childFile(
-      '$clashTunHelperExecutableName.tmp',
-    );
-    final helperArguments = [
-      'build',
-      '-trimpath',
-      '-o',
-      tempHelperPath.path,
-      './cmd/clashy_tun_helper',
-    ];
-    final helperResult = await io.Process.run(
+  final goArchitecture = switch (arc) {
+    Architecture.arm64 => 'arm64',
+    Architecture.x64 => 'amd64',
+    _ => throw UnsupportedError(
+      'Unsupported TUN helper architecture: ${arc.name}',
+    ),
+  };
+  final goOperatingSystem = switch (targetOs) {
+    OS.macOS => 'darwin',
+    OS.linux => 'linux',
+    OS.windows => 'windows',
+    _ => throw UnsupportedError(
+      'Unsupported TUN helper target OS: ${targetOs.name}',
+    ),
+  };
+  final coreDir = cmdRoot.parent
+      .childDirectory('clash_core')
+      .childDirectory('core');
+  final helperFileName = clashTunHelperFileName(
+    windows: targetOs == OS.windows,
+  );
+  final helperPath = exeDir.childFile(helperFileName);
+  helperPath.parent.createSync(recursive: true);
+  final tempHelperPath = helperPath.parent.childFile('$helperFileName.tmp');
+  final helperArguments = [
+    'build',
+    '-trimpath',
+    '-o',
+    tempHelperPath.path,
+    './cmd/clashy_tun_helper',
+  ];
+  final helperResult = await io.Process.run(
+    'go',
+    helperArguments,
+    workingDirectory: coreDir.path,
+    environment: {
+      ...io.Platform.environment,
+      'CGO_ENABLED': '0',
+      'GOOS': goOperatingSystem,
+      'GOARCH': goArchitecture,
+    },
+  );
+  if (helperResult.exitCode != 0) {
+    throw io.ProcessException(
       'go',
       helperArguments,
-      workingDirectory: coreDir.path,
-      environment: {
-        ...io.Platform.environment,
-        'CGO_ENABLED': '0',
-        'GOOS': 'darwin',
-        'GOARCH': goArchitecture,
-      },
+      '${helperResult.stdout}\n${helperResult.stderr}',
+      helperResult.exitCode,
     );
-    if (helperResult.exitCode != 0) {
-      throw io.ProcessException(
-        'go',
-        helperArguments,
-        '${helperResult.stdout}\n${helperResult.stderr}',
-        helperResult.exitCode,
-      );
-    }
-    _copyIfChanged(tempHelperPath, helperPath);
-    tempHelperPath.deleteSync();
-    output.dependencies.add(Uri.file(helperPath.absolute.path));
+  }
+  _copyIfChanged(tempHelperPath, helperPath);
+  tempHelperPath.deleteSync();
+  output.dependencies.add(Uri.file(helperPath.absolute.path));
 
-    output.dependencies.add(
-      Uri.file(coreDir.childFile('go.mod').absolute.path),
-    );
-    output.dependencies.add(
-      Uri.file(coreDir.childFile('go.sum').absolute.path),
-    );
-    for (final sourceDirectory in [
-      coreDir.childDirectory('tunbroker'),
-      coreDir.childDirectory('cmd').childDirectory('clashy_tun_helper'),
-    ]) {
-      for (final item in sourceDirectory.listSync(recursive: true)) {
-        if (item case File file) {
-          output.dependencies.add(Uri.file(file.absolute.path));
-        }
+  output.dependencies.add(Uri.file(coreDir.childFile('go.mod').absolute.path));
+  output.dependencies.add(Uri.file(coreDir.childFile('go.sum').absolute.path));
+  for (final sourceDirectory in [
+    coreDir.childDirectory('tunbroker'),
+    coreDir.childDirectory('cmd').childDirectory('clashy_tun_helper'),
+  ]) {
+    for (final item in sourceDirectory.listSync(recursive: true)) {
+      if (item case File file) {
+        output.dependencies.add(Uri.file(file.absolute.path));
       }
     }
   }

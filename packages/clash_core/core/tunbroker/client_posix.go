@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || linux
 
 package tunbroker
 
@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +20,8 @@ var (
 	leaseReader *bufio.Reader
 )
 
+// Acquire asks the privileged helper for a TUN descriptor. The returned
+// descriptor stays valid until Deactivate is called.
 func Acquire(config Config) (int, string, error) {
 	leaseMu.Lock()
 	defer leaseMu.Unlock()
@@ -51,10 +52,11 @@ func Acquire(config Config) (int, string, error) {
 		return -1, "", errors.New("TUN helper returned no interface name")
 	}
 	leaseFD = connectionFD
-	leaseReader = bufio.NewReader(leaseFDReader{fd: connectionFD})
+	leaseReader = bufio.NewReader(fdReader{fd: connectionFD})
 	return tunFD, response.Interface, nil
 }
 
+// Deactivate releases the current TUN lease and asks the helper to clean up.
 func Deactivate() error {
 	leaseMu.Lock()
 	defer leaseMu.Unlock()
@@ -82,10 +84,10 @@ func deactivateLeaseLocked() error {
 	leaseReader = nil
 	defer unix.Close(fd)
 
-	if err := writeRequest(fd, Request{Command: "deactivate"}); err != nil {
+	if err := writeRequest(fdWriter{fd: fd}, Request{Command: "deactivate"}); err != nil {
 		return fmt.Errorf("deactivate TUN helper lease: %w", err)
 	}
-	response, err := readResponseLine(reader)
+	response, err := readResponse(reader)
 	if err != nil {
 		return fmt.Errorf("read TUN helper lease response: %w", err)
 	}
@@ -95,11 +97,15 @@ func deactivateLeaseLocked() error {
 	return nil
 }
 
-type leaseFDReader struct {
-	fd int
+type fdWriter struct{ fd int }
+
+func (w fdWriter) Write(payload []byte) (int, error) {
+	return unix.Write(w.fd, payload)
 }
 
-func (r leaseFDReader) Read(buffer []byte) (int, error) {
+type fdReader struct{ fd int }
+
+func (r fdReader) Read(buffer []byte) (int, error) {
 	n, err := unix.Read(r.fd, buffer)
 	if err != nil {
 		return n, err
@@ -108,40 +114,6 @@ func (r leaseFDReader) Read(buffer []byte) (int, error) {
 		return 0, errors.New("TUN helper closed the lease")
 	}
 	return n, nil
-}
-
-func writeRequest(fd int, request Request) error {
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return fmt.Errorf("encode TUN helper request: %w", err)
-	}
-	payload = append(payload, '\n')
-	for len(payload) > 0 {
-		n, err := unix.Write(fd, payload)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return errors.New("TUN helper request write made no progress")
-		}
-		payload = payload[n:]
-	}
-	return nil
-}
-
-func readResponseLine(reader *bufio.Reader) (Response, error) {
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return Response{}, err
-	}
-	if len(line) > 64*1024 {
-		return Response{}, errors.New("TUN helper response is too large")
-	}
-	var response Response
-	if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &response); err != nil {
-		return Response{}, fmt.Errorf("decode TUN helper response: %w", err)
-	}
-	return response, nil
 }
 
 func send(request Request, expectDescriptor bool) (Response, int, int, error) {
@@ -169,26 +141,14 @@ func send(request Request, expectDescriptor bool) (Response, int, int, error) {
 		return fail(fmt.Errorf("connect to TUN helper: %w", err))
 	}
 
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return fail(fmt.Errorf("encode TUN helper request: %w", err))
-	}
-	payload = append(payload, '\n')
-	for len(payload) > 0 {
-		n, err := unix.Write(fd, payload)
-		if err != nil {
-			return fail(fmt.Errorf("send TUN helper request: %w", err))
-		}
-		if n == 0 {
-			return fail(errors.New("TUN helper request write made no progress"))
-		}
-		payload = payload[n:]
+	if err := writeRequest(fdWriter{fd: fd}, request); err != nil {
+		return fail(fmt.Errorf("send TUN helper request: %w", err))
 	}
 
 	oob := make([]byte, unix.CmsgSpace(4))
 	var data []byte
 	buffer := make([]byte, 4096)
-	for len(data) <= 64*1024 {
+	for len(data) <= maxMessageSize {
 		n, oobn, flags, _, err := unix.Recvmsg(fd, buffer, oob, 0)
 		if err != nil {
 			return fail(fmt.Errorf("receive TUN helper response: %w", err))
@@ -228,7 +188,7 @@ func send(request Request, expectDescriptor bool) (Response, int, int, error) {
 		}
 	}
 
-	if len(data) > 64*1024 {
+	if len(data) > maxMessageSize {
 		return fail(errors.New("TUN helper response is too large"))
 	}
 	if newline := bytes.IndexByte(data, '\n'); newline >= 0 {
@@ -249,12 +209,4 @@ func send(request Request, expectDescriptor bool) (Response, int, int, error) {
 	}
 
 	return response, receivedFD, fd, nil
-}
-
-func PeerUID(fd int) (uint32, error) {
-	credentials, err := unix.GetsockoptXucred(fd, unix.SOL_LOCAL, unix.LOCAL_PEERCRED)
-	if err != nil {
-		return 0, fmt.Errorf("read TUN helper client credentials: %w", err)
-	}
-	return credentials.Uid, nil
 }

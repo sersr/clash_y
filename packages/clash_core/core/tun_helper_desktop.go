@@ -1,9 +1,8 @@
-//go:build darwin
+//go:build darwin || linux || windows
 
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -12,37 +11,32 @@ import (
 
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/dns"
-	"golang.org/x/sys/unix"
 	"mihomo-so/tunbroker"
 )
 
-func acquireMacOSTun(cfg *config.Config) (int, error) {
-	tunConfig, err := macOSTunConfig(cfg)
+// acquireDesktopTun asks the platform's privileged helper to create the TUN
+// interface. On Unix the helper also passes the file descriptor back; on
+// Windows it only provisions the adapter and the core opens it by name.
+func acquireDesktopTun(cfg *config.Config) (int, string, error) {
+	tunConfig, err := desktopTunConfig(cfg)
 	if err != nil {
-		return -1, err
+		return -1, "", err
 	}
-	fd, _, err := tunbroker.Acquire(tunConfig)
+	fd, interfaceName, err := tunbroker.Acquire(tunConfig)
 	if err != nil {
-		return -1, err
+		return -1, "", err
 	}
-	return fd, nil
+	return fd, interfaceName, nil
 }
 
-func deactivateMacOSTun() error {
+func deactivateDesktopTun() error {
 	return tunbroker.Deactivate()
 }
 
-func closeMacOSTunFD(fd int) error {
-	if fd <= 0 {
-		return errors.New("invalid macOS TUN file descriptor")
-	}
-	return unix.Close(fd)
-}
-
-func macOSTunConfig(cfg *config.Config) (tunbroker.Config, error) {
+func desktopTunConfig(cfg *config.Config) (tunbroker.Config, error) {
 	tun := cfg.General.Tun
 	if len(tun.RouteAddressSet) > 0 || len(tun.RouteExcludeAddressSet) > 0 {
-		return tunbroker.Config{}, fmt.Errorf("macOS TUN helper does not support route-address-set yet")
+		return tunbroker.Config{}, fmt.Errorf("TUN helper does not support route-address-set yet")
 	}
 
 	options := tunbroker.Config{
@@ -84,7 +78,7 @@ func macOSTunConfig(cfg *config.Config) (tunbroker.Config, error) {
 
 	endpoints := make(map[string]struct{})
 	for _, proxy := range cfg.Proxies {
-		if err := addEndpoint(endpoints, proxy.Addr()); err != nil {
+		if err := addTunEndpoint(endpoints, proxy.Addr()); err != nil {
 			return tunbroker.Config{}, err
 		}
 	}
@@ -97,7 +91,7 @@ func macOSTunConfig(cfg *config.Config) (tunbroker.Config, error) {
 			cfg.DNS.DirectNameServer,
 		} {
 			for _, server := range servers {
-				if err := addEndpoint(endpoints, server.Addr); err != nil {
+				if err := addTunEndpoint(endpoints, server.Addr); err != nil {
 					return tunbroker.Config{}, err
 				}
 			}
@@ -109,7 +103,7 @@ func macOSTunConfig(cfg *config.Config) (tunbroker.Config, error) {
 	return options, nil
 }
 
-func addEndpoint(endpoints map[string]struct{}, address string) error {
+func addTunEndpoint(endpoints map[string]struct{}, address string) error {
 	if address == "" {
 		return nil
 	}

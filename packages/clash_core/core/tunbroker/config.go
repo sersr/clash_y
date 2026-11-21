@@ -8,7 +8,14 @@ import (
 	"go4.org/netipx"
 )
 
-const SocketPath = "/var/run/clashy-tun-helper.sock"
+const (
+	// SocketPath is the Unix domain socket used by the macOS and Linux helpers.
+	SocketPath = "/var/run/clashy-tun-helper.sock"
+	// PipePath is the named pipe used by the Windows helper.
+	PipePath = `\\.\pipe\clashy\tun_helper.pipe`
+	// InterfaceName is the TUN device name shared by every helper.
+	InterfaceName = "clashy"
+)
 
 type Config struct {
 	MTU                 uint32   `json:"mtu"`

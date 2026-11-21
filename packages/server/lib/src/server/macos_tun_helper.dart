@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:server/tray_asset.dart';
 
 abstract final class MacOSTunHelper {
   static const _label = 'com.aote.clashy.tun-helper';
@@ -10,8 +11,6 @@ abstract final class MacOSTunHelper {
   static const _installPath =
       '/Library/PrivilegedHelperTools/com.aote.clashy.tun-helper';
 
-  /// helper 监听的 unix socket，与 Go 侧 `tunbroker.SocketPath` 保持一致。
-  static const _socketPath = '/var/run/clashy-tun-helper.sock';
   static const _socketReadyTimeout = Duration(seconds: 10);
 
   static Future<void> ensureRegistered() async {
@@ -69,7 +68,7 @@ abstract final class MacOSTunHelper {
     while (true) {
       try {
         final socket = await Socket.connect(
-          InternetAddress(_socketPath, type: InternetAddressType.unix),
+          InternetAddress(clashTunHelperSocketPath, type: InternetAddressType.unix),
           0,
         ).timeout(const Duration(seconds: 2));
         socket.destroy();
@@ -81,7 +80,7 @@ abstract final class MacOSTunHelper {
       }
     }
     throw StateError(
-      'macOS TUN helper socket is not ready: $_socketPath ($lastError)',
+      'macOS TUN helper socket is not ready: $clashTunHelperSocketPath ($lastError)',
     );
   }
 

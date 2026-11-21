@@ -73,10 +73,19 @@ func start(configDir *C.char) *C.char {
 	defer mu.Unlock()
 
 	enableEmbeddedConfigUpdates()
-	if runtime.GOOS == "darwin" {
+	if isDesktopOS() {
 		return startDesktop(configDir)
 	}
 	return startMobile(configDir)
+}
+
+func isDesktopOS() bool {
+	switch runtime.GOOS {
+	case "darwin", "linux", "windows":
+		return true
+	default:
+		return false
+	}
 }
 
 func startMobile(configDir *C.char) *C.char {
@@ -130,7 +139,7 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 	defer mu.Unlock()
 
 	enableEmbeddedConfigUpdates()
-	if runtime.GOOS == "darwin" {
+	if isDesktopOS() {
 		return startDesktopTun(configDir, int(fd))
 	}
 	return startMobileTun(configDir, int(fd))
@@ -205,10 +214,11 @@ func startDesktopTun(configDir *C.char, fd int) *C.char {
 	}
 
 	tunFD := fd
+	var tunInterface string
 	if tunFD == -1 {
-		tunFD, err = acquireMacOSTun(cfg)
+		tunFD, tunInterface, err = acquireDesktopTun(cfg)
 		if err != nil {
-			return cError(fmt.Errorf("acquire macOS TUN: %w", err))
+			return cError(fmt.Errorf("acquire TUN helper: %w", err))
 		}
 		tunBrokerActive = true
 	}
@@ -221,12 +231,12 @@ func startDesktopTun(configDir *C.char, fd int) *C.char {
 		return nil
 	}
 
-	options := buildDesktopFdTunOptions(cfg, tunFD)
+	options := buildDesktopFdTunOptions(cfg, tunFD, tunInterface)
 	listener, err := sing_tun.New(options, tunnel.Tunnel)
 	if err != nil {
-		_ = closeMacOSTunFD(tunFD)
+		_ = closeDesktopTunFD(tunFD)
 		if tunBrokerActive {
-			if deactivateErr := deactivateMacOSTun(); deactivateErr != nil {
+			if deactivateErr := deactivateDesktopTun(); deactivateErr != nil {
 				err = errors.Join(err, deactivateErr)
 			} else {
 				tunBrokerActive = false
@@ -281,7 +291,7 @@ func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
 	}
 }
 
-func buildDesktopFdTunOptions(cfg *config.Config, fd int) LC.Tun {
+func buildDesktopFdTunOptions(cfg *config.Config, fd int, helperInterface string) LC.Tun {
 	stack := cfg.General.Tun.Stack
 	if stack.String() == "unknown" {
 		stack = constant.TunGvisor
@@ -291,7 +301,10 @@ func buildDesktopFdTunOptions(cfg *config.Config, fd int) LC.Tun {
 	if mtu == 0 {
 		mtu = 9000
 	}
-	device := cfg.General.Tun.Device
+	device := helperInterface
+	if device == "" {
+		device = cfg.General.Tun.Device
+	}
 	if device == "" {
 		device = "clashy"
 	}
@@ -314,7 +327,7 @@ func buildDesktopFdTunOptions(cfg *config.Config, fd int) LC.Tun {
 		Device:              device,
 		Stack:               stack,
 		DNSHijack:           []string{"172.19.0.2:53"},
-		AutoRoute:           false,
+		AutoRoute:           desktopAutoRoute,
 		AutoDetectInterface: true,
 		Inet4Address:        inet4Address,
 		Inet6Address:        inet6Address,
@@ -330,7 +343,7 @@ func stop() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if runtime.GOOS == "darwin" {
+	if isDesktopOS() {
 		return stopDesktop()
 	}
 	return stopMobile()
@@ -375,7 +388,7 @@ func stopTun() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if runtime.GOOS == "darwin" {
+	if isDesktopOS() {
 		return stopDesktopTun()
 	}
 	return stopMobileTun()
@@ -404,7 +417,7 @@ func resetMobileTunListener() {
 func resetDesktopTunListener() error {
 	var errs []error
 	if tunBrokerActive {
-		if err := deactivateMacOSTun(); err != nil {
+		if err := deactivateDesktopTun(); err != nil {
 			errs = append(errs, err)
 		} else {
 			tunBrokerActive = false

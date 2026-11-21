@@ -3,6 +3,7 @@
 package tunbroker
 
 import (
+	"bufio"
 	"errors"
 	"testing"
 
@@ -40,7 +41,7 @@ func TestLeaseEndClosesTunDescriptor(t *testing.T) {
 	}
 
 	s := testServerWithTunFD(tunDescriptors[0])
-	s.awaitLease(leaseDescriptors[0])
+	s.awaitLease(leaseDescriptors[0], bufio.NewReader(fdReader{fd: leaseDescriptors[0]}))
 	assertTunClosed(t, s, tunDescriptors[0])
 }
 
