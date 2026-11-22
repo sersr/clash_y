@@ -84,12 +84,43 @@ mixin StorageEnum<D> on Enum {
   }
 
   StorageTransform get transform;
+
+  bool reset() {
+    return target.resetSelf(key);
+  }
+}
+
+mixin StorageEnumV<D, T> on StorageEnum<D> {
+  AutoValueNotifier<D> alArg(T arg) {
+    return target.readLate<D>(keyArg(arg), _transform) as AutoValueNotifier<D>;
+  }
+
+  Object keyArg(T arg) => key;
+
+  void resetArg(T arg) {
+    target.resetSelf(keyArg(arg));
+  }
 }
 
 mixin StorageMixin {
   dynamic get(Object key);
   Future<void> delete(Object key);
   Future<void> put(Object key, dynamic data);
+
+  bool resetSelf(Object key) {
+    final item = _weekRef[key];
+    if (item == null) return false;
+    final target = item.value.target;
+    target?.value = item.defaultValue;
+    return true;
+  }
+
+  void reset() {
+    for (var item in _weekRef.values) {
+      final target = item.value.target;
+      target?.value = item.defaultValue;
+    }
+  }
 
   void refresh(Object key, StorageTransform transform) {
     if (_weekRef[key] case _Wrapper(
@@ -105,13 +136,13 @@ mixin StorageMixin {
     _weekRef.remove(v);
   });
 
-  static void _wrap(Object key, dynamic obx) {
+  static void _wrap(Object key, dynamic obx, dynamic defaultValue) {
     final old = _weekRef[key];
     if (old != null) {
       _finalizer.detach(old);
     }
 
-    final wrapper = _Wrapper(obx);
+    final wrapper = _Wrapper(obx, defaultValue);
     _weekRef[key] = wrapper;
     _finalizer.attach(obx, key, detach: wrapper);
   }
@@ -154,7 +185,7 @@ mixin StorageMixin {
     obx.addListener(() {
       _saveData(key, obx.value);
     });
-    StorageMixin._wrap(key, obx);
+    StorageMixin._wrap(key, obx, t.defaultValue);
 
     return obx.al;
   }
@@ -185,6 +216,8 @@ mixin StorageMixin {
 }
 
 class _Wrapper {
-  _Wrapper(dynamic value) : value = WeakReference(value);
-  final dynamic value;
+  _Wrapper(ValueNotifier value, this.defaultValue)
+    : value = WeakReference(value);
+  final WeakReference<ValueNotifier> value;
+  final dynamic defaultValue;
 }

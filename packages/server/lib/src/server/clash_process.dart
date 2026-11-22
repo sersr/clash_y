@@ -513,10 +513,8 @@ abstract final class ClashProcess {
             Log.e('start Error: $error');
           }
           freeString(res);
-          _started = false;
-        } else {
-          _started = true;
-        }
+        } else {}
+        _started = true;
       } catch (e) {
         Log.e('start error: $e');
         err = e.toString();

@@ -78,7 +78,7 @@ class _ClashHomeState extends State<ClashHome> {
 
   Widget _action() {
     final running = clashMainNotifier.isRunning;
-    final loading = clashMainNotifier.isStarting;
+    final loading = clashMainNotifier.isLoading;
     return FloatingActionButton(
       onPressed: loading
           ? null

@@ -8,7 +8,7 @@ import 'package:file/file.dart';
 import 'package:flutter_nop/flutter_nop.dart';
 import 'package:nop/nop.dart';
 
-final class ClashEvent with NopLifecycle {
+final class ClashEvent with NopLifecycle, AlScopeManager {
   String get appConfigPath => G.appConfigPath;
   String get unixSocketPath => G.unixSocketPath;
 
@@ -28,18 +28,23 @@ final class ClashEvent with NopLifecycle {
     }
   }
 
-  Future<String> initConfig() async {
+  Future<ClashProfile> currentClashProfile() => _currentProfile.value;
+
+  Future<String> _initConfig() async {
     return initConfigPath((profile) async => await reloadConfigs(profile));
   }
 
+  late final _currentProfile = () async {
+    Log.w('.....xxx');
+    final path = await _initConfig();
+    return BaseConfig.currentProfileData.value.toClashProfile(path);
+  }.mount(this);
+
   FutureOr<void> reloadCurrentConfig() async {
     try {
-      await initConfig();
+      final profile = await currentClashProfile();
 
       if (io.Platform.isAndroid && !await ClashService.isVpnActive()) {
-        final profile = BaseConfig.currentProfileData.value.toClashProfile(
-          configYaml.parent.path,
-        );
         final accepted = await ClashService.reloadCoreConfig(
           profile,
           controllerSocketPath: unixSocketPath,

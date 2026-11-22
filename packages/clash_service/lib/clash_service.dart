@@ -361,6 +361,18 @@ abstract final class ClashService {
       return IOSVpnService.close();
     }
 
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      try {
+        final response = await ClashService.stopVpn();
+        if (!response.success) {
+          return false;
+        }
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
     return false;
   }
 

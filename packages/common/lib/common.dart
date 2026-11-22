@@ -16,7 +16,6 @@ export 'src/ext/widget_ext.dart';
 export 'src/fs.dart';
 export 'src/global.dart';
 export 'src/hive.dart';
-export 'src/macos/proxy.dart';
 
 ///
 export 'src/storage.dart';
@@ -34,7 +33,8 @@ export 'src/utils/equal.dart';
 
 /// widget
 export 'src/widget/base_dialog.dart';
-export 'src/base_scaffold.dart';
+export 'src/widget/base_scaffold.dart';
+export 'src/data_status.dart';
 
 export 'package:clash_service/api.dart';
 export 'package:clash_service/clash_service.dart' show fs;

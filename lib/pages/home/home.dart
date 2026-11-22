@@ -43,7 +43,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       clashConnectionsNotifier.toggle(false);
       clashMainNotifier.stopListen();
     } else if (state == AppLifecycleState.resumed) {
-      clashMainNotifier.refreshOnResume();
       clashConnectionsNotifier.toggle(index.value == 2);
     }
   }
@@ -102,9 +101,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             color: const Color.fromARGB(255, 88, 88, 88),
           ),
           onTap: (index) {
-            if (index == 0) {
-              clashMainNotifier.refreshOnResume();
-            }
             this.index.value = index;
             clashConnectionsNotifier.toggle(index == 2);
           },
