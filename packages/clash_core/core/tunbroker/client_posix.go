@@ -56,6 +56,26 @@ func Acquire(config Config) (int, string, error) {
 	return tunFD, response.Interface, nil
 }
 
+// Activate applies routes from the configuration used to acquire the lease.
+func Activate() error {
+	leaseMu.Lock()
+	defer leaseMu.Unlock()
+	if leaseFD < 0 {
+		return errors.New("TUN helper lease is not active")
+	}
+	if err := writeRequest(fdWriter{fd: leaseFD}, Request{Command: "activate"}); err != nil {
+		return fmt.Errorf("activate TUN helper routes: %w", err)
+	}
+	response, err := readResponse(leaseReader)
+	if err != nil {
+		return fmt.Errorf("read TUN helper activation response: %w", err)
+	}
+	if response.Error != "" {
+		return errors.New(response.Error)
+	}
+	return nil
+}
+
 // Deactivate releases the current TUN lease and asks the helper to clean up.
 func Deactivate() error {
 	leaseMu.Lock()

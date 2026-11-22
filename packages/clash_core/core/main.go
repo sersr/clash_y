@@ -185,7 +185,6 @@ func startMobileTun(configDir *C.char, fd int) *C.char {
 		executor.Shutdown()
 		return cError(fmt.Errorf("start tun: %w", err))
 	}
-
 	tunListener = listener
 	started = true
 	return nil
@@ -244,6 +243,17 @@ func startDesktopTun(configDir *C.char, fd int) *C.char {
 		}
 		executor.Shutdown()
 		return cError(fmt.Errorf("start tun: %w", err))
+	}
+	if tunBrokerActive {
+		if err := activateDesktopTun(); err != nil {
+			closeErr := listener.Close()
+			cleanupErr := deactivateDesktopTun()
+			if cleanupErr == nil {
+				tunBrokerActive = false
+			}
+			executor.Shutdown()
+			return cError(errors.Join(fmt.Errorf("activate TUN routes: %w", err), closeErr, cleanupErr))
+		}
 	}
 
 	tunListener = listener
@@ -323,16 +333,22 @@ func buildDesktopFdTunOptions(cfg *config.Config, fd int, helperInterface string
 	}
 
 	return LC.Tun{
-		Enable:              true,
-		Device:              device,
-		Stack:               stack,
-		DNSHijack:           []string{"172.19.0.2:53"},
-		AutoRoute:           desktopAutoRoute,
-		AutoDetectInterface: true,
-		Inet4Address:        inet4Address,
-		Inet6Address:        inet6Address,
-		MTU:                 mtu,
-		FileDescriptor:      fd,
+		Enable:                   true,
+		Device:                   device,
+		Stack:                    stack,
+		DNSHijack:                []string{"172.19.0.2:53"},
+		AutoRoute:                desktopAutoRoute,
+		AutoDetectInterface:      true,
+		Inet4Address:             inet4Address,
+		Inet6Address:             inet6Address,
+		RouteAddress:             cfg.General.Tun.RouteAddress,
+		Inet4RouteAddress:        cfg.General.Tun.Inet4RouteAddress,
+		Inet6RouteAddress:        cfg.General.Tun.Inet6RouteAddress,
+		RouteExcludeAddress:      cfg.General.Tun.RouteExcludeAddress,
+		Inet4RouteExcludeAddress: cfg.General.Tun.Inet4RouteExcludeAddress,
+		Inet6RouteExcludeAddress: cfg.General.Tun.Inet6RouteExcludeAddress,
+		MTU:                      mtu,
+		FileDescriptor:           fd,
 	}
 }
 
@@ -416,18 +432,20 @@ func resetMobileTunListener() {
 
 func resetDesktopTunListener() error {
 	var errs []error
+	// Stop Mihomo's readers and packet-processing stack before releasing the
+	// helper lease that owns the underlying TUN device.
+	if tunListener != nil {
+		if err := tunListener.Close(); err != nil {
+			errs = append(errs, err)
+		}
+		tunListener = nil
+	}
 	if tunBrokerActive {
 		if err := deactivateDesktopTun(); err != nil {
 			errs = append(errs, err)
 		} else {
 			tunBrokerActive = false
 		}
-	}
-	if tunListener != nil {
-		if err := tunListener.Close(); err != nil {
-			errs = append(errs, err)
-		}
-		tunListener = nil
 	}
 	// ReCreateTun clears mihomo's cached TUN configuration.
 	listener.ReCreateTun(LC.Tun{}, tunnel.Tunnel)

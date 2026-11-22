@@ -93,37 +93,15 @@ func interfaceIsUp(name string) bool {
 	return strings.Contains(firstLine, "<UP")
 }
 
-func activateRoutes(s *server, routes, bypass []string) error {
-	if err := applyDarwinRoutes(s, routes, bypass); err != nil {
+func activateRoutes(s *server, routes []string) error {
+	if err := applyDarwinRoutes(s, routes); err != nil {
 		cleanupErr := deactivateRoutes(s)
 		return errors.Join(err, cleanupErr)
 	}
 	return nil
 }
 
-func applyDarwinRoutes(s *server, routes, bypass []string) error {
-	for _, address := range bypass {
-		ip, _ := netip.ParseAddr(address)
-		gateway, interfaceName, err := routeFor(ip)
-		if err != nil {
-			return fmt.Errorf("find physical route for TUN bypass %s: %w", ip, err)
-		}
-		family := "-inet"
-		if ip.Is6() {
-			family = "-inet6"
-		}
-		args := []string{"-n", "add", family, "-host", ip.String()}
-		if gatewayIP, parseErr := netip.ParseAddr(gateway); parseErr == nil {
-			args = append(args, gatewayIP.String())
-		} else if interfaceName != "" {
-			args = append(args, "-interface", interfaceName)
-		} else {
-			return fmt.Errorf("no usable physical route found for TUN bypass %s", ip)
-		}
-		if err := addDarwinRoute(s, args); err != nil {
-			return fmt.Errorf("add TUN bypass route for %s: %w", ip, err)
-		}
-	}
+func applyDarwinRoutes(s *server, routes []string) error {
 	for _, prefix := range routes {
 		parsed, err := netip.ParsePrefix(prefix)
 		if err != nil {
@@ -184,29 +162,6 @@ func darwinState(s *server) *darwinServerState {
 
 type darwinServerState struct {
 	routes []darwinRoute
-}
-
-func routeFor(address netip.Addr) (gateway, interfaceName string, err error) {
-	output, err := commandOutput("/sbin/route", "-n", "get", address.String())
-	if err != nil {
-		return "", "", err
-	}
-	for _, line := range strings.Split(output, "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
-		if !ok {
-			continue
-		}
-		switch strings.TrimSpace(key) {
-		case "gateway":
-			gateway = strings.TrimSpace(value)
-		case "interface":
-			interfaceName = strings.TrimSpace(value)
-		}
-	}
-	if gateway == "" && interfaceName == "" {
-		return "", "", errors.New("route lookup returned no gateway or interface")
-	}
-	return gateway, interfaceName, nil
 }
 
 func run(name string, args ...string) error {

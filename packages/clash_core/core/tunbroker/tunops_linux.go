@@ -97,38 +97,18 @@ func interfaceIsUp(name string) bool {
 	return link.Attrs().Flags&net.FlagUp != 0
 }
 
-func activateRoutes(s *server, routes, bypass []string) error {
-	if err := applyLinuxRoutes(s, routes, bypass); err != nil {
+func activateRoutes(s *server, routes []string) error {
+	if err := applyLinuxRoutes(s, routes); err != nil {
 		cleanupErr := deactivateRoutes(s)
 		return errors.Join(err, cleanupErr)
 	}
 	return nil
 }
 
-func applyLinuxRoutes(s *server, routes, bypass []string) error {
+func applyLinuxRoutes(s *server, routes []string) error {
 	link, err := netlink.LinkByName(s.tunName)
 	if err != nil {
 		return fmt.Errorf("find TUN interface %s: %w", s.tunName, err)
-	}
-	for _, address := range bypass {
-		ip, err := netip.ParseAddr(address)
-		if err != nil {
-			return fmt.Errorf("invalid TUN bypass address %q: %w", address, err)
-		}
-		gateway, err := defaultGateway(ip.Is6())
-		if err != nil {
-			return fmt.Errorf("find physical gateway for TUN bypass %s: %w", ip, err)
-		}
-		route := &netlink.Route{
-			Dst:      ipNet(netip.PrefixFrom(ip, ip.BitLen())),
-			Gw:       gateway.AsSlice(),
-			Protocol: unix.RTPROT_STATIC,
-			Scope:    unix.RT_SCOPE_UNIVERSE,
-		}
-		if err := netlink.RouteAdd(route); err != nil && !errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("add TUN bypass route for %s: %w", ip, err)
-		}
-		addLinuxRoute(s, route)
 	}
 	for _, value := range routes {
 		prefix, err := netip.ParsePrefix(value)
@@ -136,7 +116,10 @@ func applyLinuxRoutes(s *server, routes, bypass []string) error {
 			return fmt.Errorf("invalid TUN route %q: %w", value, err)
 		}
 		route := &netlink.Route{LinkIndex: link.Attrs().Index, Dst: ipNet(prefix)}
-		if err := netlink.RouteAdd(route); err != nil && !errors.Is(err, os.ErrExist) {
+		if err := netlink.RouteAdd(route); err != nil {
+			if errors.Is(err, os.ErrExist) || errors.Is(err, unix.EEXIST) {
+				continue
+			}
 			return fmt.Errorf("add TUN route %s: %w", value, err)
 		}
 		addLinuxRoute(s, route)
@@ -164,7 +147,10 @@ func deactivateRoutes(s *server) error {
 	var remaining []linuxRoute
 	for index := len(state.routes) - 1; index >= 0; index-- {
 		entry := state.routes[index]
-		if err := netlink.RouteDel(entry.route); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := netlink.RouteDel(entry.route); err != nil {
+			if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ENOENT) {
+				continue
+			}
 			errs = append(errs, err)
 			remaining = append(remaining, entry)
 		}
@@ -175,28 +161,6 @@ func deactivateRoutes(s *server) error {
 
 type linuxServerState struct {
 	routes []linuxRoute
-}
-
-func defaultGateway(ipv6 bool) (netip.Addr, error) {
-	family := netlink.FAMILY_V4
-	if ipv6 {
-		family = netlink.FAMILY_V6
-	}
-	routes, err := netlink.RouteList(nil, family)
-	if err != nil {
-		return netip.Addr{}, err
-	}
-	for _, route := range routes {
-		if route.Dst != nil && !route.Dst.IP.IsUnspecified() {
-			continue
-		}
-		address, ok := netip.AddrFromSlice(route.Gw)
-		if !ok {
-			continue
-		}
-		return address.Unmap(), nil
-	}
-	return netip.Addr{}, errors.New("no default gateway found")
 }
 
 func ipNet(prefix netip.Prefix) *net.IPNet {

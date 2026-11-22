@@ -82,18 +82,6 @@ func validateConfig(config Config) error {
 	if config.MTU != 0 && (config.MTU < 1280 || config.MTU > 65535) {
 		return fmt.Errorf("invalid TUN MTU: %d", config.MTU)
 	}
-	if len(config.Bypass) > 1024 {
-		return errors.New("too many TUN bypass addresses")
-	}
-	for _, address := range config.Bypass {
-		ip, err := netip.ParseAddr(address)
-		if err != nil {
-			return fmt.Errorf("invalid TUN bypass address %q: %w", address, err)
-		}
-		if ip.Zone() != "" {
-			return fmt.Errorf("scoped TUN bypass address is unsupported: %q", address)
-		}
-	}
 	if len(config.Inet4Address) == 0 && len(config.Inet6Address) == 0 {
 		return errors.New("TUN helper requires at least one interface address")
 	}

@@ -27,9 +27,7 @@ type server struct {
 	tunConfig  Config
 	clientMu   sync.Mutex
 	clientFD   int
-
-	// Platform state (installed routes, adapter handles, ...).
-	platform any
+	platform   any
 }
 
 func Serve(ctx context.Context, socketPath string, allowedUID uint32) error {
@@ -210,28 +208,37 @@ func (s *server) handle(clientFD int) {
 }
 
 func (s *server) awaitLease(fd int, reader *bufio.Reader) {
-	request, err := readRequest(reader)
-	if err != nil {
-		if !errors.Is(err, io.EOF) && !errors.Is(err, unix.EBADF) {
-			fmt.Fprintf(os.Stderr, "read TUN helper lease: %v\n", err)
+	for {
+		request, err := readRequest(reader)
+		if err != nil {
+			if !errors.Is(err, io.EOF) && !errors.Is(err, unix.EBADF) {
+				fmt.Fprintf(os.Stderr, "read TUN helper lease: %v\n", err)
+			}
+			if cleanupErr := s.deactivate(); cleanupErr != nil {
+				fmt.Fprintf(os.Stderr, "release TUN after lease ended: %v\n", cleanupErr)
+			}
+			return
 		}
-		if cleanupErr := s.deactivate(); cleanupErr != nil {
-			fmt.Fprintf(os.Stderr, "release TUN after lease ended: %v\n", cleanupErr)
+		switch request.Command {
+		case "activate":
+			if err := s.activate(); err != nil {
+				s.respond(fd, Response{Error: err.Error()}, -1)
+			} else {
+				s.respond(fd, Response{}, -1)
+			}
+		case "deactivate":
+			if err := s.deactivate(); err != nil {
+				s.respond(fd, Response{Error: err.Error()}, -1)
+				return
+			}
+			s.respond(fd, Response{}, -1)
+			return
+		default:
+			s.respond(fd, Response{Error: "unsupported TUN helper lease command"}, -1)
+			_ = s.deactivate()
+			return
 		}
-		return
 	}
-	if request.Command != "deactivate" {
-		s.respond(fd, Response{Error: "unsupported TUN helper lease command"}, -1)
-		if cleanupErr := s.deactivate(); cleanupErr != nil {
-			fmt.Fprintf(os.Stderr, "release TUN after invalid lease command: %v\n", cleanupErr)
-		}
-		return
-	}
-	if err := s.deactivate(); err != nil {
-		s.respond(fd, Response{Error: err.Error()}, -1)
-		return
-	}
-	s.respond(fd, Response{}, -1)
 }
 
 func (s *server) respond(fd int, response Response, descriptor int) {
@@ -251,10 +258,10 @@ func (s *server) respond(fd int, response Response, descriptor int) {
 }
 
 func (s *server) acquire(config Config) (string, error) {
-	if err := deactivateRoutes(s); err != nil {
+	if err := validateConfig(config); err != nil {
 		return "", err
 	}
-	if err := validateConfig(config); err != nil {
+	if err := deactivateRoutes(s); err != nil {
 		return "", err
 	}
 
@@ -277,19 +284,21 @@ func (s *server) acquire(config Config) (string, error) {
 		}
 		s.tunFD = fd
 		s.tunName = name
-		s.tunConfig = config
 	}
+	s.tunConfig = config
 
-	routes, err := RoutePrefixes(config)
-	if err != nil {
-		return "", err
-	}
-	if config.AutoRoute {
-		if err := activateRoutes(s, routes, config.Bypass); err != nil {
-			return "", errors.Join(err, s.closeTun())
-		}
-	}
 	return s.tunName, nil
+}
+
+func (s *server) activate() error {
+	routes, err := RoutePrefixes(s.tunConfig)
+	if err != nil {
+		return err
+	}
+	if !s.tunConfig.AutoRoute {
+		return nil
+	}
+	return activateRoutes(s, routes)
 }
 
 func (s *server) deactivate() error {
@@ -309,4 +318,3 @@ func (s *server) closeTun() error {
 	}
 	return nil
 }
-

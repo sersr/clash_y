@@ -54,6 +54,9 @@ func Acquire(config Config) (int, string, error) {
 	return 0, response.Interface, nil
 }
 
+// Activate is a no-op because the Windows core installs its own routes.
+func Activate() error { return nil }
+
 // Deactivate releases the current TUN lease.
 func Deactivate() error {
 	leaseMu.Lock()

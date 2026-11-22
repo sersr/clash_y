@@ -2,6 +2,5 @@
 
 package main
 
-// desktopAutoRoute is false because the privileged helper owns route setup
-// when it hands a TUN descriptor to the core.
+// The helper owns system route setup for its externally created TUN device.
 const desktopAutoRoute = false

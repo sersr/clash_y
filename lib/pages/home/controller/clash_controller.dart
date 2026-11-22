@@ -65,7 +65,7 @@ class ClashController with NopLifecycle, AlScopeManager {
     if (!mounted) return;
     if (_timer case var timer? when timer.isActive) return;
 
-    _timer = Timer(const Duration(seconds: 5), _loop);
+    _timer = Timer(isRunning ? const .new(seconds: 30) : const .new(seconds: 5), _loop);
   }
 
   final _timerQueue = TaskQueue();

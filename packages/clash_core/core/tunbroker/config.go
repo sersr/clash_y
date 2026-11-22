@@ -22,10 +22,8 @@ type Config struct {
 	Inet4Address        []string `json:"inet4Address"`
 	Inet6Address        []string `json:"inet6Address"`
 	AutoRoute           bool     `json:"autoRoute"`
-	AutoDetectInterface bool     `json:"autoDetectInterface"`
 	RouteAddress        []string `json:"routeAddress"`
 	RouteExcludeAddress []string `json:"routeExcludeAddress"`
-	Bypass              []string `json:"bypass"`
 }
 
 type Request struct {

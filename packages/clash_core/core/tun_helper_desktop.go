@@ -4,13 +4,9 @@ package main
 
 import (
 	"fmt"
-	"net"
-	"net/netip"
-	"net/url"
-	"strings"
+	"runtime"
 
 	"github.com/metacubex/mihomo/config"
-	"github.com/metacubex/mihomo/dns"
 	"mihomo-so/tunbroker"
 )
 
@@ -29,6 +25,13 @@ func acquireDesktopTun(cfg *config.Config) (int, string, error) {
 	return fd, interfaceName, nil
 }
 
+func activateDesktopTun() error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return tunbroker.Activate()
+}
+
 func deactivateDesktopTun() error {
 	return tunbroker.Deactivate()
 }
@@ -40,9 +43,8 @@ func desktopTunConfig(cfg *config.Config) (tunbroker.Config, error) {
 	}
 
 	options := tunbroker.Config{
-		MTU:                 tun.MTU,
-		AutoRoute:           tun.AutoRoute,
-		AutoDetectInterface: true,
+		MTU:       tun.MTU,
+		AutoRoute: tun.AutoRoute,
 	}
 	for _, address := range tun.Inet4Address {
 		options.Inet4Address = append(options.Inet4Address, address.String())
@@ -56,7 +58,6 @@ func desktopTunConfig(cfg *config.Config) (tunbroker.Config, error) {
 	if len(options.Inet6Address) == 0 {
 		options.Inet6Address = []string{"fdfe:dcba:9876::1/126"}
 	}
-
 	for _, address := range tun.RouteAddress {
 		options.RouteAddress = append(options.RouteAddress, address.String())
 	}
@@ -76,66 +77,5 @@ func desktopTunConfig(cfg *config.Config) (tunbroker.Config, error) {
 		options.RouteExcludeAddress = append(options.RouteExcludeAddress, address.String())
 	}
 
-	endpoints := make(map[string]struct{})
-	for _, proxy := range cfg.Proxies {
-		if err := addTunEndpoint(endpoints, proxy.Addr()); err != nil {
-			return tunbroker.Config{}, err
-		}
-	}
-	if cfg.DNS != nil {
-		for _, servers := range [][]dns.NameServer{
-			cfg.DNS.NameServer,
-			cfg.DNS.Fallback,
-			cfg.DNS.DefaultNameserver,
-			cfg.DNS.ProxyServerNameserver,
-			cfg.DNS.DirectNameServer,
-		} {
-			for _, server := range servers {
-				if err := addTunEndpoint(endpoints, server.Addr); err != nil {
-					return tunbroker.Config{}, err
-				}
-			}
-		}
-	}
-	for endpoint := range endpoints {
-		options.Bypass = append(options.Bypass, endpoint)
-	}
 	return options, nil
-}
-
-func addTunEndpoint(endpoints map[string]struct{}, address string) error {
-	if address == "" {
-		return nil
-	}
-	host := address
-	if strings.Contains(address, "://") {
-		parsed, err := url.Parse(address)
-		if err != nil {
-			return fmt.Errorf("parse TUN bypass endpoint %q: %w", address, err)
-		}
-		host = parsed.Hostname()
-	} else if splitHost, _, err := net.SplitHostPort(address); err == nil {
-		host = splitHost
-	} else if parsed, err := netip.ParseAddr(strings.Trim(address, "[]")); err == nil {
-		host = parsed.String()
-	}
-	host = strings.Trim(host, "[]")
-	if ip, err := netip.ParseAddr(host); err == nil {
-		endpoints[ip.String()] = struct{}{}
-		return nil
-	}
-	if host == "" {
-		return nil
-	}
-	addresses, err := net.LookupIP(host)
-	if err != nil {
-		return fmt.Errorf("resolve TUN bypass endpoint %q: %w", host, err)
-	}
-	for _, address := range addresses {
-		ip, ok := netip.AddrFromSlice(address)
-		if ok {
-			endpoints[ip.Unmap().String()] = struct{}{}
-		}
-	}
-	return nil
 }
