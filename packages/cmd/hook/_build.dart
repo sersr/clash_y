@@ -5,6 +5,7 @@ import 'package:file/file.dart';
 import 'package:file/local.dart';
 import 'package:hooks/hooks.dart';
 import 'package:path/path.dart';
+
 import 'package:server/tray_asset.dart';
 
 const _fs = LocalFileSystem();
@@ -40,7 +41,7 @@ Future<void> buildWakeMonitor(
   if (input.config.code.targetOS != .macOS) return;
 
   final wakeMonitorDir = _fs.currentDirectory
-      .childDirectory(input.packageRoot.path)
+      .childDirectory(input.packageRoot.toFilePath())
       .parent
       .childDirectory('clash_wake_monitor');
   final result = await io.Process.run('swift', [
@@ -93,7 +94,9 @@ Future<void> buildTrayExecutable(
   if (!input.config.buildCodeAssets) return;
   if (input.config.code.targetOS != .macOS) return;
 
-  final cmdRoot = _fs.currentDirectory.childDirectory(input.packageRoot.path);
+  final cmdRoot = _fs.currentDirectory.childDirectory(
+    input.packageRoot.toFilePath(),
+  );
   final architecture = switch (input.config.code.targetArchitecture) {
     Architecture.arm64 => 'arm64',
     Architecture.x64 => 'x86_64',
@@ -181,7 +184,9 @@ Future<void> buildClashServer(
   final targetOs = input.config.code.targetOS;
   final arc = input.config.code.targetArchitecture;
 
-  final cmdRoot = _fs.currentDirectory.childDirectory(input.packageRoot.path);
+  final cmdRoot = _fs.currentDirectory.childDirectory(
+    input.packageRoot.toFilePath(),
+  );
 
   final exeDir = _nativeBinDir(cmdRoot);
 

@@ -15,7 +15,7 @@ extension ProfileExt on Profile {
   }
 
   Future<Map<String, dynamic>> _getConfigData() async {
-    final js = QuickjsRuntime();
+    final js = JSInterpreter();
     Map<String, dynamic> data = {};
     try {
       data = await getConfigMap(filePath);
@@ -23,11 +23,7 @@ extension ProfileExt on Profile {
       if (script == null) return data;
 
       final scriptErrors = <String?>[];
-      js.eval(
-        script.script,
-        filename: 'profile-script.js',
-        errMsg: scriptErrors,
-      );
+      js.eval(script.script);
 
       if (scriptErrors.isNotEmpty) {
         throw FormatException(
@@ -38,11 +34,7 @@ extension ProfileExt on Profile {
       js.setGlobal('profileConfig', data);
 
       final resultErrors = <String?>[];
-      final value = js.eval(
-        'main(profileConfig);',
-        filename: 'profile-script-main.js',
-        errMsg: resultErrors,
-      );
+      final value = js.evalToDart('main(profileConfig);');
 
       if (resultErrors.isNotEmpty) {
         throw FormatException(
@@ -58,7 +50,7 @@ extension ProfileExt on Profile {
       Log.e(e);
       return data;
     } finally {
-      js.close();
+      // js.close();
     }
   }
 }

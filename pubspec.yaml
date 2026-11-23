@@ -52,8 +52,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  nop_gen:
-    path: ../packages/nop_gen
+  nop_gen: any
   build_runner: ^2.1.5
   json_serializable: ^6.0.1
 
@@ -70,6 +69,9 @@ dependency_overrides:
   ui_widgets:
     git:
       url: https://github.com/sersr/ui_widgets
+  nop_gen:
+    git:
+      url: https://github.com/sersr/nop_gen
 
   # flutter_nop:
   #   path: ../packages/flutter_nop
@@ -79,9 +81,11 @@ dependency_overrides:
   #   path: ../packages/overlays
   # ui_widgets:
   #   path: ../packages/ui_widgets
-  quickjs_runtime:
-    git:
-      url: https://github.com/sersr/quickjs_runtime
+  # nop_gen:
+  #   path: ../packages/nop_gen
+  # quickjs_runtime:
+  #   git:
+  #     url: https://github.com/sersr/quickjs_runtime
 
 flutter:
   uses-material-design: true

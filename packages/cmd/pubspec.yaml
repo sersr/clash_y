@@ -23,3 +23,9 @@ dependencies:
 dev_dependencies:
   lints: ^6.0.0
   test: ^1.25.6
+
+# dependency_overrides:
+#   quickjs_runtime:
+#     git:
+#       url: https://github.com/IstiN/quickjs_runtime
+  

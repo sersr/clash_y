@@ -135,6 +135,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.4.2"
+  clock:
+    dependency: transitive
+    description:
+      name: clock
+      sha256: e51d50bca3217c9a9fa2b41a30e4a38971133f5f9ec7a3d57bae095007f1d28e
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.3"
   code_assets:
     dependency: "direct main"
     description:
@@ -332,6 +340,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
+  intl:
+    dependency: transitive
+    description:
+      name: intl
+      sha256: "1ca20c894b1717686a2319b8548763d812bc0aabdac580420a44c5178c57a867"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.20.3"
   io:
     dependency: transitive
     description:
@@ -364,6 +380,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.0"
+  js_interpreter:
+    dependency: transitive
+    description:
+      name: js_interpreter
+      sha256: c5d46cc313a34d448dbc1fce3fe5898727c7105abbbbb655302d20f5ee929fe6
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.5"
   json_annotation:
     dependency: "direct main"
     description:
@@ -444,14 +468,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
-  native_synchronization:
-    dependency: transitive
-    description:
-      name: native_synchronization
-      sha256: "047fa3665d611e178edc167e56166714f125750f064d20216892f1cca69d9d1d"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.1"
   native_toolchain_c:
     dependency: transitive
     description:
@@ -540,14 +556,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.7.0"
-  quickjs_runtime:
-    dependency: "direct main"
-    description:
-      name: quickjs_runtime
-      sha256: "231e4688362dabe47849b795d57f4071f34c61fc1db477dbc2f0813dbfd96072"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.4.9"
   quiver:
     dependency: transitive
     description:

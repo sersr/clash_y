@@ -10,7 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:ffi/ffi.dart';
 import 'package:nop/nop.dart';
 import 'package:path/path.dart' as p;
-import 'package:quickjs_runtime/quickjs_runtime.dart';
+import 'package:js_interpreter/js_interpreter.dart';
 import 'package:server/app_support.dart';
 import 'package:yaml/yaml.dart';
 import 'package:yaml_writer/yaml_writer.dart';
@@ -415,23 +415,24 @@ abstract final class ClashProcess {
   }
 
   static String _runProfileScript(String yaml, String script) {
-    final js = QuickjsRuntime();
+    final js = JSInterpreter();
     try {
       final data = jsonDecode(jsonEncode(loadYaml(yaml)));
-      final scriptErrors = <String?>[];
-      js.eval(script, filename: 'profile-script.js', errMsg: scriptErrors);
-      if (scriptErrors.isNotEmpty) {
-        throw FormatException(
-          scriptErrors.first ?? 'unable to evaluate profile script',
-        );
-      }
+      // final scriptErrors = <String?>[];
+      js.eval(script);
+      // , filename: 'profile-script.js', errMsg: scriptErrors);
+      // if (scriptErrors.isNotEmpty) {
+      //   throw FormatException(
+      //     scriptErrors.first ?? 'unable to evaluate profile script',
+      //   );
+      // }
 
       js.setGlobal('profileConfig', data);
       final resultErrors = <String?>[];
-      final result = js.eval(
+      final result = js.evalToDart(
         'main(profileConfig);',
-        filename: 'profile-script-main.js',
-        errMsg: resultErrors,
+        // filename: 'profile-script-main.js',
+        // errMsg: resultErrors,
       );
       if (resultErrors.isNotEmpty) {
         throw FormatException(
@@ -451,7 +452,7 @@ abstract final class ClashProcess {
       Log.e('profile script failed: $e');
       return yaml;
     } finally {
-      js.close();
+      // js.close();
     }
   }
 

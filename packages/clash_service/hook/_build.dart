@@ -25,17 +25,19 @@ Future<void> buildClashServer(
   final packageName = input.packageName;
 
   final cmdRoot = _fs.currentDirectory
-      .childDirectory(input.packageRoot.path)
+      .childDirectory(input.packageRoot.toFilePath())
       .parent
       .childDirectory('cmd');
 
-  final result = await io.Process.run('dart', [
-    'build',
-    'cli',
-  ], workingDirectory: cmdRoot.path);
+  if (targetOs != .windows) {
+    final result = await io.Process.run('dart', [
+      'build',
+      'cli',
+    ], workingDirectory: cmdRoot.path);
 
-  if (result.exitCode != 0) {
-    throw Exception('dart build cli failed: cmd.\n${result.stderr}');
+    if (result.exitCode != 0) {
+      throw Exception('dart build cli failed: cmd.\n${result.stderr}');
+    }
   }
 
   final bundleDir = cmdRoot

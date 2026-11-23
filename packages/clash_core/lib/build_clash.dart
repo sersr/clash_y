@@ -24,14 +24,18 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
   final goDirectory = input.packageRoot.resolve('core/');
 
   final outputName = targetOs.dylibFileName('clash');
-  var outputPath = input.outputDirectory.resolve(outputName).path;
+  var outputPath = input.outputDirectory
+      .resolve(outputName)
+      .toFilePath(windows: targetOs == .windows);
 
   if (targetOs != .android) {
-    outputPath = join(
-      input.packageRoot.path,
-      'build',
-      targetOs.name,
-      outputName,
+    outputPath = normalize(
+      join(
+        input.packageRoot.toFilePath(windows: targetOs == .windows),
+        'build',
+        targetOs.name,
+        outputName,
+      ),
     );
   }
 
@@ -86,8 +90,10 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
     'build',
     '-buildmode=c-shared',
     '-trimpath',
-    if (Platform.environment['CLASH_CORE_KEEP_DEBUG_SYMBOLS'] != '1')
-      ...['-ldflags', '-s -w'],
+    if (Platform.environment['CLASH_CORE_KEEP_DEBUG_SYMBOLS'] != '1') ...[
+      '-ldflags',
+      '-s -w',
+    ],
     '-o',
     outputPath,
     '-tags',
@@ -122,7 +128,7 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
     CodeAsset(
       package: input.packageName,
       name: 'src/clash_core.dart',
-      file: .parse(outputPath),
+      file: .file(outputPath),
       linkMode: DynamicLoadingBundled(),
     ),
   );
@@ -156,3 +162,21 @@ String _androidTarget(Architecture architecture, int api) =>
         'Unsupported Android architecture: ${architecture.name}',
       ),
     };
+
+String uriToWindowsPath(Uri uri) {
+  try {
+    // 标准 file:///C:/... 走这里
+    return uri.toFilePath(windows: true);
+  } catch (_) {
+    // 非标准 URI，手动处理
+    final s = uri.toString();
+    // 去掉 file: 前缀和可能的斜杠
+    var p = s.replaceFirst(RegExp(r'^file:(//)?'), '');
+    // 如果变成 /C:/... 这种，去掉开头的斜杠
+    if (p.startsWith('/') && p.length > 2 && p[2] == ':') {
+      p = p.substring(1);
+    }
+    // 统一反斜杠
+    return p.replaceAll('/', r'\');
+  }
+}

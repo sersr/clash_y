@@ -15,6 +15,11 @@ void requestNotification() async {
   final initializationSettings = InitializationSettings(
     android: initializationSettingsAndroid,
     macOS: initializationSettingsDarwin,
+    windows: .new(
+      appName: "Clashy",
+      appUserModelId: 'com.aote.clashy',
+      guid: '122c1b20-ea61-4695-87f1-79b206d91ff5',
+    ),
   );
 
   await FlutterLocalNotificationsPlugin().initialize(
