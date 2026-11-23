@@ -11,6 +11,11 @@ typedef DataSuccessDy<T> = DataSuccess<T, dynamic>;
 typedef DataLoadingDy<T> = DataLoading<T, dynamic>;
 typedef DataFailureDy<T> = DataFailure<T, dynamic>;
 
+typedef StatusIdle<R> = DataIdle<Null, R>;
+typedef StatusSuccess<R> = DataSuccess<Null, R>;
+typedef StatusLoading<R> = DataLoading<Null, R>;
+typedef StatusFailure<R> = DataFailure<Null, R>;
+
 sealed class DataStatus<T, R> {
   const DataStatus();
 
@@ -221,7 +226,7 @@ class DataStatusScope<T, R> {
 
   DataCache<T, R> failure([R? error, StackTrace? stackTrace]) {
     final lastData = _data.value;
-    _data.value = lastData..failure(error, stackTrace);
+    _data.value = lastData.failure(error, stackTrace);
     return (lastData: lastData, key: _newKey);
   }
 

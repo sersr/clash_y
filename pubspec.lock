@@ -578,9 +578,11 @@ packages:
   flutter_nop:
     dependency: "direct main"
     description:
-      path: "../packages/flutter_nop"
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: "18fe51cd80ce958fcabdf440ca209f89898088f1"
+      url: "https://github.com/sersr/flutter_nop"
+    source: git
     version: "4.0.0"
   flutter_plugin_android_lifecycle:
     dependency: transitive
@@ -1026,9 +1028,11 @@ packages:
   nop:
     dependency: "direct main"
     description:
-      path: "../packages/nop"
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: "1284ba3a1bb53100aa83e6e2642c417a521f2e2a"
+      url: "https://github.com/sersr/nop"
+    source: git
     version: "0.3.1"
   nop_gen:
     dependency: "direct dev"
@@ -1056,9 +1060,11 @@ packages:
   overlays:
     dependency: "direct overridden"
     description:
-      path: "../packages/overlays"
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: "3e343eddfc14e524292741f6051e6079bba00a43"
+      url: "https://github.com/sersr/overlays"
+    source: git
     version: "0.0.1"
   package_config:
     dependency: transitive
@@ -1580,9 +1586,11 @@ packages:
   ui_widgets:
     dependency: "direct overridden"
     description:
-      path: "../packages/ui_widgets"
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: f8ae6725a79b7b9f96a131dac4be8f7dc8c30267
+      url: "https://github.com/sersr/ui_widgets"
+    source: git
     version: "0.0.1"
   universal_io:
     dependency: transitive

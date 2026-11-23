@@ -37,8 +37,12 @@ abstract final class ClashProcess {
   static String? _tunInterface;
 
   static ClashProfile? _profile;
+  static ClashProfile? _apiProfile;
   static Timer? _profileTimer;
-  static var _vpnEnabled = false;
+  // Desired state: hydrated from disk and changed only by API commits.
+  static var _desiredVpnEnabled = false;
+  // Observed runtime state: changed by native start/stop operations.
+  static var _runtimeVpnEnabled = false;
 
   static String _resolveStateFilePath() {
     if (Platform.isMacOS) {
@@ -72,10 +76,8 @@ abstract final class ClashProcess {
         final Map<dynamic, dynamic> json => ClashProfile.fromJson(json),
         _ => null,
       };
-      final configDir = switch (state['configDir']) {
-        final String dir when dir.isNotEmpty => dir,
-        _ => profile?.configDir,
-      };
+      final configDir = profile?.configDir;
+
       final vpnEnabled = state['vpnEnabled'] is bool
           ? state['vpnEnabled'] as bool
           : true;
@@ -84,7 +86,8 @@ abstract final class ClashProcess {
         return;
       }
 
-      _vpnEnabled = vpnEnabled;
+      _apiProfile = profile;
+      _desiredVpnEnabled = vpnEnabled;
       Log.w('restoring Clash from saved state ${_stateFile.path}');
       final error = vpnEnabled
           ? await run(configDir)
@@ -93,48 +96,53 @@ abstract final class ClashProcess {
         Log.e('restore Clash from saved state failed: $error');
         return;
       }
-      if (profile != null) {
-        _setProfile(profile);
-      }
+      if (profile != null) _replaceRuntimeProfile(profile);
     } catch (e) {
       Log.e('restore Clash from saved state failed: $e');
     }
   }
 
-  static Future<void> _persistState(ClashProfile profile) async {
-    if (!Platform.isMacOS) return;
-
-    await _stateQueue.run(() async {
-      final temporaryFile = File('$_stateFilePath.tmp');
-      await temporaryFile.create(recursive: true);
-      await temporaryFile.writeAsString(
-        jsonEncode({
-          'configDir': profile.configDir,
-          'profile': profile.toJson(),
-          'vpnEnabled': _vpnEnabled,
-        }),
-        flush: true,
-      );
-      await temporaryFile.rename(_stateFilePath);
-    });
+  /// Commits desired state submitted through the control API.
+  /// Runtime recovery and background work must never call this method.
+  static Future<void> commitApiState({
+    ClashProfile? profile,
+    required bool vpnEnabled,
+  }) async {
+    if (Platform.isMacOS) {
+      await _stateQueue.run(() async {
+        final temporaryFile = File('$_stateFilePath.tmp');
+        await temporaryFile.create(recursive: true);
+        await temporaryFile.writeAsString(
+          jsonEncode({'profile': profile?.toJson(), 'vpnEnabled': vpnEnabled}),
+          flush: true,
+        );
+        await temporaryFile.rename(_stateFilePath);
+      });
+    }
+    _apiProfile = profile;
+    _desiredVpnEnabled = vpnEnabled;
   }
 
-  static Future<void> _clearPersistedState() async {
-    if (!Platform.isMacOS) return;
-    await _stateQueue.run(() async {
-      if (await _stateFile.exists()) {
-        await _stateFile.delete();
-      }
-    });
+  /// Clears desired state after an explicit stop request through the API.
+  static Future<void> clearApiState() async {
+    if (Platform.isMacOS) {
+      await _stateQueue.run(() async {
+        if (await _stateFile.exists()) {
+          await _stateFile.delete();
+        }
+      });
+    }
+    _apiProfile = null;
+    _desiredVpnEnabled = false;
   }
 
   static Future<void> initialize() async {
+    await restorePersistedClash();
     try {
       await startMacOSWakeMonitor();
     } catch (e) {
       Log.e('start macOS wake monitor failed: $e');
     }
-    await restorePersistedClash();
   }
 
   static Future<void> startMacOSWakeMonitor() async {
@@ -183,7 +191,8 @@ abstract final class ClashProcess {
     final configDir = _clashKey;
     if (_recoveringTunAfterWake ||
         !_started ||
-        !_vpnEnabled ||
+        !_desiredVpnEnabled ||
+        !_runtimeVpnEnabled ||
         configDir == null) {
       return;
     }
@@ -205,7 +214,7 @@ abstract final class ClashProcess {
       await _clashQueue.run(() async {
         if (!_started || _clashKey != configDir) return;
 
-        final vpnEnabled = _vpnEnabled;
+        final vpnEnabled = _desiredVpnEnabled;
         final stopError = await _stopSingle();
         if (stopError != null) {
           Log.e('restore TUN after wake: stop failed: $stopError');
@@ -244,7 +253,17 @@ abstract final class ClashProcess {
 
   static bool get started => _started;
 
-  static bool get vpnEnabled => _vpnEnabled;
+  /// Whether the native core currently has TUN enabled.
+  static bool get vpnEnabled => _runtimeVpnEnabled;
+
+  /// VPN mode last requested through the control API.
+  static bool get desiredVpnEnabled => _desiredVpnEnabled;
+
+  static ClashProfile? get profile => _profile;
+
+  static ClashProfile? get apiProfile => _apiProfile;
+
+  static String? get configDir => _clashKey;
 
   static Future<String?> run(String configDir) async {
     return _clashQueue.run(() => _runSingle(configDir, vpnEnabled: true));
@@ -254,13 +273,16 @@ abstract final class ClashProcess {
     return _clashQueue.run(() => _runSingle(configDir, vpnEnabled: false));
   }
 
-  static Future<void> setProfile(ClashProfile profile) => _setProfile(profile);
+  static Future<void> setProfile(ClashProfile profile) async {
+    _replaceRuntimeProfile(profile);
+  }
 
   static Future<void> updateProfile(ClashProfile profile) async {
     final current = _profile;
-    await _setProfile(
-      profile.configDir.isEmpty && current != null
-          ? profile.copyWith(configDir: current.configDir)
+    final currentConfigDir = current?.configDir ?? _clashKey;
+    _replaceRuntimeProfile(
+      profile.configDir.isEmpty && currentConfigDir != null
+          ? profile.copyWith(configDir: currentConfigDir)
           : profile,
     );
   }
@@ -268,15 +290,10 @@ abstract final class ClashProcess {
   static Future<String?> stopVpn() async {
     final configDir = _clashKey;
     if (!_started || configDir == null) {
-      _vpnEnabled = false;
       return null;
     }
 
-    final error = await runCoreOnly(configDir);
-    if (error != null) return error;
-    final profile = _profile;
-    if (profile != null) await _persistState(profile);
-    return null;
+    return runCoreOnly(configDir);
   }
 
   static Future<String?> reloadConfig() async {
@@ -286,33 +303,28 @@ abstract final class ClashProcess {
       }
 
       final configDir = _clashKey!;
-      final vpnEnabled = _vpnEnabled;
+      final vpnEnabled = _desiredVpnEnabled;
       final stopError = await _stopSingle();
       if (stopError != null) return stopError;
       return _runSingle(configDir, vpnEnabled: vpnEnabled);
     });
   }
 
-  /// 停止核心。
-  ///
-  /// [clearState] 为 false 时只停止核心、保留持久化状态，服务退出后下次
-  /// 启动仍能恢复原来的配置和 VPN 状态。
-  static Future<String?> stop({bool clearState = true}) async {
+  /// Stops the runtime without changing persisted desired state.
+  /// The HTTP stop endpoint separately clears it after a successful stop.
+  static Future<String?> stop() async {
     final err = await _clashQueue.run(_stopSingle);
     if (err case var err? when err.isNotEmpty) return err;
     _profileTimer?.cancel();
     _profileTimer = null;
     _profile = null;
-    if (clearState) _vpnEnabled = false;
-    if (clearState) await _clearPersistedState();
     return null;
   }
 
-  static Future<void> _setProfile(ClashProfile profile) async {
+  static void _replaceRuntimeProfile(ClashProfile profile) {
     _profile = profile;
     _scheduleProfileUpdate();
     Log.w(profile.toJson().logPretter);
-    await _persistState(profile);
   }
 
   static void _scheduleProfileUpdate() {
@@ -338,7 +350,7 @@ abstract final class ClashProcess {
       if (error != null) {
         Log.e('profile update failed: $error');
       } else {
-        await _setProfile(profile.copyWith(updateTime: DateTime.now()));
+        _replaceRuntimeProfile(profile.copyWith(updateTime: DateTime.now()));
         Log.i('profile updated: ${profile.name ?? profile.id ?? profile.url}');
         return;
       }
@@ -377,7 +389,7 @@ abstract final class ClashProcess {
     var vpnEnabled = false;
     final error = await _clashQueue.run(() async {
       if (!_started || !identical(_profile, profile)) return null;
-      vpnEnabled = _vpnEnabled;
+      vpnEnabled = _desiredVpnEnabled;
       final stopError = await _stopSingle();
       if (stopError != null) return stopError;
       return _runSingle(profile.configDir, vpnEnabled: vpnEnabled);
@@ -472,19 +484,15 @@ abstract final class ClashProcess {
     required bool vpnEnabled,
   }) async {
     if (_clashKey == configDir) {
-      if (_started && _vpnEnabled == vpnEnabled) {
+      if (_started && _runtimeVpnEnabled == vpnEnabled) {
         return null;
       }
     }
-    _vpnEnabled = vpnEnabled;
 
     if (_isDesktop && vpnEnabled) {
       try {
         await DesktopTunHelper.ensureRegistered();
       } catch (error) {
-        // 没有 helper 就没有 TUN，不能让缓存里的 vpnEnabled 停留在 true。
-        // 否则 UI/唤醒恢复会以为 VPN 已经开启，实际却没有任何 tun 接口。
-        _vpnEnabled = false;
         Log.e('register TUN helper failed: $error');
         return 'register TUN helper failed: $error';
       }
@@ -496,6 +504,7 @@ abstract final class ClashProcess {
 
     String? err;
     _started = false;
+    _runtimeVpnEnabled = false;
     using((arena) {
       try {
         final nativeConfigDir = configDir
@@ -513,8 +522,9 @@ abstract final class ClashProcess {
             Log.e('start Error: $error');
           }
           freeString(res);
-        } else {}
-        _started = true;
+        } else {
+          _started = true;
+        }
       } catch (e) {
         Log.e('start error: $e');
         err = e.toString();
@@ -522,7 +532,7 @@ abstract final class ClashProcess {
     });
 
     _clashKey = configDir;
-    _vpnEnabled = err == null && _started && vpnEnabled;
+    _runtimeVpnEnabled = err == null && _started && vpnEnabled;
     if (err == null && _started && vpnEnabled && Platform.isMacOS) {
       final interfacesAfterStart = await _listTunInterfaces();
       final createdInterface = interfacesAfterStart
@@ -586,8 +596,10 @@ abstract final class ClashProcess {
       }
     });
 
-    if (!_started) _clashKey = null;
-    if (!_started) _vpnEnabled = false;
+    if (!_started) {
+      _clashKey = null;
+      _runtimeVpnEnabled = false;
+    }
 
     return err;
   }

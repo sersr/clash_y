@@ -5,7 +5,9 @@ import 'package:file/local.dart';
 
 const fs = LocalFileSystem();
 
-void main() async {
+void main(List<String> args) async {
+  final hasCache = args.contains('cache');
+
   final packages = fs.currentDirectory.childDirectory('packages');
 
   for (var item in packages.listSync()) {
@@ -19,5 +21,5 @@ void main() async {
       await dotBuild.delete(recursive: true);
     }
   }
-  await Process.run('flutter', ['clean']);
+  if (!hasCache) await Process.run('flutter', ['clean']);
 }

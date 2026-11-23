@@ -65,7 +65,7 @@ RespHandler jsonMiddleware(Handler handler) {
 }
 
 Future<void> clashServer() async {
-  ClashProcess.initialize();
+  await ClashProcess.initialize();
 
   Log.defaultLogger.logPathFn = (path) => path;
   Log.defaultLogger.lines = 100;

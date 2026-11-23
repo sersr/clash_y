@@ -59,13 +59,26 @@ dev_dependencies:
 
 dependency_overrides:
   flutter_nop:
-    path: ../packages/flutter_nop
+    git:
+      url: https://github.com/sersr/flutter_nop
   nop:
-    path: ../packages/nop
+    git:
+      url: https://github.com/sersr/nop
   overlays:
-    path: ../packages/overlays
+    git:
+      url: https://github.com/sersr/overlays
   ui_widgets:
-    path: ../packages/ui_widgets
+    git:
+      url: https://github.com/sersr/ui_widgets
+
+  # flutter_nop:
+  #   path: ../packages/flutter_nop
+  # nop:
+  #   path: ../packages/nop
+  # overlays:
+  #   path: ../packages/overlays
+  # ui_widgets:
+  #   path: ../packages/ui_widgets
   quickjs_runtime:
     git:
       url: https://github.com/sersr/quickjs_runtime

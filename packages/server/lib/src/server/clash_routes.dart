@@ -18,6 +18,7 @@ extension on Request {
 }
 
 abstract final class ClashRoutes {
+  static final _apiQueue = TaskQueue();
   static final _sockets = <WebSocketChannel>[];
   static final _sockets2 = <StreamSink<List<int>>>[];
   static Timer? _timer;
@@ -96,7 +97,7 @@ abstract final class ClashRoutes {
   static Future<Resp> _startProfile(
     Request request, {
     required bool vpnEnabled,
-  }) async {
+  }) => _apiQueue.run(() async {
     final profile = ClashProfile.tryParse(request.data);
     if (profile == null || profile.configDir.isEmpty) {
       return .error(data: 'invalid profile');
@@ -109,32 +110,78 @@ abstract final class ClashRoutes {
       return .error(data: error);
     }
     await ClashProcess.setProfile(profile);
+    try {
+      await ClashProcess.commitApiState(
+        profile: profile,
+        vpnEnabled: vpnEnabled,
+      );
+    } catch (error) {
+      return .error(data: 'save Clash state failed: $error');
+    }
     return .ok(result);
-  }
+  });
 
-  static Future<Resp> updateProfile(Request request) async {
+  static Future<Resp> updateProfile(Request request) => _apiQueue.run(() async {
     final profile = ClashProfile.tryParse(request.data);
-    if (profile == null) return .error(data: 'invalid profile');
+    if (profile == null) {
+      return .error(data: 'invalid profile');
+    }
 
-    await ClashProcess.updateProfile(profile);
+    final currentProfile = ClashProcess.apiProfile ?? ClashProcess.profile;
+    final currentConfigDir =
+        currentProfile?.configDir ?? ClashProcess.configDir;
+    if (profile.configDir.isEmpty && currentConfigDir == null) {
+      return .error(data: 'invalid profile');
+    }
+    final apiProfile = profile.configDir.isEmpty
+        ? profile.copyWith(configDir: currentConfigDir)
+        : profile;
+
+    await ClashProcess.updateProfile(apiProfile);
+    try {
+      await ClashProcess.commitApiState(
+        profile: apiProfile,
+        vpnEnabled: ClashProcess.desiredVpnEnabled,
+      );
+    } catch (error) {
+      return .error(data: 'save Clash state failed: $error');
+    }
     return .ok();
-  }
+  });
 
-  static Future<Resp> stopVpn(Request request) async {
+  static Future<Resp> stopVpn(Request request) => _apiQueue.run(() async {
     final error = await ClashProcess.stopVpn();
     if (error != null) return .error(data: error);
+    final configDir =
+        ClashProcess.apiProfile?.configDir ?? ClashProcess.configDir;
+    if (configDir != null) {
+      try {
+        await ClashProcess.commitApiState(
+          profile: ClashProcess.apiProfile,
+          vpnEnabled: false,
+        );
+      } catch (error) {
+        return .error(data: 'save Clash state failed: $error');
+      }
+    }
     return .ok();
-  }
+  });
 
-  static Future<Resp> reloadClashConfig(Request request) async {
-    final error = await ClashProcess.reloadConfig();
-    if (error != null) return .error(data: error);
-    return .ok();
-  }
+  static Future<Resp> reloadClashConfig(Request request) =>
+      _apiQueue.run(() async {
+        final error = await ClashProcess.reloadConfig();
+        if (error != null) return .error(data: error);
+        return .ok();
+      });
 
-  static Future<Resp> stopClash(Request request) async {
+  static Future<Resp> stopClash(Request request) => _apiQueue.run(() async {
     final error = await ClashProcess.stop();
     if (error != null && error.isNotEmpty) return .error(data: error);
+    try {
+      await ClashProcess.clearApiState();
+    } catch (error) {
+      return .error(data: 'clear Clash state failed: $error');
+    }
     return .ok();
-  }
+  });
 }

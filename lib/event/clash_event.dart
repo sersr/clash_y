@@ -35,7 +35,6 @@ final class ClashEvent with NopLifecycle, AlScopeManager {
   }
 
   late final _currentProfile = () async {
-    Log.w('.....xxx');
     final path = await _initConfig();
     return BaseConfig.currentProfileData.value.toClashProfile(path);
   }.mount(this);

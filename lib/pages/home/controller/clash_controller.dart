@@ -5,6 +5,7 @@ import 'package:clashy/event/clash_event.dart';
 import 'package:common/common.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_nop/flutter_nop.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:nop/nop.dart';
 
 class ClashController with NopLifecycle, AlScopeManager {
@@ -26,6 +27,8 @@ class ClashController with NopLifecycle, AlScopeManager {
   final DataStatusScopeDy<ProxiesData> _data = .idle();
   ProxiesData? get data => _data.data.data;
 
+  bool get isActived => _data.data is DataSuccess;
+
   final AV<DateTime?> _lastRefreshTime = .val(null);
   DateTime? get lastRefreshTime => _lastRefreshTime.value;
   final _isRunning = false.val;
@@ -33,8 +36,8 @@ class ClashController with NopLifecycle, AlScopeManager {
 
   AV<bool> get isRunningRaw => _isRunning;
 
-  final loading = false.val;
-  bool get isLoading => loading.value;
+  final DataStatusScope<Null, Null> loading = .idle();
+  bool get isLoading => loading.data is StatusLoading;
 
   Future<void> _initialization = Future<void>.value();
 
@@ -51,12 +54,35 @@ class ClashController with NopLifecycle, AlScopeManager {
     return proxyName;
   }
 
+  late AppLifecycleListener appLifecycleListener;
   @override
   void nopInit() {
     super.nopInit();
     _initialization = _loadInitialState();
     startLoop();
     _loop();
+    appLifecycleListener = .new(onHide: _onHide, onResume: _onResume);
+  }
+
+  @override
+  void nopDispose() {
+    _log?.cancel();
+    _traffic?.cancel();
+    _timer?.cancel();
+
+    appLifecycleListener.dispose();
+    super.nopDispose();
+  }
+
+  final _shown = true.val;
+  void _onHide() {
+    _timer?.cancel();
+    _shown.value = false;
+  }
+
+  void _onResume() {
+    _shown.value = true;
+    startLoop();
   }
 
   Timer? _timer;
@@ -64,8 +90,12 @@ class ClashController with NopLifecycle, AlScopeManager {
   void startLoop() {
     if (!mounted) return;
     if (_timer case var timer? when timer.isActive) return;
+    if (!_shown.value) return;
 
-    _timer = Timer(isRunning ? const .new(seconds: 30) : const .new(seconds: 5), _loop);
+    _timer = Timer(
+      isActived ? const .new(seconds: 30) : const .new(seconds: 5),
+      _loop,
+    );
   }
 
   final _timerQueue = TaskQueue();
@@ -126,24 +156,15 @@ class ClashController with NopLifecycle, AlScopeManager {
     return true;
   }
 
-  @override
-  void nopDispose() {
-    _log?.cancel();
-    _traffic?.cancel();
-    _timer?.cancel();
-    super.nopDispose();
-  }
-
   final _queue = TaskQueue();
   Future<void> start() async {
     if (!await _waitForInitialization()) return;
 
-    final task = _queue.run(_start)..whenComplete(_loop);
+    final task = loading.load(() => _queue.run(_start))..whenComplete(_loop);
     await task;
   }
 
   Future<void> _start() async {
-    loading.value = true;
     try {
       if (defaultTargetPlatform.isDesktop && await _hasOtherVpnConnection()) {
         _reportError(
@@ -173,8 +194,6 @@ class ClashController with NopLifecycle, AlScopeManager {
       }
     } catch (e) {
       _reportError('Start Clash failed: $e');
-    } finally {
-      loading.value = false;
     }
   }
 
@@ -264,20 +283,19 @@ class ClashController with NopLifecycle, AlScopeManager {
 
   Future<void> _stopAfterInitialization() async {
     if (!await _waitForInitialization()) return;
-    final task = _queue.run(_stop)..whenComplete(_loop);
+    final task = loading.load(() => _queue.run(_stop))..whenComplete(_loop);
     await task;
   }
 
   Future<void> _stop() async {
-    loading.value = true;
     try {
       final success = await ClashService.stop();
       Log.w('close vpn: $success');
     } catch (_) {}
-    loading.value = false;
   }
 
   Future<void> restart() async {
+    if (!isRunning) return;
     await stop();
     await start();
   }
@@ -299,7 +317,6 @@ class ClashController with NopLifecycle, AlScopeManager {
     if (!await _waitForInitialization()) return;
     return EventQueue.runOne([selector, proxy], () async {
       await clashEvent.clashApi.selectProxy(selector, proxy);
-      return getData();
     });
   }
 
