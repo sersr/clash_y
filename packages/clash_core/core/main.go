@@ -155,10 +155,6 @@ func startMobileTun(configDir *C.char, fd int) *C.char {
 		return cError(fmt.Errorf("parse config: %w", err))
 	}
 
-	if fd > 0 && (cfg.Controller == nil || cfg.Controller.ExternalControllerUnix == "") {
-		return cError(errors.New("external-controller-unix is not configured in config.yaml; configDir may not have been loaded"))
-	}
-
 	if tunListener != nil {
 		_ = tunListener.Close()
 		tunListener = nil
@@ -200,10 +196,6 @@ func startDesktopTun(configDir *C.char, fd int) *C.char {
 		return cError(fmt.Errorf("parse config: %w", err))
 	}
 
-	if fd != 0 && (cfg.Controller == nil || cfg.Controller.ExternalControllerUnix == "") {
-		return cError(errors.New("external-controller-unix is not configured in config.yaml; configDir may not have been loaded"))
-	}
-
 	if err := resetDesktopTunListener(); err != nil {
 		return cError(err)
 	}
@@ -225,7 +217,9 @@ func startDesktopTun(configDir *C.char, fd int) *C.char {
 	cfg.General.Tun.Enable = false
 	hub.ApplyConfig(cfg)
 
-	if tunFD <= 0 {
+	// Windows acquires the adapter by name, so tunbroker intentionally returns
+	// fd=0 and the core must still open/configure the existing Wintun adapter.
+	if tunFD <= 0 && runtime.GOOS != "windows" {
 		started = true
 		return nil
 	}

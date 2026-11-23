@@ -15,11 +15,19 @@ import (
 )
 
 func Serve(ctx context.Context, _ string, _ uint32) error {
+	return ServeWithReady(ctx, PipePath, 0, nil)
+}
+
+// ServeWithReady creates the system service pipe before signaling readiness.
+func ServeWithReady(ctx context.Context, _ string, _ uint32, ready chan<- struct{}) error {
 	handle, err := createListenPipe()
 	if err != nil {
 		return fmt.Errorf("create TUN helper pipe: %w", err)
 	}
 	defer windows.CloseHandle(handle)
+	if ready != nil {
+		close(ready)
+	}
 
 	for ctx.Err() == nil {
 		err := windows.ConnectNamedPipe(handle, nil)
@@ -27,7 +35,7 @@ func Serve(ctx context.Context, _ string, _ uint32) error {
 		case nil, windows.ERROR_PIPE_CONNECTED:
 			servePipeClient(handle)
 			_ = windows.DisconnectNamedPipe(handle)
-		case windows.ERROR_NO_DATA:
+		case windows.ERROR_NO_DATA, windows.ERROR_PIPE_LISTENING:
 			time.Sleep(200 * time.Millisecond)
 		default:
 			return fmt.Errorf("accept TUN helper connection: %w", err)
@@ -43,9 +51,9 @@ func servePipeClient(handle windows.Handle) {
 		}
 	}()
 
-	elevated, err := pipeClientIsElevated(handle)
-	if err != nil || !elevated {
-		writePipeResponse(handle, Response{Error: "caller is not an elevated Clashy service"})
+	clashyClient, err := pipeClientIsClashy(handle)
+	if err != nil || !clashyClient {
+		writePipeResponse(handle, Response{Error: "caller is not the bundled Clashy application"})
 		return
 	}
 

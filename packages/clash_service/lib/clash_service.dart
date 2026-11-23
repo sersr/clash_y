@@ -271,7 +271,15 @@ abstract final class ClashService {
       if (await ClashServiceApi.isClashRunning()) return true;
 
       final response = await ClashServiceApi.startClashCore(profile);
-      return response.success;
+      if (!response.success) {
+        final details = response.data ?? response.msg;
+        throw StateError(
+          details == null || '$details'.isEmpty
+              ? 'Desktop service failed to start the Clash core.'
+              : 'Desktop service failed to start the Clash core: $details',
+        );
+      }
+      return true;
     }
 
     return false;

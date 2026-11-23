@@ -4,6 +4,9 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
+import 'package:path/path.dart' as p;
+
+import 'tray_asset.dart';
 
 const windowService = 'clashy_service';
 
@@ -30,12 +33,25 @@ Future<bool> installService() async {
 ///
 /// 返回服务是否处于运行状态。
 Future<bool> startService() async {
-  final code = await _runElevated('${_installScript()}sc start $windowService\n');
+  final code = await _runElevated(
+    '${_installScript()}sc start $windowService\n',
+  );
   if (code == errorCancelled) return false;
   for (var i = 0; i < 50 && !isServiceRunning(); i++) {
     await Future<void>.delayed(const Duration(milliseconds: 200));
   }
-  return isServiceRunning();
+  final running = isServiceRunning();
+  if (!running) {
+    final query = Process.runSync('sc', ['query', windowService]);
+    final config = Process.runSync('sc', ['qc', windowService]);
+    throw StateError(
+      'Failed to start Windows clashyService: elevated script exit code '
+      '$code; sc query exit code ${query.exitCode}; '
+      '${query.stdout} ${query.stderr}; '
+      'sc qc exit code ${config.exitCode}; ${config.stdout} ${config.stderr}',
+    );
+  }
+  return running;
 }
 
 /// 停止服务（保留已安装状态）。需要时弹 UAC；未安装/已停止时不弹。
@@ -59,7 +75,8 @@ Future<bool> stopService() async {
 /// 返回服务是否已不存在；用户取消 UAC 返回 false。
 Future<bool> uninstallService() async {
   if (!_serviceExists()) return true;
-  const script = '''
+  const script =
+      '''
 sc stop $windowService >nul 2>&1
 for /l %%i in (1,1,30) do (
   sc query $windowService >nul 2>&1 || goto :del
@@ -91,11 +108,21 @@ bool isServiceInstalled() => _serviceExists();
 
 /// install 脚本（不含 start），行为见 [installService]。
 String _installScript() {
-  final raw = Platform.resolvedExecutable;
+  final raw = p.join(
+    p.dirname(Platform.resolvedExecutable),
+    'data',
+    'flutter_assets',
+    clashServiceAssetPackagePath,
+    'bin',
+    clashWindowsServiceExecutableName,
+  );
+  if (!File(raw).existsSync()) {
+    throw StateError('Bundled Windows clashyService is missing: $raw');
+  }
   // 含空格时 binPath 的值本身需带引号，否则 SCM 拆分导致启动失败
   final binPath = raw.contains(' ') ? '"\\"$raw\\""' : raw;
   return 'sc ${_serviceExists() ? 'config' : 'create'} $windowService '
-          'binPath= $binPath start= auto\n'
+      'binPath= $binPath start= auto\n'
       'sc description $windowService "$_description"\n'
       'sc failure $windowService reset= 60 '
       'actions= restart/5000/restart/5000/restart/5000/restart/5000/restart/5000\n'
@@ -139,16 +166,26 @@ bool _queryElevated() {
       .asFunction<Pointer<Void> Function()>();
   final openProcessToken = _advapi
       .lookup<
-        NativeFunction<Int32 Function(Pointer<Void>, Uint32, Pointer<Pointer<Void>>)>
+        NativeFunction<
+          Int32 Function(Pointer<Void>, Uint32, Pointer<Pointer<Void>>)
+        >
       >('OpenProcessToken')
       .asFunction<int Function(Pointer<Void>, int, Pointer<Pointer<Void>>)>();
   final getTokenInformation = _advapi
       .lookup<
         NativeFunction<
-          Int32 Function(Pointer<Void>, Int32, Pointer<Void>, Uint32, Pointer<Uint32>)
+          Int32 Function(
+            Pointer<Void>,
+            Int32,
+            Pointer<Void>,
+            Uint32,
+            Pointer<Uint32>,
+          )
         >
       >('GetTokenInformation')
-      .asFunction<int Function(Pointer<Void>, int, Pointer<Void>, int, Pointer<Uint32>)>();
+      .asFunction<
+        int Function(Pointer<Void>, int, Pointer<Void>, int, Pointer<Uint32>)
+      >();
   final closeHandle = _kernel32
       .lookup<NativeFunction<Int32 Function(Pointer<Void>)>>('CloseHandle')
       .asFunction<int Function(Pointer<Void>)>();
@@ -163,7 +200,13 @@ bool _queryElevated() {
       final elevation = calloc<Uint32>();
       try {
         // TokenElevation
-        final ok = getTokenInformation(token.value, 20, elevation.cast(), 4, nullptr);
+        final ok = getTokenInformation(
+          token.value,
+          20,
+          elevation.cast(),
+          4,
+          nullptr,
+        );
         return ok != 0 && elevation.value != 0;
       } finally {
         calloc.free(elevation);
@@ -187,8 +230,9 @@ Future<int> _runElevated(String script) async {
   await bat.writeAsString(script);
   try {
     if (_isElevated()) {
-      final r = await Process.run('cmd', ['/c', bat.path]);
-      return r.exitCode;
+      return await Isolate.run(
+        () => _shellExecuteRunas(bat.path, elevated: true),
+      );
     }
     return await Isolate.run(() => _shellExecuteRunas(bat.path));
   } finally {
@@ -201,7 +245,7 @@ Future<int> _runElevated(String script) async {
 /// ShellExecuteExW(runas) 启动 `cmd /c <bat>` 并等待退出码。
 ///
 /// 阻塞调用，应在工作 isolate 中运行（UAC 交互期间不卡 UI isolate）。
-int _shellExecuteRunas(String batPath) {
+int _shellExecuteRunas(String batPath, {bool elevated = false}) {
   final shellExecuteEx = _shell32
       .lookup<NativeFunction<Int32 Function(Pointer<_ShellExecuteInfo>)>>(
         'ShellExecuteExW',
@@ -225,7 +269,7 @@ int _shellExecuteRunas(String batPath) {
       .asFunction<int Function(Pointer<Void>)>();
 
   final info = calloc<_ShellExecuteInfo>();
-  final verb = 'runas'.toNativeUtf16();
+  final verb = elevated ? nullptr : 'runas'.toNativeUtf16();
   final file = 'cmd.exe'.toNativeUtf16();
   final params = '/c "${batPath.replaceAll('/', '\\')}"'.toNativeUtf16();
   try {
@@ -235,8 +279,8 @@ int _shellExecuteRunas(String batPath) {
     info.ref.lpVerb = verb;
     info.ref.lpFile = file;
     info.ref.lpParameters = params;
-    // SW_SHOWNORMAL
-    info.ref.nShow = 1;
+    // SW_HIDE：静默执行服务管理脚本，不显示 cmd 窗口。
+    info.ref.nShow = 0;
 
     if (shellExecuteEx(info) == 0) {
       final err = getLastError();
@@ -260,7 +304,7 @@ int _shellExecuteRunas(String batPath) {
       closeHandle(hProcess);
     }
   } finally {
-    calloc.free(verb);
+    if (verb != nullptr) calloc.free(verb);
     calloc.free(file);
     calloc.free(params);
     calloc.free(info);
@@ -325,10 +369,7 @@ typedef _RegisterHandlerDart = int Function(
 typedef _DispatcherNative = Int32 Function(Pointer<_ServiceTableEntry>);
 typedef _DispatcherDart = int Function(Pointer<_ServiceTableEntry>);
 
-typedef _ServiceMainNative = Void Function(
-  Uint32,
-  Pointer<Pointer<Utf16>>,
-);
+typedef _ServiceMainNative = Void Function(Uint32, Pointer<Pointer<Utf16>>);
 
 typedef _HandlerNative = Uint32 Function(
   Uint32,
@@ -375,7 +416,7 @@ class _DispatcherArgs {
 }
 
 final _SetStatusDart _setServiceStatus = _advapi
-    .lookup<NativeFunction<_SetStatusNative>>('SetServiceStatusW')
+    .lookup<NativeFunction<_SetStatusNative>>('SetServiceStatus')
     .asFunction<_SetStatusDart>();
 final _RegisterHandlerDart _registerCtrlHandlerEx = _advapi
     .lookup<NativeFunction<_RegisterHandlerNative>>(
@@ -395,8 +436,9 @@ int? _handlerAddr;
 Future<void> connectWindowScm() async {
   final ctx = calloc<_HandlerCtx>();
   ctx.ref.status = calloc<_ServiceStatus>();
-  ctx.ref.setStatus =
-      _advapi.lookup<NativeFunction<_SetStatusNative>>('SetServiceStatusW');
+  ctx.ref.setStatus = _advapi.lookup<NativeFunction<_SetStatusNative>>(
+    'SetServiceStatus',
+  );
 
   final serviceMain = NativeCallable<_ServiceMainNative>.listener(_serviceMain);
   final name = windowService.toNativeUtf16();
@@ -453,9 +495,7 @@ void _dispatcherEntry(_DispatcherArgs args) {
   args.port.send(handler.nativeFunction.address);
 
   final dispatcher = DynamicLibrary.open('advapi32.dll')
-      .lookup<NativeFunction<_DispatcherNative>>(
-        'StartServiceCtrlDispatcherW',
-      )
+      .lookup<NativeFunction<_DispatcherNative>>('StartServiceCtrlDispatcherW')
       .asFunction<_DispatcherDart>();
   dispatcher(Pointer<_ServiceTableEntry>.fromAddress(args.tableAddr));
 
@@ -511,7 +551,7 @@ int _serviceHandler(
     final ctx = context.cast<_HandlerCtx>();
     final setStatus = ctx.ref.setStatus.asFunction<_SetStatusDart>();
     if (control == 1 /* SERVICE_CONTROL_STOP */ ||
-        control == 6 /* SERVICE_CONTROL_SHUTDOWN */) {
+        control == 6 /* SERVICE_CONTROL_SHUTDOWN */ ) {
       final st = ctx.ref.status;
       st.ref.dwCurrentState = 3; // SERVICE_STOP_PENDING
       st.ref.dwCheckPoint = 1;
@@ -521,7 +561,7 @@ int _serviceHandler(
       }
       // 由 A 的轮询任务补报 SERVICE_STOPPED
       ctx.ref.stopRequested = 1;
-    } else if (control == 4 /* SERVICE_CONTROL_INTERROGATE */) {
+    } else if (control == 4 /* SERVICE_CONTROL_INTERROGATE */ ) {
       if (ctx.ref.statusHandle != 0) {
         setStatus(ctx.ref.statusHandle, ctx.ref.status);
       }

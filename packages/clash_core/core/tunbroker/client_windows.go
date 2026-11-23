@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -22,7 +23,7 @@ func Acquire(config Config) (int, string, error) {
 	leaseMu.Lock()
 	defer leaseMu.Unlock()
 	if leaseConn != nil {
-		if err := deactivateLeaseLocked(); err != nil {
+		if err := deactivateLeaseLocked(); err != nil && !isPipeDisconnected(err) {
 			return 0, "", err
 		}
 	}
@@ -52,6 +53,12 @@ func Acquire(config Config) (int, string, error) {
 	leaseConn = conn
 	leaseReader = reader
 	return 0, response.Interface, nil
+}
+
+func isPipeDisconnected(err error) bool {
+	return errors.Is(err, syscall.Errno(109)) || // ERROR_BROKEN_PIPE
+		errors.Is(err, syscall.Errno(232)) || // ERROR_NO_DATA
+		errors.Is(err, syscall.Errno(233)) // ERROR_PIPE_NOT_CONNECTED
 }
 
 // Activate is a no-op because the Windows core installs its own routes.

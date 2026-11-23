@@ -186,10 +186,9 @@ packages:
   dart_ipc:
     dependency: "direct main"
     description:
-      name: dart_ipc
-      sha256: "3b372078dcc542b97189da4df2b08c1fc5ab0123ecdce37d400ce85ab651b273"
-      url: "https://pub.dev"
-    source: hosted
+      path: "../dart_ipc"
+      relative: true
+    source: path
     version: "2.0.2"
   dart_service_manager:
     dependency: "direct main"

@@ -48,7 +48,7 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
   }
 
   final path = Platform.environment['PATH'] != null
-      ? ':${Platform.environment['PATH']}'
+      ? '${Platform.isWindows ? ';' : ':'}${Platform.environment['PATH']}'
       : '';
 
   final environment = <String, String>{

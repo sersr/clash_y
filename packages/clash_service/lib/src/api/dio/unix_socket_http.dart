@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:dio/dio.dart';
+import 'package:dart_ipc/dart_ipc.dart' show connect;
 
 HttpClient createUnixSocketClient(String sock) {
   final client = HttpClient();
-  HttpClientAdapter;
-  client.connectionFactory = (uri, proxyHost, proxyPort) {
-    final address = InternetAddress(sock, type: InternetAddressType.unix);
-    return Socket.startConnect(address, 0);
+  client.connectionFactory = (uri, proxyHost, proxyPort) async {
+    final future = connect(sock);
+    final socket = await future;
+    return ConnectionTask.fromSocket(future, socket.destroy);
   };
   client.findProxy = (uri) => 'DIRECT';
 

@@ -13,6 +13,10 @@ import 'global.dart';
 import 'hive.dart';
 
 const _passwordKey = 'webdav.backup.password';
+const _secureStorageOptions = InitializationOptions(
+  appName: 'Clashy',
+  namespace: 'clashy',
+);
 const _remoteArchiveName = 'clashy-backup.zip';
 const _manifestName = 'hive/.clashy-backup.json';
 const _hiveSnapshotName = 'hive/.clashy-hives.json';
@@ -234,8 +238,17 @@ class WebDavBackupService {
     return SimpleSecureStorage.read(_passwordKey);
   }
 
-  Future<void> _ensureSecureStorage() =>
-      _secureStorageInitialization ??= SimpleSecureStorage.initialize();
+  Future<void> _ensureSecureStorage() {
+    final initialization = _secureStorageInitialization;
+    if (initialization != null) return initialization;
+
+    final future = SimpleSecureStorage.initialize(_secureStorageOptions);
+    _secureStorageInitialization = future;
+    return future.catchError((Object error, StackTrace stackTrace) {
+      _secureStorageInitialization = null;
+      Error.throwWithStackTrace(error, stackTrace);
+    });
+  }
 
   String _remoteArchivePath(String remotePath) {
     final base = remotePath == '/' ? '' : remotePath;

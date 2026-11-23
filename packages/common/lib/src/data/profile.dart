@@ -10,6 +10,7 @@ extension ProfileExt on Profile {
 
   Future<Map<String, dynamic>> getConfigData() async {
     final data = await _getConfigData();
+    Log.w(configYaml.path);
     _updateProfileData(data);
     return data;
   }
@@ -60,7 +61,9 @@ void _updateProfileData(Map<String, dynamic> data) {
 
   if (defaultTargetPlatform == .windows) {
     data['external-controller-pipe'] = unixSocketPath;
+    data.remove('external-controller-unix');
   } else {
+    data.remove('external-controller-pipe');
     data['external-controller-unix'] = unixSocketPath;
   }
 

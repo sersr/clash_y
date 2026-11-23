@@ -100,6 +100,7 @@ class ClashController with NopLifecycle, AlScopeManager {
 
   final _timerQueue = TaskQueue();
   Future<void> _loop() async {
+    await _waitForInitialization();
     if (_timerQueue.actived) return _timerQueue.runner;
 
     await _timerQueue.run(() async {
@@ -146,7 +147,9 @@ class ClashController with NopLifecycle, AlScopeManager {
       controllerSocketPath: unixSockPath,
     );
     if (!started) {
-      throw StateError('Failed to start the Clash core.');
+      throw StateError(
+        'Failed to start the Clash core (service startup failed or unsupported platform).',
+      );
     }
     return true;
   }

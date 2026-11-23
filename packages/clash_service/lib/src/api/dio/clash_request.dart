@@ -168,8 +168,8 @@ final class ClashApi {
 
         return Connections();
       });
-    } catch (e) {
-      Log.e(e);
+    } catch (e, s) {
+      Log.e("$e, $s");
     }
   }
 

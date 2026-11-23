@@ -1,5 +1,7 @@
 // ignore_for_file: implementation_imports, invalid_use_of_internal_member
 
+import 'dart:ui';
+
 import 'package:common/common.dart';
 import 'package:common/multi_window.dart' as mw;
 import 'package:flutter/foundation.dart';
@@ -33,6 +35,7 @@ void main() async {
     final WindowController controller = .new(
       size: size,
       constraints: constraints,
+      delegate: AppControllerDelegate(),
     )..setConstraints(constraints);
     final window = controller.nativeWindow;
     if (window != null) {
@@ -93,4 +96,12 @@ void main() async {
   }
 
   runApp(const ClashApp());
+}
+
+class AppControllerDelegate extends WindowControllerDelegate {
+  @override
+  void onWindowDestroyed() {
+    super.onWindowDestroyed();
+    WidgetsBinding.instance.exitApplication(AppExitType.required);
+  }
 }

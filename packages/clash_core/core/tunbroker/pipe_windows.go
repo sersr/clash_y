@@ -4,7 +4,13 @@ package tunbroker
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -82,6 +88,16 @@ func createListenPipe() (windows.Handle, error) {
 	if err != nil {
 		return 0, err
 	}
+	securityDescriptor, err := windows.SecurityDescriptorFromString(
+		"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;BU)",
+	)
+	if err != nil {
+		return 0, fmt.Errorf("create TUN helper pipe security descriptor: %w", err)
+	}
+	securityAttributes := &windows.SecurityAttributes{
+		Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
+		SecurityDescriptor: securityDescriptor,
+	}
 	handle, err := windows.CreateNamedPipe(
 		name,
 		windows.PIPE_ACCESS_DUPLEX,
@@ -90,8 +106,9 @@ func createListenPipe() (windows.Handle, error) {
 		64*1024,
 		64*1024,
 		0,
-		nil,
+		securityAttributes,
 	)
+	runtime.KeepAlive(securityDescriptor)
 	if err != nil {
 		return 0, err
 	}
@@ -118,7 +135,7 @@ func openPipe() (windows.Handle, error) {
 	return handle, nil
 }
 
-func pipeClientIsElevated(handle windows.Handle) (bool, error) {
+func pipeClientIsClashy(handle windows.Handle) (bool, error) {
 	var processID uint32
 	if err := windows.GetNamedPipeClientProcessId(handle, &processID); err != nil {
 		return false, err
@@ -129,22 +146,33 @@ func pipeClientIsElevated(handle windows.Handle) (bool, error) {
 	}
 	defer windows.CloseHandle(process)
 
-	var token windows.Token
-	if err := windows.OpenProcessToken(process, windows.TOKEN_QUERY, &token); err != nil {
+	var image [windows.MAX_PATH]uint16
+	imageSize := uint32(len(image))
+	queryFullProcessImageName := syscall.NewLazyDLL("kernel32.dll").NewProc("QueryFullProcessImageNameW")
+	result, _, callErr := queryFullProcessImageName.Call(
+		uintptr(process),
+		0,
+		uintptr(unsafe.Pointer(&image[0])),
+		uintptr(unsafe.Pointer(&imageSize)),
+	)
+	if result == 0 {
+		return false, callErr
+	}
+	clientPath := syscall.UTF16ToString(image[:imageSize])
+	helperPath, err := os.Executable()
+	if err != nil {
 		return false, err
 	}
-	defer token.Close()
-
-	var elevated int32
-	var returned uint32
-	if err := windows.GetTokenInformation(
-		token,
-		windows.TokenElevation,
-		(*byte)(unsafe.Pointer(&elevated)),
-		uint32(unsafe.Sizeof(elevated)),
-		&returned,
-	); err != nil {
-		return false, err
+	appDir := filepath.Dir(helperPath)
+	expectedPaths := []string{
+		filepath.Join(appDir, "clashy.exe"),
+		filepath.Join(appDir, "clashyservice.exe"),
+		filepath.Join(appDir, "data", "flutter_assets", "packages", "clash_service", "bin", "clashyservice.exe"),
 	}
-	return elevated != 0, nil
+	for _, expectedPath := range expectedPaths {
+		if strings.EqualFold(filepath.Clean(clientPath), filepath.Clean(expectedPath)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }

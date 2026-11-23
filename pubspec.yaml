@@ -40,7 +40,8 @@ dependencies:
     path: packages/install_apps
   native_toolchain_c: ^0.19.5
   uuid: ^4.6.0
-  dart_ipc: ^2.0.2
+  dart_ipc:
+    path: packages/dart_ipc
   code_forge: ^11.8.0
   re_highlight: ^0.0.3
   re_editor: ^0.10.0

@@ -92,6 +92,13 @@ Future<void> clashServer() async {
     }
   }
 
+  if (Platform.isWindows) {
+    // The service runs as LocalSystem; let local desktop users reach its API
+    // named pipe while retaining SYSTEM and administrator access.
+    configureWindowsServerSecurityDescriptor(
+      'D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;BU)',
+    );
+  }
   final server = HttpServer.listenOn(await bind(clashSocket));
 
   io.serveRequests(server, handler, poweredByHeader: 'clash VPN');

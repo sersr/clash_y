@@ -12,6 +12,9 @@ import 'package:server/tray_asset.dart';
 
 Future<void> main(List<String> args) async {
   if (Platform.isWindows) {
+    if (args.contains('cmd')) {
+      return clashServer();
+    }
     await Isolate.spawn((_) => clashServer(), null);
     await connectWindowScm();
     // 服务停止：强制退出，结束后台 clashServer isolate
