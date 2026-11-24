@@ -17,6 +17,15 @@
 - 优先复用已有实现；只有在确实减少重复且不会引入不必要抽象或复杂度时，才提取共享实现。
 - macOS 特权 TUN helper 的安装路径、LaunchDaemon 配置和注册/安装实现只能维护一份；调用方复用已有定义或接口，不得复制 `/Library/PrivilegedHelperTools/` 等特权路径、plist 内容或安装脚本。
 
+## 桌面常驻服务与原生二进制
+
+- 桌面常驻服务端是 Go 实现，源码在 `packages/clash_core/core/cmd/`；`go build ./cmd` 产出 `clashyService`（Windows 为 `clashyservice.exe`），其 `serviceVersion` 必须与 `packages/server/lib/server.dart` 的 `version` 保持一致。
+- `packages/server` 只保留 Flutter 端与服务端共用的 `ApiResp`、`ClashProfile`、IPC 端点常量，以及 Windows SCM 服务/TUN helper 的安装、启停、卸载；不要在其中新增服务端运行逻辑。
+- 三平台随包原生二进制（服务端、TUN helper、macOS 托盘）由 `packages/clash_service/hook/` 构建，产物先落到 `packages/clash_service/build/bin`，再以 `bin/*` DataAsset 交付。
+- 这两个 Go 二进制默认 `CGO_ENABLED=0`（依赖图里没有 cgo 包，Windows 上无需 gcc）。确实需要 cgo 时设 `CLASHY_GO_CGO=1` 或 `hooks.user_defines` 的 `clash_service: {cgo: true}`；hook 会自动定位 MSYS2 的 mingw-w64 gcc（`mingw64`/`ucrt64`/`clang64`），也可用 `CLASHY_CC` 指定 `gcc.exe`。
+- 这两个 Go 二进制必须带 `-tags with_gvisor` 构建（hook 里的 `goBuildTags`）；桌面 tun 默认走 gvisor 栈，缺标签启动 TUN 会报 `gVisor is not included in this build`，手工 `go build` 验证时也要带。
+- 特权 TUN helper 的安装实现每个平台只维护一份：macOS/Linux 由 Go 服务端负责，Windows 由应用提权脚本注册（服务名与 Go 服务端共用 `clashy_tun_helper`）。
+
 ## Flutter 响应式状态
 
 - 页面和控制器状态遵循项目现有的响应式写法：用 `.al` 创建可观察值，并在界面中用 `Cs` 读取和更新状态。

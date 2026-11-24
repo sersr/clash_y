@@ -1,8 +1,30 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+import 'package:server/tray_asset.dart';
+
 /// systemd unit 文件路径。
 const systemdUnitPath = '/etc/systemd/system/clashy-service.service';
+
+/// clashyService 可执行文件路径。
+///
+/// 应用进程从 Flutter 数据资产目录启动后台服务；直接运行 clashyService
+/// （例如开发调试）时复用当前可执行文件。
+String get clashServiceExecutablePath {
+  final executable = Platform.resolvedExecutable;
+  if (p.basename(executable) == clashServiceExecutableName) {
+    return executable;
+  }
+  return p.join(
+    p.dirname(executable),
+    'data',
+    'flutter_assets',
+    clashServiceAssetPackagePath,
+    'bin',
+    clashServiceExecutableName,
+  );
+}
 
 /// systemd unit 是否已安装。查询无需 root。
 Future<bool> isSystemdServiceInstalled() => File(systemdUnitPath).exists();
@@ -14,11 +36,15 @@ Future<bool> isSystemdServiceInstalled() => File(systemdUnitPath).exists();
 ///
 /// 返回退出码，0 表示成功。
 Future<int> installSystemdService({bool forceRestart = false}) async {
-  final exePath = Platform.resolvedExecutable;
+  final exePath = clashServiceExecutablePath;
+  if (!File(exePath).existsSync()) {
+    throw StateError('Bundled Linux clashyService is missing: $exePath');
+  }
   // systemd ExecStart 路径含空格时需要引号
   final exec = exePath.contains(' ') ? '"$exePath"' : exePath;
 
-  final script = '''
+  final script =
+      '''
 set -e
 mkdir -p /etc/systemd/system
 cat > $systemdUnitPath <<'EOF'
@@ -30,7 +56,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=$exec --daemon
+ExecStart=$exec
 Restart=on-failure
 RestartSec=5
 
@@ -61,7 +87,8 @@ Future<int> uninstallSystemdService() async {
     return 0;
   }
 
-  final script = '''
+  final script =
+      '''
 systemctl disable --now clashy-service.service 2>/dev/null || true
 rm -f $systemdUnitPath
 systemctl daemon-reload
@@ -72,10 +99,11 @@ systemctl daemon-reload
 
 /// 服务是否处于 active 状态（查询无需 root）。
 Future<bool> isSystemdServiceRunning() async {
-  final r = await Process.run(
-    'systemctl',
-    ['is-active', '--quiet', 'clashy-service.service'],
-  );
+  final r = await Process.run('systemctl', [
+    'is-active',
+    '--quiet',
+    'clashy-service.service',
+  ]);
   return r.exitCode == 0;
 }
 

@@ -71,12 +71,10 @@ func main() {}
 func start(configDir *C.char) *C.char {
 	mu.Lock()
 	defer mu.Unlock()
+	configDirG := C.GoString(configDir)
 
 	enableEmbeddedConfigUpdates()
-	if isDesktopOS() {
-		return startDesktop(configDir)
-	}
-	return startMobile(configDir)
+	return startMobile(configDirG)
 }
 
 func isDesktopOS() bool {
@@ -88,12 +86,12 @@ func isDesktopOS() bool {
 	}
 }
 
-func startMobile(configDir *C.char) *C.char {
+func startMobile(configDir string) *C.char {
 	if !started {
 		resetMobileTunListener()
 	}
 
-	if err := setHomeDir(C.GoString(configDir)); err != nil {
+	if err := setHomeDir(configDir); err != nil {
 		return cError(err)
 	}
 
@@ -105,23 +103,27 @@ func startMobile(configDir *C.char) *C.char {
 	return nil
 }
 
-func startDesktop(configDir *C.char) *C.char {
-	if !started {
-		if err := resetDesktopTunListener(); err != nil {
-			return cError(err)
-		}
+func startDesktop(configDir string) {
+	// Tear down an earlier TUN listener before applying the config again. This
+	// matters on Windows where start() lets mihomo create the Wintun adapter
+	// directly from config.yaml.
+	// if err := resetDesktopTunListener(); err != nil {
+	// 	return cError(err)
+	// }
+	if started {
+		executor.Shutdown()
+		started = false
 	}
 
-	if err := setHomeDir(C.GoString(configDir)); err != nil {
-		return cError(err)
+	if err := setHomeDir(configDir); err != nil {
+		return
 	}
 
 	if err := hub.Parse(nil); err != nil {
-		return cError(fmt.Errorf("start core: %w", err))
+		return
 	}
 
 	started = true
-	return nil
 }
 
 // startTun starts the core with TUN enabled when given a TUN descriptor.
@@ -139,9 +141,6 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 	defer mu.Unlock()
 
 	enableEmbeddedConfigUpdates()
-	if isDesktopOS() {
-		return startDesktopTun(configDir, int(fd))
-	}
 	return startMobileTun(configDir, int(fd))
 }
 
@@ -186,30 +185,50 @@ func startMobileTun(configDir *C.char, fd int) *C.char {
 	return nil
 }
 
-func startDesktopTun(configDir *C.char, fd int) *C.char {
-	if err := setHomeDir(C.GoString(configDir)); err != nil {
-		return cError(err)
+//export startDesktopTun
+func startDesktopTun(configDir *C.char, vpnEnabled C.int) {
+	config := C.GoString(configDir)
+	vpn := vpnEnabled != 0
+	startDesktopTunI(config, vpn)
+}
+
+func startDesktopTunI(configDir string, vpnEnabled bool) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if err := setHomeDir(configDir); err != nil {
+		return
 	}
 
 	cfg, err := executor.Parse()
 	if err != nil {
-		return cError(fmt.Errorf("parse config: %w", err))
+		return
 	}
 
 	if err := resetDesktopTunListener(); err != nil {
-		return cError(err)
+		return
 	}
 	if started {
 		executor.Shutdown()
 		started = false
 	}
+	hub.ApplyConfig(cfg)
+	return
 
-	tunFD := fd
+	if runtime.GOOS == "windows" {
+		cfg.General.Tun.Enable = vpnEnabled
+		return
+	}
+
+	// The input value is a request: 0 means core-only, -1 asks the desktop
+	// helper for TUN, and a positive value is a real inherited descriptor.
+	tunRequested := vpnEnabled
+	tunFD := 0
 	var tunInterface string
-	if tunFD == -1 {
+	if vpnEnabled {
 		tunFD, tunInterface, err = acquireDesktopTun(cfg)
 		if err != nil {
-			return cError(fmt.Errorf("acquire TUN helper: %w", err))
+			return
 		}
 		tunBrokerActive = true
 	}
@@ -217,11 +236,21 @@ func startDesktopTun(configDir *C.char, fd int) *C.char {
 	cfg.General.Tun.Enable = false
 	hub.ApplyConfig(cfg)
 
-	// Windows acquires the adapter by name, so tunbroker intentionally returns
-	// fd=0 and the core must still open/configure the existing Wintun adapter.
-	if tunFD <= 0 && runtime.GOOS != "windows" {
+	if !tunRequested {
 		started = true
-		return nil
+		return
+	}
+
+	// POSIX helpers return a real descriptor. Windows provisions Wintun by
+	// name, so its helper returns fd=0 and a non-empty interface name instead.
+	tunFDUsable := tunFD > 0
+	tunDeviceUsable := runtime.GOOS == "windows" && tunInterface != ""
+	if !tunFDUsable && !tunDeviceUsable {
+		if tunBrokerActive {
+			_ = deactivateDesktopTun()
+			tunBrokerActive = false
+		}
+		return
 	}
 
 	options := buildDesktopFdTunOptions(cfg, tunFD, tunInterface)
@@ -236,23 +265,23 @@ func startDesktopTun(configDir *C.char, fd int) *C.char {
 			}
 		}
 		executor.Shutdown()
-		return cError(fmt.Errorf("start tun: %w", err))
+		return
 	}
 	if tunBrokerActive {
 		if err := activateDesktopTun(); err != nil {
-			closeErr := listener.Close()
+			_ = listener.Close()
 			cleanupErr := deactivateDesktopTun()
 			if cleanupErr == nil {
 				tunBrokerActive = false
 			}
 			executor.Shutdown()
-			return cError(errors.Join(fmt.Errorf("activate TUN routes: %w", err), closeErr, cleanupErr))
+			return
 		}
 	}
 
 	tunListener = listener
 	started = true
-	return nil
+	return
 }
 
 func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
@@ -353,9 +382,6 @@ func stop() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if isDesktopOS() {
-		return stopDesktop()
-	}
 	return stopMobile()
 }
 
@@ -374,21 +400,6 @@ func stopMobile() *C.char {
 	return nil
 }
 
-func stopDesktop() *C.char {
-	resetErr := resetDesktopTunListener()
-	if started {
-		executor.Shutdown()
-		started = false
-	}
-
-	listener.Cleanup()
-	started = false
-	if resetErr != nil {
-		return cError(resetErr)
-	}
-	return nil
-}
-
 // stopTun disables only the desktop TUN listener. Keep the core process and
 // its initialized runtime alive so a later start() can apply the config again.
 // Android uses stop(), which also shuts down the complete core.
@@ -398,9 +409,6 @@ func stopTun() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if isDesktopOS() {
-		return stopDesktopTun()
-	}
 	return stopMobileTun()
 }
 
@@ -411,13 +419,16 @@ func stopMobileTun() *C.char {
 	return nil
 }
 
-func stopDesktopTun() *C.char {
+//export stopDesktopTun
+func stopDesktopTun() {
+	mu.Lock()
+	defer mu.Unlock()
+
 	if err := resetDesktopTunListener(); err != nil {
-		return cError(err)
+		return
 	}
 	tunnel.OnSuspend()
 	started = false
-	return nil
 }
 
 func resetMobileTunListener() {
@@ -492,4 +503,56 @@ func cError(err error) *C.char {
 		return nil
 	}
 	return C.CString(err.Error())
+}
+
+// 指令类型
+const (
+	cmdStart = iota
+	cmdStop
+)
+
+type command struct {
+	typ       int
+	configDir string
+	vpn       bool
+}
+
+var (
+	cmdCh   = make(chan command, 4)
+	running bool
+)
+
+//export startW
+func startW(configDir *C.char, vpnEnabled C.int) C.int {
+	cfg := C.GoString(configDir)
+	select {
+	case cmdCh <- command{typ: cmdStart, configDir: cfg, vpn: vpnEnabled != 0}:
+		return 0
+	default:
+		return -1 // 队列满
+	}
+
+}
+
+//export stopW
+func stopW() C.int {
+	select {
+	case cmdCh <- command{typ: cmdStop}:
+		return 0
+	default:
+		return -1
+	}
+}
+
+//export runLoop
+func runLoop() {
+
+	for cmd := range cmdCh {
+		switch cmd.typ {
+		case cmdStart:
+			startDesktopTunI(cmd.configDir, cmd.vpn)
+		case cmdStop:
+			stopDesktopTun()
+		}
+	}
 }

@@ -7,30 +7,120 @@ library;
 
 import 'dart:ffi' as ffi;
 
-/// Starts the core with the configuration found in configDir, mirroring
+/// start boots the core with the configuration found in configDir, mirroring
 /// `mihomo -d configDir`. TUN follows whatever the config file declares.
 @ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Char>)>()
 external ffi.Pointer<ffi.Char> start(ffi.Pointer<ffi.Char> configDir);
 
-/// Starts the core with TUN enabled when given a TUN descriptor. A zero fd
-/// starts the core with TUN disabled.
+/// startTun starts the core with TUN enabled when given a TUN descriptor.
+/// A positive fd is an externally established descriptor, supplied by Android's
+/// VpnService. On macOS, -1 asks the privileged helper for a descriptor. A zero
+/// fd starts the core with TUN disabled.
 ///
-/// Android supplies its VpnService descriptor. On macOS, -1 asks the privileged
-/// helper to create and provide the descriptor.
+/// Every call re-reads configDir/config.yaml and applies the full mihomo
+/// configuration, so ports, proxies, rules, controller and TUN are always
+/// up-to-date. The supplied fd is owned by mihomo after a successful call.
 @ffi.Native<ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Char>, ffi.Int)>()
 external ffi.Pointer<ffi.Char> startTun(
   ffi.Pointer<ffi.Char> configDir,
   int fd,
 );
 
-/// Stops the core and closes every listener, including TUN.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>, ffi.Int)>()
+external void startDesktopTun(ffi.Pointer<ffi.Char> configDir, int vpnEnabled);
+
+/// stop shuts the core down and closes every listener, including TUN.
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> stop();
 
-/// Stops only the desktop TUN listener, keeping the core process restartable.
+/// stopTun disables only the desktop TUN listener. Keep the core process and
+/// its initialized runtime alive so a later start() can apply the config again.
+/// Android uses stop(), which also shuts down the complete core.
 @ffi.Native<ffi.Pointer<ffi.Char> Function()>()
 external ffi.Pointer<ffi.Char> stopTun();
 
-/// Releases a string returned by this library.
+@ffi.Native<ffi.Void Function()>()
+external void stopDesktopTun();
+
+/// freeString releases a string returned by this library.
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>()
 external void freeString(ffi.Pointer<ffi.Char> s);
+
+@ffi.Native<ffi.Int Function(ffi.Pointer<ffi.Char>, ffi.Int)>()
+external int startW(ffi.Pointer<ffi.Char> configDir, int vpnEnabled);
+
+@ffi.Native<ffi.Int Function()>()
+external int stopW();
+
+@ffi.Native<ffi.Void Function()>()
+external void runLoop();
+
+typedef ptrdiff_t = ffi.LongLong;
+typedef Dartptrdiff_t = int;
+
+final class _GoString_ extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> p;
+
+  @ptrdiff_t()
+  external int n;
+}
+
+typedef GoInt8 = ffi.SignedChar;
+typedef DartGoInt8 = int;
+typedef GoUint8 = ffi.UnsignedChar;
+typedef DartGoUint8 = int;
+typedef GoInt16 = ffi.Short;
+typedef DartGoInt16 = int;
+typedef GoUint16 = ffi.UnsignedShort;
+typedef DartGoUint16 = int;
+typedef GoInt32 = ffi.Int;
+typedef DartGoInt32 = int;
+typedef GoUint32 = ffi.UnsignedInt;
+typedef DartGoUint32 = int;
+typedef GoInt64 = ffi.LongLong;
+typedef DartGoInt64 = int;
+typedef GoUint64 = ffi.UnsignedLongLong;
+typedef DartGoUint64 = int;
+typedef GoInt = GoInt64;
+typedef GoUint = GoUint64;
+typedef GoUintptr = ffi.Size;
+typedef DartGoUintptr = int;
+typedef GoFloat32 = ffi.Float;
+typedef DartGoFloat32 = double;
+typedef GoFloat64 = ffi.Double;
+typedef DartGoFloat64 = double;
+
+final class _C_float_complex extends ffi.Struct {
+  @ffi.Array.multi([2])
+  external ffi.Array<ffi.Float> _Val;
+}
+
+typedef _Fcomplex = _C_float_complex;
+typedef GoComplex64 = _Fcomplex;
+
+final class _C_double_complex extends ffi.Struct {
+  @ffi.Array.multi([2])
+  external ffi.Array<ffi.Double> _Val;
+}
+
+typedef _Dcomplex = _C_double_complex;
+typedef GoComplex128 = _Dcomplex;
+typedef GoString = _GoString_;
+typedef GoMap = ffi.Pointer<ffi.Void>;
+typedef GoChan = ffi.Pointer<ffi.Void>;
+
+final class GoInterface extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> t;
+
+  external ffi.Pointer<ffi.Void> v;
+}
+
+final class GoSlice extends ffi.Struct {
+  external ffi.Pointer<ffi.Void> data;
+
+  @GoInt()
+  external int len;
+
+  @GoInt()
+  external int cap;
+}

@@ -140,7 +140,7 @@ func TestBuildDesktopFdTunOptionsUsesDesktopConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse config from configDir: %v", err)
 	}
-	options := buildDesktopFdTunOptions(cfg, 42)
+	options := buildDesktopFdTunOptions(cfg, 42, "")
 	if options.MTU != 1420 {
 		t.Fatalf("expected desktop TUN MTU 1420, got %d", options.MTU)
 	}

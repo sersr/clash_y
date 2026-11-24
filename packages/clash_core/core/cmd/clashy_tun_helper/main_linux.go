@@ -24,8 +24,10 @@ func main() {
 	if *socketPath != tunbroker.SocketPath {
 		fatal(fmt.Errorf("unsupported socket path %q", *socketPath))
 	}
-	if *allowedUID == 0 {
-		fatal(errors.New("TUN helper requires a non-root allowed UID"))
+	// clashyService runs as root on Linux, so the helper accepts root as the
+	// only caller. Non-root users must go through clashyService's API.
+	if *allowedUID != 0 {
+		fatal(fmt.Errorf("unsupported allowed UID %d (must be 0)", *allowedUID))
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)

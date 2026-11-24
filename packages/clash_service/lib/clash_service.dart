@@ -209,7 +209,13 @@ abstract final class ClashService {
       return isSystemdServiceRunning();
     }
 
-    if (Platform.isWindows) return startService();
+    if (Platform.isWindows) {
+      // A developer may run clashyservice directly from an elevated terminal
+      // while testing. Reuse that API server instead of asking SCM to launch a
+      // second instance that collides on the same named pipe.
+      if (await ClashServiceApi.getServiceVersion() != null) return true;
+      return startService();
+    }
     return false;
   }
 

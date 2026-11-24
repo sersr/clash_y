@@ -174,7 +174,8 @@ class DartIpcWindows extends DartIpcPlatform {
         await _closePendingAccept(path, pipeHandlePtr);
         if (error.code == ERROR_NO_DATA.code ||
             error.code == ERROR_SUCCESS.code ||
-            error.code == _errorPipeNotConnected) {
+            error.code == _errorPipeNotConnected ||
+            error.code == ERROR_OPERATION_ABORTED.code) {
           continue;
         }
         rethrow;

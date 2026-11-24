@@ -124,18 +124,10 @@ class _RetryInterceptor extends Interceptor {
         return;
       } catch (e) {
         error = e;
-
-        if (e case DioException(
-          error: SocketException(
-            osError: OSError(message: var message, errorCode: var errorCode),
-          ),
-        )) {
-          Log.e('error: $message, code: $errorCode');
-          if (errorCode != 61) {
-            break;
-          }
-
-          await Future.delayed(const Duration(seconds: 2));
+        if (!_isServiceStartingError(e)) break;
+        Log.w('clashyService is not ready yet: $e');
+        if (count > 0) {
+          await Future<void>.delayed(const Duration(seconds: 2));
         }
       }
     }
@@ -145,5 +137,21 @@ class _RetryInterceptor extends Interceptor {
     } else {
       handler.reject(DioException(requestOptions: options, error: error));
     }
+  }
+
+  /// 服务刚启动时连接会被拒绝，或 Windows 命名管道尚未创建/繁忙。
+  ///
+  /// 此时短暂等待后重试；其他错误立即失败。
+  static bool _isServiceStartingError(Object error) {
+    final cause = error is DioException ? error.error : error;
+    if (cause is SocketException) {
+      final code = cause.osError?.errorCode;
+      return code == 2 || // ENOENT
+          code == 61 || // ECONNREFUSED (macOS/BSD)
+          code == 111 || // ECONNREFUSED (Linux)
+          code == 10061; // WSAECONNREFUSED (Windows)
+    }
+    // dart_ipc 的 Windows 命名管道错误实现 IOException（例如管道尚未创建）。
+    return cause is IOException;
   }
 }

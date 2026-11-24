@@ -4,6 +4,6 @@ import '_build.dart';
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
-    await buildClashServer(input, output);
+    await buildDesktopBinaries(input, output);
   });
 }

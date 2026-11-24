@@ -1,29 +1,8 @@
-import 'dart:async';
 import 'dart:convert';
 
-import 'package:shelf/shelf.dart';
-
-Map<String, String> get jsonHeader => {'content-type': 'application/json'};
-typedef RespHandler = FutureOr<Resp> Function(Request request);
-
-extension type Resp(Response _) implements Response {
-  new ok([dynamic data])
-    : this(
-        .ok(
-          ApiResp.ok(data).toString(),
-          headers: const {'content-type': 'application/json'},
-        ),
-      );
-
-  new error({dynamic data, int code = 1001, String msg = ''})
-    : this(
-        .ok(
-          ApiResp.error(data: data, code: code, msg: msg).toString(),
-          headers: const {'content-type': 'application/json'},
-        ),
-      );
-}
-
+/// 控制 API 的响应信封：`{"code":0,"msg":"","data":...}`。
+///
+/// 服务端（Go）与客户端（`packages/clash_service`）共用这一形状。
 class ApiResp<D> {
   int code;
   String msg;
@@ -32,6 +11,7 @@ class ApiResp<D> {
   ApiResp._({required this.code, required this.msg, this.data});
 
   ApiResp.ok([this.data]) : code = 0, msg = '';
+
   ApiResp.error({this.code = 1001, required this.msg, this.data});
 
   D? _data;

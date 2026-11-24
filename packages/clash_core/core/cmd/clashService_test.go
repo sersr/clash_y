@@ -1,0 +1,209 @@
+//go:build darwin || linux || windows
+
+package main
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"go.yaml.in/yaml/v3"
+)
+
+func TestApplyConfigOverridesKeepsAppOwnedKeys(t *testing.T) {
+	current := `mixed-port: 7890
+mode: global
+tun:
+  enable: true
+  stack: gvisor
+dns:
+  enable: true
+  nameserver:
+    - 223.5.5.5
+`
+	downloaded := `mixed-port: 9999
+mode: rule
+proxies:
+  - name: node
+    type: direct
+`
+	merged, err := applyConfigOverrides(downloaded, current)
+	if err != nil {
+		t.Fatalf("applyConfigOverrides: %v", err)
+	}
+
+	var result map[string]any
+	if err := yaml.Unmarshal([]byte(merged), &result); err != nil {
+		t.Fatalf("merged config is not YAML: %v\n%s", err, merged)
+	}
+
+	if result["mixed-port"] != 7890 {
+		t.Fatalf("mixed-port was not kept from the app config: %v", result["mixed-port"])
+	}
+	if result["mode"] != "global" {
+		t.Fatalf("mode was not kept from the app config: %v", result["mode"])
+	}
+	if _, ok := result["proxies"]; !ok {
+		t.Fatalf("subscription proxies were dropped:\n%s", merged)
+	}
+	tun, ok := result["tun"].(map[string]any)
+	if !ok || tun["enable"] != true {
+		t.Fatalf("tun section was not kept from the app config: %v", result["tun"])
+	}
+}
+
+func TestApplyConfigOverridesRejectsNonMapSubscription(t *testing.T) {
+	if _, err := applyConfigOverrides("- just\n- a list\n", "mode: global\n"); err == nil {
+		t.Fatal("expected an error for a subscription that is not a YAML map")
+	}
+}
+
+func TestApplyConfigOverridesIgnoresUnparsableCurrentConfig(t *testing.T) {
+	downloaded := "mode: rule\n"
+	merged, err := applyConfigOverrides(downloaded, "\tmode: [unclosed\n")
+	if err != nil {
+		t.Fatalf("applyConfigOverrides: %v", err)
+	}
+	if merged != downloaded {
+		t.Fatalf("expected the downloaded config untouched, got:\n%s", merged)
+	}
+}
+
+func TestNextUpdateDelay(t *testing.T) {
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.Local)
+
+	neverDownloaded := &clashProfile{UpdateInterval: 60}
+	if _, ok := neverDownloaded.nextUpdateDelay(now); ok {
+		t.Fatal("a profile without updateTime must not be scheduled")
+	}
+
+	disabled := &clashProfile{UpdateInterval: 0, UpdateTime: dartLocalTime(now)}
+	if _, ok := disabled.nextUpdateDelay(now); ok {
+		t.Fatal("a profile without an interval must not be scheduled")
+	}
+
+	due := &clashProfile{UpdateInterval: 60, UpdateTime: dartLocalTime(now.Add(-2 * time.Hour))}
+	delay, ok := due.nextUpdateDelay(now)
+	if !ok || delay != minUpdateDelay {
+		t.Fatalf("an overdue profile must wait %v, got %v (scheduled %v)", minUpdateDelay, delay, ok)
+	}
+
+	future := &clashProfile{UpdateInterval: 60, UpdateTime: dartLocalTime(now.Add(-5 * time.Minute))}
+	delay, ok = future.nextUpdateDelay(now)
+	if !ok || delay != 55*time.Minute {
+		t.Fatalf("expected a 55m delay, got %v (scheduled %v)", delay, ok)
+	}
+}
+
+func TestParseProfile(t *testing.T) {
+	// Older clients post the configuration directory as a plain string.
+	profile := parseProfile(`/tmp/clashy/config`)
+	if profile == nil || profile.ConfigDir != "/tmp/clashy/config" {
+		t.Fatalf("plain string profile was not parsed: %+v", profile)
+	}
+
+	if parseProfile("") != nil {
+		t.Fatal("an empty string must not parse into a profile")
+	}
+
+	profile = parseProfile(map[string]any{
+		"configDir":      "/tmp/clashy/config",
+		"name":           "subscription",
+		"url":            "https://example.com/sub",
+		"updateInterval": float64(120),
+		"updateTime":     "2026-11-25T10:00:00.000",
+	})
+	if profile == nil {
+		t.Fatal("a JSON profile was not parsed")
+	}
+	if profile.UpdateInterval != 120 {
+		t.Fatalf("updateInterval was not parsed: %d", profile.UpdateInterval)
+	}
+	if _, ok := parseProfileTime(profile.UpdateTime); !ok {
+		t.Fatalf("updateTime was not parsed: %q", profile.UpdateTime)
+	}
+
+	if parseProfile(nil) != nil {
+		t.Fatal("a missing body must not parse into a profile")
+	}
+}
+
+func TestClashProfileJSONShape(t *testing.T) {
+	payload := `{"id":null,"name":"sub","url":null,"configDir":"/tmp/c","updateInterval":null,"updateTime":null,"script":null}`
+	profile := parseProfile(map[string]any{
+		"id":             nil,
+		"name":           "sub",
+		"url":            nil,
+		"configDir":      "/tmp/c",
+		"updateInterval": nil,
+		"updateTime":     nil,
+		"script":         nil,
+	})
+	if profile == nil {
+		t.Fatalf("null-filled profile was not parsed: %s", payload)
+	}
+	if profile.Name != "sub" || profile.ConfigDir != "/tmp/c" {
+		t.Fatalf("unexpected profile: %+v", profile)
+	}
+	if strings.TrimSpace(profile.URL) != "" {
+		t.Fatalf("a null url must stay empty, got %q", profile.URL)
+	}
+}
+
+func TestRefreshConfigMergesAndKeepsBackupRemoved(t *testing.T) {
+	subscription := "mixed-port: 9999\nproxies:\n  - name: node\n    type: direct\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(subscription))
+	}))
+	defer server.Close()
+
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, configFileName)
+	appConfig := "mixed-port: 7890\ntun:\n  enable: true\n"
+	if err := os.WriteFile(configPath, []byte(appConfig), 0o644); err != nil {
+		t.Fatalf("write app config: %v", err)
+	}
+
+	profile := &clashProfile{ConfigDir: configDir, URL: server.URL}
+	runtime := &coreRuntime{}
+	if err := runtime.refreshConfig(profile); err != nil {
+		t.Fatalf("refreshConfig: %v", err)
+	}
+
+	payload, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read merged config: %v", err)
+	}
+	var merged map[string]any
+	if err := yaml.Unmarshal(payload, &merged); err != nil {
+		t.Fatalf("merged config is not YAML: %v\n%s", err, payload)
+	}
+	if merged["mixed-port"] != 7890 {
+		t.Fatalf("app-owned mixed-port was overwritten:\n%s", payload)
+	}
+	if _, ok := merged["proxies"]; !ok {
+		t.Fatalf("subscription content was not written:\n%s", payload)
+	}
+	if _, err := os.Stat(configPath + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("backup file must be removed after a successful update: %v", err)
+	}
+}
+
+func TestRefreshConfigRequiresURLAndConfigFile(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, configFileName), []byte("mode: rule\n"), 0o644); err != nil {
+		t.Fatalf("write app config: %v", err)
+	}
+
+	runtime := &coreRuntime{}
+	if err := runtime.refreshConfig(&clashProfile{ConfigDir: configDir}); err == nil {
+		t.Fatal("expected an error for a profile without a url")
+	}
+	if err := runtime.refreshConfig(&clashProfile{ConfigDir: t.TempDir(), URL: "http://127.0.0.1:1/sub"}); err == nil {
+		t.Fatal("expected an error for a missing config file")
+	}
+}
