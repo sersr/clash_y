@@ -16,14 +16,14 @@
 - 相同语义的常量只定义一处；其他位置引用同一个变量，不重复硬编码或声明副本。
 - `packages/js_interpreter` 是上游 `js_interpreter` 0.0.5 的补丁副本（只修了解析器在对象展开 `{...x}` 上的 super/await 扫描），通过根 `pubspec.yaml` 的 `dependency_overrides` 生效；上游修好后删掉这个覆盖和副本。
 - 优先复用已有实现；只有在确实减少重复且不会引入不必要抽象或复杂度时，才提取共享实现。
-- macOS 服务的安装路径、plist 内容和注册脚本只在 `packages/clash_service/lib/src/service/clash_service_macos_cmd.dart` 维护一份；调用方复用已导出的接口，不得复制 `/Library/Application Support/Clashy/bin/`、`/Library/LaunchDaemons`、`/Library/LaunchAgents` 路径或 plist 文本。
+- macOS 服务的安装路径、plist 内容和注册脚本只在 `packages/clash_service/lib/src/service/clash_service_macos_cmd.dart` 维护一份；调用方复用已导出的接口，不得复制 `/Library/Application Support/Clashy/bin/`、`/Library/LaunchDaemons`、`~/Library/LaunchAgents` 路径或 plist 文本。
 - macOS 的服务副本不要放进 `/Library/PrivilegedHelperTools`：该目录由 AppleSystemPolicy 评估，开发构建的 ad-hoc 签名会被直接拒绝执行，launchd 无限重启、应用误判为未安装而每次开机都提权。root 拥有的普通系统目录已经满足「用户不可替换」的要求。
 
 ## 桌面常驻服务与原生二进制
 
 - 桌面常驻服务端是 Go 实现，源码在 `packages/clash_core/core/cmd/`；`go build ./cmd` 产出 `clashyService`（Windows 为 `clashyservice.exe`），其 `serviceVersion` 必须与 `packages/server/lib/server.dart` 的 `version` 保持一致。
 - 服务端在每个平台都以特权身份运行并自己创建/配置 TUN：Windows 是 `LocalSystem` 服务（自己建 Wintun、写路由），macOS 是 `/Library/LaunchDaemons` 的 root LaunchDaemon，Linux 是 systemd system unit（root）。不要再引入独立的 tun-helper 进程或 IPC 代理。
-- macOS 托盘是用户 GUI 会话里的 LaunchAgent（`/Library/LaunchAgents`），system 域的守护进程没有 WindowServer 连接，不能由它拉起或自己画菜单栏。
+- macOS 托盘是用户 GUI 会话里的 LaunchAgent，装在当前用户的 `~/Library/LaunchAgents`（不需要 root，app 换位置只重写这份用户 plist）；system 域的守护进程没有 WindowServer 连接，不能由它拉起或自己画菜单栏。
 - 服务端自己写的状态/日志放在机器级目录（macOS `/Library/Application Support/Clashy`、Windows `%ProgramData%\Clashy`、Linux `/var/lib/clashy`），不要落在用户可写的 profile 目录里。
 - 特权守护进程的控制面只放行安装它的那个桌面用户：安装器把 uid/SID 以 `--allowed-uid` / `--allowed-sid` 传给服务（macOS plist、Linux unit、Windows `sc binPath`），服务在 accept 时用 peer credentials 校验 uid、或用该 SID 生成管道 DACL；root/SYSTEM/Administrators 始终放行。不要退回到 `0666` socket 或 `BU` 的管道描述符。
 - 特权服务不以 root 身份跟随用户可写目录里的符号链接：配置入口会拒绝符号链接和非普通文件的 `config.yaml`，新增读文件的路径时沿用同样的检查。

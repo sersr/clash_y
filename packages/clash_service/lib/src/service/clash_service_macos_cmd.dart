@@ -18,7 +18,18 @@ abstract final class MacOSServiceProcess {
 
   static const _daemonPlistPath =
       '/Library/LaunchDaemons/com.aote.clashy.service.plist';
-  static const _trayPlistPath =
+
+  /// 托盘 Agent 放在当前用户的 `~/Library/LaunchAgents`：它只在登录会话里跑，
+  /// 也不该为了 app 换位置去要管理员授权。
+  static String get _trayPlistPath => p.join(
+    Platform.environment['HOME'] ?? '',
+    'Library/LaunchAgents',
+    '$_trayLabel.plist',
+  );
+
+  /// 早期版本把托盘 Agent 装在 root 拥有的 `/Library/LaunchAgents`；同一 label
+  /// 两处并存会被加载两次，升级时清掉。
+  static const _legacyTrayPlistPath =
       '/Library/LaunchAgents/com.aote.clashy.tray.plist';
 
   /// 服务二进制由 root 拥有的副本；不直接执行 app bundle 里的文件，避免用户
@@ -121,68 +132,134 @@ abstract final class MacOSServiceProcess {
     final uid = await _currentUid();
     final expectedDaemon = _daemonPlist(clashSocketPath, uid);
     final expectedTray = _trayPlist(clashSocketPath);
-    final currentDaemon = await _readFileIfExists(_daemonPlistPath);
-    final currentTray = await _readFileIfExists(_trayPlistPath);
     final bundledHash = await _sha256(_servicePath);
     final installedHash = await _sha256(_installedServicePath);
-    final configured =
-        currentDaemon == expectedDaemon &&
-        currentTray == expectedTray &&
-        bundledHash != null &&
-        bundledHash == installedHash;
+    final legacyTrayPresent = File(_legacyTrayPlistPath).existsSync();
+    final plistChanged =
+        await _readFileIfExists(_daemonPlistPath) != expectedDaemon;
+    final daemonLoaded = await _launchctlPrint('system/$_serviceLabel') != null;
 
-    // 配置和二进制都对得上就不再提权：服务已加载时保持现状，由 launchd 的
-    // KeepAlive 自己拉起；它要是反复崩溃，再装一遍也救不回来，只会每次开机
-    // 弹一次管理员密码。只有「被显式 bootout 过、job 根本没加载」才需要重装。
-    if (configured && !forceRestart) {
-      if (await _launchctlPrint('system/$_serviceLabel') != null) {
-        await _waitForServiceSocket(const Duration(seconds: 5));
-        return;
+    final reinstallDaemon =
+        forceRestart ||
+        plistChanged ||
+        bundledHash == null ||
+        bundledHash != installedHash ||
+        !daemonLoaded;
+    final reinstallTray =
+        forceRestart ||
+        legacyTrayPresent ||
+        await _readFileIfExists(_trayPlistPath) != expectedTray;
+
+    // 托盘属于当前用户，写自己的 Agent 不需要 root；守护进程的副本和
+    // `/Library/LaunchDaemons` 才需要。所以 app 换了个位置（Debug / Release /
+    // 挪过目录的 .app）只会重写用户 plist，不该再弹管理员密码。
+    if (reinstallDaemon) {
+      try {
+        await _runElevated(
+          _daemonInstallScript(
+            uid: uid,
+            daemonPlist: expectedDaemon,
+            reloadJob: plistChanged || !daemonLoaded,
+          ),
+        );
+      } on ProcessException {
+        // 另一个实例可能已经把它注册上了：只要 job 在，就不算安装失败。
+        if (await _launchctlPrint('system/$_serviceLabel') == null) rethrow;
       }
+    } else if (legacyTrayPresent) {
+      // 只清掉老版本留在 root 目录里的托盘 Agent，不重启正在跑的守护进程。
+      await _runElevated(_legacyTrayCleanupScript(uid));
+    }
+    if (reinstallDaemon || reinstallTray) {
+      await _installTrayAgent(uid: uid, plist: expectedTray);
     }
 
-    await _runElevated(
-      _installScript(
-        uid: uid,
-        daemonPlist: expectedDaemon,
-        trayPlist: expectedTray,
-      ),
-    );
-    await _waitUntilRunning();
+    if (reinstallDaemon) {
+      await _waitUntilRunning();
+    } else {
+      await _waitForServiceSocket(const Duration(seconds: 5));
+    }
   }
 
-  /// 安装脚本：拷贝 root 拥有的服务副本、写两份 plist，再分别 bootstrap 到
-  /// `system` 与当前用户的 `gui/<uid>` 域。
-  static String _installScript({
+  /// 老版本把托盘 Agent 装在这里；同一 label 两处并存会被加载两次。
+  static String _legacyTrayCleanupScript(int uid) =>
+      '''
+set -eu
+/bin/launchctl bootout gui/$uid/$_trayLabel >/dev/null 2>&1 || true
+/bin/rm -f ${_shellQuote(_legacyTrayPlistPath)}
+''';
+
+  /// 托盘 Agent 装在当前用户的 `~/Library/LaunchAgents`：菜单栏进程本来就在
+  /// 用户会话里跑，没有理由占 root 拥有的 `/Library/LaunchAgents`。
+  static Future<void> _installTrayAgent({
+    required int uid,
+    required String plist,
+  }) async {
+    final file = File(_trayPlistPath);
+    if (!await file.parent.exists()) {
+      await file.parent.create(recursive: true);
+    }
+    if (await _readFileIfExists(_trayPlistPath) != plist) {
+      await file.writeAsString(plist);
+    }
+    final domainPath = 'gui/$uid/$_trayLabel';
+    await Process.run('/bin/launchctl', ['bootout', domainPath]);
+    await _waitUntilUnloaded(domainPath);
+    await _bootstrap('gui/$uid', _trayPlistPath);
+  }
+
+  /// 守护进程安装脚本：装 root 拥有的服务副本、写 daemon plist。
+  ///
+  /// 只有 plist 内容变了（或 job 根本没加载）才走 `bootout` + `bootstrap`：
+  /// `bootout` 是异步的，job 还没从 `system` 域消失就 bootstrap 同一个 label，
+  /// launchd 会回 `Bootstrap failed: 5: Input/output error`。所以要么等到它真的
+  /// 消失，要么干脆只换二进制并 `kickstart -k` 重启，绕开这段竞态。
+  static String _daemonInstallScript({
     required int uid,
     required String daemonPlist,
-    required String trayPlist,
+    required bool reloadJob,
   }) {
     const daemonPlistTemp = '/tmp/clashy-service.plist';
-    const trayPlistTemp = '/tmp/clashy-tray.plist';
+    final binDir = p.dirname(_installedServicePath);
+    final applyJob = reloadJob
+        ? '''
+/bin/launchctl bootout system/$_serviceLabel >/dev/null 2>&1 || true
+i=0
+while /bin/launchctl print system/$_serviceLabel >/dev/null 2>&1; do
+  i=\$((i + 1))
+  [ "\$i" -lt 300 ] || break
+  /bin/sleep 0.1
+done
+/bin/launchctl enable system/$_serviceLabel
+n=0
+until /bin/launchctl bootstrap system ${_shellQuote(_daemonPlistPath)}; do
+  n=\$((n + 1))
+  if [ "\$n" -ge 6 ]; then
+    # 另一个 app 实例可能刚好把它注册上了，已加载就算成功。
+    /bin/launchctl print system/$_serviceLabel >/dev/null 2>&1 && exit 0
+    exit 1
+  fi
+  /bin/sleep 0.5
+done
+'''
+        : '''
+/bin/launchctl kickstart -k system/$_serviceLabel
+''';
     return '''
 set -eu
-/bin/mkdir -p ${_shellQuote(p.dirname(_installedServicePath))}
-/usr/sbin/chown root:wheel ${_shellQuote(p.dirname(_installedServicePath))}
-/bin/chmod 755 ${_shellQuote(p.dirname(_installedServicePath))}
+/bin/mkdir -p ${_shellQuote(binDir)}
+/usr/sbin/chown root:wheel ${_shellQuote(binDir)}
+/bin/chmod 755 ${_shellQuote(binDir)}
 /usr/bin/install -o root -g wheel -m 755 ${_shellQuote(_servicePath)} ${_shellQuote(_installedServicePath)}
-/bin/mkdir -p /Library/LaunchDaemons /Library/LaunchAgents
+/bin/mkdir -p /Library/LaunchDaemons
 printf '%s' ${_shellQuote(daemonPlist)} > ${_shellQuote(daemonPlistTemp)}
 /usr/sbin/chown root:wheel ${_shellQuote(daemonPlistTemp)}
 /bin/chmod 644 ${_shellQuote(daemonPlistTemp)}
 /bin/mv -f ${_shellQuote(daemonPlistTemp)} ${_shellQuote(_daemonPlistPath)}
-printf '%s' ${_shellQuote(trayPlist)} > ${_shellQuote(trayPlistTemp)}
-/usr/sbin/chown root:wheel ${_shellQuote(trayPlistTemp)}
-/bin/chmod 644 ${_shellQuote(trayPlistTemp)}
-/bin/mv -f ${_shellQuote(trayPlistTemp)} ${_shellQuote(_trayPlistPath)}
-/bin/launchctl bootout system/$_serviceLabel >/dev/null 2>&1 || true
 /bin/rm -f ${_shellQuote(_legacyInstalledServicePath)}
-/bin/launchctl enable system/$_serviceLabel
-/bin/launchctl bootstrap system ${_shellQuote(_daemonPlistPath)}
 /bin/launchctl bootout gui/$uid/$_trayLabel >/dev/null 2>&1 || true
-/bin/launchctl enable gui/$uid/$_trayLabel
-/bin/launchctl bootstrap gui/$uid ${_shellQuote(_trayPlistPath)}
-''';
+/bin/rm -f ${_shellQuote(_legacyTrayPlistPath)}
+$applyJob''';
   }
 
   /// 守护进程以 root 运行，控制面只对安装它的那个桌面用户（以及 root）放行：
@@ -258,6 +335,7 @@ set -eu
   }
 
   static Future<void> uninstall() async {
+    await _removeTrayAgent();
     final uid = await _currentUid();
     await _runElevated('''
 set -eu
@@ -265,8 +343,18 @@ set -eu
 /bin/launchctl disable system/$_serviceLabel >/dev/null 2>&1 || true
 /bin/launchctl bootout gui/$uid/$_trayLabel >/dev/null 2>&1 || true
 /bin/launchctl disable gui/$uid/$_trayLabel >/dev/null 2>&1 || true
-/bin/rm -f ${_shellQuote(_daemonPlistPath)} ${_shellQuote(_trayPlistPath)} ${_shellQuote(_installedServicePath)} ${_shellQuote(_legacyInstalledServicePath)}
+/bin/rm -f ${_shellQuote(_daemonPlistPath)} ${_shellQuote(_installedServicePath)} ${_shellQuote(_legacyInstalledServicePath)} ${_shellQuote(_legacyTrayPlistPath)}
 ''');
+  }
+
+  /// 卸载时先清用户自己的托盘 Agent：这一步不需要 root，root 脚本删不掉
+  /// 用户目录里的文件时也不会留下半卸载状态。
+  static Future<void> _removeTrayAgent() async {
+    final uid = await _currentUid();
+    await Process.run('/bin/launchctl', ['bootout', 'gui/$uid/$_trayLabel']);
+    await _waitUntilUnloaded('gui/$uid/$_trayLabel');
+    final file = File(_trayPlistPath);
+    if (await file.exists()) await file.delete();
   }
 
   static Future<int> _currentUid() async {
@@ -290,6 +378,38 @@ set -eu
     final result = await Process.run('/bin/launchctl', ['print', domain]);
     if (result.exitCode != 0) return null;
     return result.stdout as String;
+  }
+
+  /// `bootout` 是异步的：job 还没从目标域里消失就 `bootstrap` 同一个 label，
+  /// launchd 会直接回 `Bootstrap failed: 5: Input/output error`。所以先等它真的
+  /// 卸载，注册本身再留几次重试。
+  static Future<void> _bootstrap(String domain, String plistPath) async {
+    const attempts = 6;
+    for (var attempt = 1; attempt <= attempts; attempt++) {
+      final result = await Process.run('/bin/launchctl', [
+        'bootstrap',
+        domain,
+        plistPath,
+      ]);
+      if (result.exitCode == 0) return;
+      if (attempt == attempts) {
+        throw ProcessException(
+          '/bin/launchctl',
+          ['bootstrap', domain, plistPath],
+          '${result.stderr}',
+          result.exitCode,
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+  }
+
+  static Future<void> _waitUntilUnloaded(String domainPath) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 3));
+    while (DateTime.now().isBefore(deadline)) {
+      if (await _launchctlPrint(domainPath) == null) return;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
   }
 
   /// 通过 osascript 的 administrator 授权执行脚本，与其他平台的提权入口一致。
