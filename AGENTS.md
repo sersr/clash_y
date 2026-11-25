@@ -16,7 +16,8 @@
 - 相同语义的常量只定义一处；其他位置引用同一个变量，不重复硬编码或声明副本。
 - `packages/js_interpreter` 是上游 `js_interpreter` 0.0.5 的补丁副本（只修了解析器在对象展开 `{...x}` 上的 super/await 扫描），通过根 `pubspec.yaml` 的 `dependency_overrides` 生效；上游修好后删掉这个覆盖和副本。
 - 优先复用已有实现；只有在确实减少重复且不会引入不必要抽象或复杂度时，才提取共享实现。
-- macOS 服务的安装路径、plist 内容和注册脚本只在 `packages/clash_service/lib/src/service/clash_service_macos_cmd.dart` 维护一份；调用方复用已导出的接口，不得复制 `/Library/PrivilegedHelperTools/`、`/Library/LaunchDaemons`、`/Library/LaunchAgents` 路径或 plist 文本。
+- macOS 服务的安装路径、plist 内容和注册脚本只在 `packages/clash_service/lib/src/service/clash_service_macos_cmd.dart` 维护一份；调用方复用已导出的接口，不得复制 `/Library/Application Support/Clashy/bin/`、`/Library/LaunchDaemons`、`/Library/LaunchAgents` 路径或 plist 文本。
+- macOS 的服务副本不要放进 `/Library/PrivilegedHelperTools`：该目录由 AppleSystemPolicy 评估，开发构建的 ad-hoc 签名会被直接拒绝执行，launchd 无限重启、应用误判为未安装而每次开机都提权。root 拥有的普通系统目录已经满足「用户不可替换」的要求。
 
 ## 桌面常驻服务与原生二进制
 

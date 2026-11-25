@@ -175,6 +175,7 @@ class DataFailure<T, R> extends DataStatus<T, R> {
 
 typedef DataCache<T, R> = ({DataStatus<T, R> lastData, int key});
 typedef DataStatusScopeDy<T> = DataStatusScope<T, dynamic>;
+typedef DataLoadingScope = DataStatusScope<Null, dynamic>;
 
 class DataStatusScope<T, R> {
   DataStatusScope.idle() : _data = .val(.idle());

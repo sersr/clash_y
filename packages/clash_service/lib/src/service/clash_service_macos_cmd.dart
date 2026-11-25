@@ -23,7 +23,18 @@ abstract final class MacOSServiceProcess {
 
   /// 服务二进制由 root 拥有的副本；不直接执行 app bundle 里的文件，避免用户
   /// 替换 bundle 内容后拿到 root 权限。
+  ///
+  /// 不放进 `/Library/PrivilegedHelperTools`：那里的可执行文件会由
+  /// AppleSystemPolicy 评估，开发构建的 ad-hoc 签名会被直接拒绝执行
+  /// （`ASP: Security policy would not allow process`），launchd 每 10 秒拉起一次
+  /// 又立刻失败，应用看到的永远是「没在运行」，于是每次启动都重新提权安装、
+  /// 每次都弹密码。放在 `Clashy` 自己的 root 目录里同样只有 root 能写。
   static const _installedServicePath =
+      '/Library/Application Support/Clashy/bin/clashyService';
+
+  /// 早期版本把服务副本装在这里；安装时顺手清掉，否则升级后仍会被 launchd
+  /// 当作另一个可执行文件反复拉起。
+  static const _legacyInstalledServicePath =
       '/Library/PrivilegedHelperTools/com.aote.clashy.service';
 
   static const _serviceRelativePath =
@@ -114,16 +125,20 @@ abstract final class MacOSServiceProcess {
     final currentTray = await _readFileIfExists(_trayPlistPath);
     final bundledHash = await _sha256(_servicePath);
     final installedHash = await _sha256(_installedServicePath);
-    final upToDate =
+    final configured =
         currentDaemon == expectedDaemon &&
         currentTray == expectedTray &&
         bundledHash != null &&
-        bundledHash == installedHash &&
-        await isRunning();
+        bundledHash == installedHash;
 
-    if (upToDate && !forceRestart) {
-      await _waitUntilRunning();
-      return;
+    // 配置和二进制都对得上就不再提权：服务已加载时保持现状，由 launchd 的
+    // KeepAlive 自己拉起；它要是反复崩溃，再装一遍也救不回来，只会每次开机
+    // 弹一次管理员密码。只有「被显式 bootout 过、job 根本没加载」才需要重装。
+    if (configured && !forceRestart) {
+      if (await _launchctlPrint('system/$_serviceLabel') != null) {
+        await _waitForServiceSocket(const Duration(seconds: 5));
+        return;
+      }
     }
 
     await _runElevated(
@@ -147,6 +162,9 @@ abstract final class MacOSServiceProcess {
     const trayPlistTemp = '/tmp/clashy-tray.plist';
     return '''
 set -eu
+/bin/mkdir -p ${_shellQuote(p.dirname(_installedServicePath))}
+/usr/sbin/chown root:wheel ${_shellQuote(p.dirname(_installedServicePath))}
+/bin/chmod 755 ${_shellQuote(p.dirname(_installedServicePath))}
 /usr/bin/install -o root -g wheel -m 755 ${_shellQuote(_servicePath)} ${_shellQuote(_installedServicePath)}
 /bin/mkdir -p /Library/LaunchDaemons /Library/LaunchAgents
 printf '%s' ${_shellQuote(daemonPlist)} > ${_shellQuote(daemonPlistTemp)}
@@ -158,6 +176,7 @@ printf '%s' ${_shellQuote(trayPlist)} > ${_shellQuote(trayPlistTemp)}
 /bin/chmod 644 ${_shellQuote(trayPlistTemp)}
 /bin/mv -f ${_shellQuote(trayPlistTemp)} ${_shellQuote(_trayPlistPath)}
 /bin/launchctl bootout system/$_serviceLabel >/dev/null 2>&1 || true
+/bin/rm -f ${_shellQuote(_legacyInstalledServicePath)}
 /bin/launchctl enable system/$_serviceLabel
 /bin/launchctl bootstrap system ${_shellQuote(_daemonPlistPath)}
 /bin/launchctl bootout gui/$uid/$_trayLabel >/dev/null 2>&1 || true
@@ -246,7 +265,7 @@ set -eu
 /bin/launchctl disable system/$_serviceLabel >/dev/null 2>&1 || true
 /bin/launchctl bootout gui/$uid/$_trayLabel >/dev/null 2>&1 || true
 /bin/launchctl disable gui/$uid/$_trayLabel >/dev/null 2>&1 || true
-/bin/rm -f ${_shellQuote(_daemonPlistPath)} ${_shellQuote(_trayPlistPath)} ${_shellQuote(_installedServicePath)}
+/bin/rm -f ${_shellQuote(_daemonPlistPath)} ${_shellQuote(_trayPlistPath)} ${_shellQuote(_installedServicePath)} ${_shellQuote(_legacyInstalledServicePath)}
 ''');
   }
 
@@ -328,6 +347,16 @@ set -eu
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
     throw StateError('macOS clashyService did not become ready.');
+  }
+
+  /// 已装好时不报错地等一会儿：给 launchd 自己拉起的进程一点时间，等不到就
+  /// 把失败留给后续的连接错误，而不是把「服务没起来」放大成一次提权弹窗。
+  static Future<void> _waitForServiceSocket(Duration timeout) async {
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (await _isServiceSocketReady()) return;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
   }
 
   static Future<bool> _isServiceSocketReady() async {
