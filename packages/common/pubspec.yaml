@@ -59,6 +59,7 @@ dependencies:
   simple_secure_storage: ^0.4.3
   webdav_client_plus: ^3.0.0
   js_interpreter: ^0.0.5
+  dartjs: ^0.1.1
 
 dev_dependencies:
   flutter_test:

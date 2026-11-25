@@ -1,0 +1,667 @@
+/// Global functions for JavaScript runtime
+/// Provides eval, parseInt, parseFloat, isNaN, isFinite and other global functions
+library;
+
+import 'dart:async';
+import 'js_value.dart';
+import 'native_functions.dart';
+import 'js_runtime.dart';
+import 'message_system.dart';
+import 'dart_value_converter.dart';
+
+/// Helper function to convert Dart values to JSValue
+JSValue _dartToJSValue(dynamic value) {
+  if (value == null) return JSNull.instance;
+  if (value is bool) return JSBoolean(value);
+  if (value is int) return JSNumber(value.toDouble());
+  if (value is double) return JSNumber(value);
+  if (value is String) return JSString(value);
+  if (value is JSValue) return value;
+
+  // Handle Dart Map -> JSObject
+  if (value is Map) {
+    final jsObj = JSObject();
+    value.forEach((key, val) {
+      final keyStr = key.toString();
+      final jsVal = _dartToJSValue(val);
+      jsObj.setProperty(keyStr, jsVal);
+    });
+    return jsObj;
+  }
+
+  // Handle Dart List -> JSArray
+  if (value is List) {
+    final jsElements = value.map((item) => _dartToJSValue(item)).toList();
+    return JSValueFactory.array(jsElements);
+  }
+
+  // For other types, convert to string
+  return JSString(value.toString());
+}
+
+/// Helper function to convert JSValue to Dart values
+/// JSObject is converted to Map, JSArray to List, etc.
+dynamic _jsToDartValue(dynamic value) {
+  if (value == null) return null;
+
+  // Use the interpreter's robust converter
+  if (value is JSValue) {
+    return DartValueConverter.toDartValue(value);
+  }
+
+  // For native Dart values that come from elsewhere
+  if (value is bool) return value;
+  if (value is int) return value;
+  if (value is double) {
+    // Convert double to int if it's an integer number
+    if (value == value.toInt()) {
+      return value.toInt();
+    }
+    return value;
+  }
+  if (value is String) return value;
+  if (value is List) return value.map((item) => _jsToDartValue(item)).toList();
+  if (value is Map) return value.map((k, v) => MapEntry(k, _jsToDartValue(v)));
+
+  // Fallback
+  return value;
+}
+
+/// Manages active timeouts for setTimeout/clearTimeout functionality
+class TimeoutManager {
+  static final TimeoutManager _instance = TimeoutManager._internal();
+  static TimeoutManager get instance => _instance;
+
+  TimeoutManager._internal();
+
+  final Map<int, Timer> _activeTimeouts = {};
+  int _nextTimeoutId = 1;
+
+  /// Schedules a timeout and returns its ID
+  int setTimeout(void Function() callback, int delay) {
+    final id = _nextTimeoutId++;
+    final timer = Timer(Duration(milliseconds: delay), () {
+      _activeTimeouts.remove(id);
+      callback();
+    });
+    _activeTimeouts[id] = timer;
+    return id;
+  }
+
+  /// Cancels a timeout by ID
+  void clearTimeout(int id) {
+    final timer = _activeTimeouts.remove(id);
+    timer?.cancel();
+  }
+
+  /// Clears all active timeouts
+  void clearAllTimeouts() {
+    for (final timer in _activeTimeouts.values) {
+      timer.cancel();
+    }
+    _activeTimeouts.clear();
+  }
+}
+
+/// Global JavaScript functions implementation
+class GlobalFunctions {
+  final String? getInterpreterInstanceId;
+  GlobalFunctions(this.getInterpreterInstanceId);
+  static JSNativeFunction createEval() {
+    final evalFunction = JSNativeFunction(
+      functionName: 'eval',
+      expectedArgs: 1, // eval takes 1 parameter
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.undefined();
+        }
+
+        final code = args[0].toString();
+
+        try {
+          // Get current evaluator instance
+          final runtime = JSRuntime.current;
+          if (runtime == null) {
+            throw JSError('eval() called without evaluator context');
+          }
+
+          // Evaluate the code in current context via the runtime
+          return runtime.evalCode(code, directEval: false);
+        } on JSException {
+          // Re-throw JavaScript exceptions (including SyntaxErrors from var redeclaration)
+          rethrow;
+        } on JSError {
+          // Re-throw JavaScript errors (JSTypeError, JSReferenceError, etc.)
+          rethrow;
+        } catch (e) {
+          // Convert other errors to SyntaxError
+          throw JSSyntaxError('$e');
+        }
+      },
+    );
+    evalFunction.setInternalSlot('[[GlobalEval]]', true);
+    return evalFunction;
+  }
+
+  /// Creates parseInt() function
+  static JSNativeFunction createParseInt() {
+    return JSNativeFunction(
+      functionName: 'parseInt',
+      expectedArgs: 2,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.number(double.nan);
+        }
+
+        final str = args[0].toString().trim();
+        if (str.isEmpty) {
+          return JSValueFactory.number(double.nan);
+        }
+
+        // Handle radix parameter
+        int radix = 10;
+        if (args.length > 1) {
+          final radixArg = args[1].toNumber();
+          if (radixArg.isNaN || radixArg == 0) {
+            radix = 10;
+          } else {
+            radix = radixArg.floor();
+            if (radix < 2 || radix > 36) {
+              return JSValueFactory.number(double.nan);
+            }
+          }
+        }
+
+        // Auto-detect hex (0x) and octal (0) prefixes for radix 10
+        String processedStr = str;
+        if (radix == 10) {
+          if (str.toLowerCase().startsWith('0x')) {
+            radix = 16;
+            processedStr = str.substring(2);
+          } else if (str.startsWith('0') &&
+              str.length > 1 &&
+              RegExp(r'^[0-7]+$').hasMatch(str.substring(1))) {
+            // Octal detection (legacy behavior)
+            radix = 8;
+            processedStr = str.substring(1);
+          }
+        }
+
+        // Parse the number
+        try {
+          // Extract valid digits for the given radix
+          final validChars = '0123456789abcdefghijklmnopqrstuvwxyz'.substring(
+            0,
+            radix,
+          );
+          String validPart = '';
+
+          bool negative = false;
+          int start = 0;
+
+          if (processedStr.startsWith('-')) {
+            negative = true;
+            start = 1;
+          } else if (processedStr.startsWith('+')) {
+            start = 1;
+          }
+
+          for (int i = start; i < processedStr.length; i++) {
+            final char = processedStr[i].toLowerCase();
+            if (validChars.contains(char)) {
+              validPart += char;
+            } else {
+              break; // Stop at first invalid character
+            }
+          }
+
+          if (validPart.isEmpty) {
+            return JSValueFactory.number(double.nan);
+          }
+
+          final result = int.tryParse(validPart, radix: radix);
+          if (result == null) {
+            return JSValueFactory.number(double.nan);
+          }
+
+          return JSValueFactory.number(
+            (negative ? -result : result).toDouble(),
+          );
+        } catch (e) {
+          return JSValueFactory.number(double.nan);
+        }
+      },
+    );
+  }
+
+  /// Creates parseFloat() function
+  static JSNativeFunction createParseFloat() {
+    return JSNativeFunction(
+      functionName: 'parseFloat',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.number(double.nan);
+        }
+
+        final str = args[0].toString().trim();
+        if (str.isEmpty) {
+          return JSValueFactory.number(double.nan);
+        }
+
+        // Handle special values
+        if (str == 'Infinity' || str == '+Infinity') {
+          return JSValueFactory.number(double.infinity);
+        }
+        if (str == '-Infinity') {
+          return JSValueFactory.number(double.negativeInfinity);
+        }
+
+        // Extract valid float part
+        final floatRegex = RegExp(r'^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?');
+        final match = floatRegex.firstMatch(str);
+
+        if (match == null) {
+          return JSValueFactory.number(double.nan);
+        }
+
+        final validPart = match.group(0)!;
+        final result = double.tryParse(validPart);
+
+        return JSValueFactory.number(result ?? double.nan);
+      },
+    );
+  }
+
+  /// Creates isNaN() function
+  static JSNativeFunction createIsNaN() {
+    return JSNativeFunction(
+      functionName: 'isNaN',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.boolean(true);
+        }
+
+        final num = args[0].toNumber();
+        return JSValueFactory.boolean(num.isNaN);
+      },
+    );
+  }
+
+  /// Creates isFinite() function
+  static JSNativeFunction createIsFinite() {
+    return JSNativeFunction(
+      functionName: 'isFinite',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.boolean(false);
+        }
+
+        final num = args[0].toNumber();
+        return JSValueFactory.boolean(num.isFinite);
+      },
+    );
+  }
+
+  /// Creates encodeURI() function
+  static JSNativeFunction createEncodeURI() {
+    return JSNativeFunction(
+      functionName: 'encodeURI',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.string('undefined');
+        }
+
+        final str = args[0].toString();
+        return JSValueFactory.string(Uri.encodeFull(str));
+      },
+    );
+  }
+
+  /// Creates decodeURI() function
+  static JSNativeFunction createDecodeURI() {
+    return JSNativeFunction(
+      functionName: 'decodeURI',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.string('undefined');
+        }
+
+        final str = args[0].toString();
+        try {
+          return JSValueFactory.string(Uri.decodeFull(str));
+        } catch (e) {
+          throw JSURIError('$e');
+        }
+      },
+    );
+  }
+
+  /// Creates encodeURIComponent() function
+  static JSNativeFunction createEncodeURIComponent() {
+    return JSNativeFunction(
+      functionName: 'encodeURIComponent',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.string('undefined');
+        }
+
+        final str = args[0].toString();
+        return JSValueFactory.string(Uri.encodeComponent(str));
+      },
+    );
+  }
+
+  /// Creates decodeURIComponent() function
+  static JSNativeFunction createDecodeURIComponent() {
+    return JSNativeFunction(
+      functionName: 'decodeURIComponent',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.string('undefined');
+        }
+
+        final str = args[0].toString();
+        try {
+          return JSValueFactory.string(Uri.decodeComponent(str));
+        } catch (e) {
+          throw JSURIError('$e');
+        }
+      },
+    );
+  }
+
+  /// Creates Annex B unescape() function
+  static JSNativeFunction createUnescape() {
+    bool isHexDigit(String char) {
+      final code = char.codeUnitAt(0);
+      return (code >= 0x30 && code <= 0x39) ||
+          (code >= 0x41 && code <= 0x46) ||
+          (code >= 0x61 && code <= 0x66);
+    }
+
+    return JSNativeFunction(
+      functionName: 'unescape',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        final input = args.isEmpty
+            ? 'undefined'
+            : JSConversion.jsToString(args[0]);
+        final buffer = StringBuffer();
+
+        var index = 0;
+        while (index < input.length) {
+          final char = input[index];
+          if (char == '%' &&
+              index + 5 < input.length &&
+              input[index + 1] == 'u' &&
+              isHexDigit(input[index + 2]) &&
+              isHexDigit(input[index + 3]) &&
+              isHexDigit(input[index + 4]) &&
+              isHexDigit(input[index + 5])) {
+            final codeUnit = int.parse(
+              input.substring(index + 2, index + 6),
+              radix: 16,
+            );
+            buffer.writeCharCode(codeUnit);
+            index += 6;
+            continue;
+          }
+
+          if (char == '%' &&
+              index + 2 < input.length &&
+              isHexDigit(input[index + 1]) &&
+              isHexDigit(input[index + 2])) {
+            final codeUnit = int.parse(
+              input.substring(index + 1, index + 3),
+              radix: 16,
+            );
+            buffer.writeCharCode(codeUnit);
+            index += 3;
+            continue;
+          }
+
+          buffer.write(char);
+          index += 1;
+        }
+
+        return JSValueFactory.string(buffer.toString());
+      },
+    );
+  }
+
+  /// Creates Annex B escape() function
+  static JSNativeFunction createEscape() {
+    const unescapedChars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@*_+-./';
+
+    return JSNativeFunction(
+      functionName: 'escape',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        final input = args.isEmpty
+            ? 'undefined'
+            : JSConversion.jsToString(args[0]);
+        final buffer = StringBuffer();
+
+        for (var index = 0; index < input.length; index++) {
+          final codeUnit = input.codeUnitAt(index);
+          final char = String.fromCharCode(codeUnit);
+          if (unescapedChars.contains(char)) {
+            buffer.write(char);
+            continue;
+          }
+
+          if (codeUnit < 256) {
+            final hex = codeUnit
+                .toRadixString(16)
+                .toUpperCase()
+                .padLeft(2, '0');
+            buffer.write('%$hex');
+            continue;
+          }
+
+          final hex = codeUnit.toRadixString(16).toUpperCase().padLeft(4, '0');
+          buffer.write('%u$hex');
+        }
+
+        return JSValueFactory.string(buffer.toString());
+      },
+    );
+  }
+
+  /// Creates sendMessage() function - returns the result
+  JSNativeFunction createSendMessage() {
+    return JSNativeFunction(
+      functionName: 'sendMessage',
+      nativeImpl: (args) {
+        if (args.length < 2) {
+          throw JSError(
+            'sendMessage() requires at least 2 arguments: channelName and message',
+          );
+        }
+
+        final channelName = args[0].toString();
+        // Convert all remaining arguments to Dart values (JSObject -> Map, etc.)
+        final messageArgs = args
+            .sublist(1)
+            .map((arg) => _jsToDartValue(arg))
+            .toList();
+
+        try {
+          // Send message and return first result
+          final result = MessageSystem(
+            getInterpreterInstanceId,
+          ).sendMessage(channelName, messageArgs);
+
+          // If the result is a Dart exception, throw it
+          if (result is Exception && result is! FormatException) {
+            throw result;
+          }
+
+          return JSValueFactory.fromDart(result);
+        } catch (error) {
+          // Convert Dart exceptions to JavaScript JSError
+          if (error is JSError) {
+            rethrow;
+          }
+          throw JSError('sendMessage error: $error');
+        }
+      },
+    );
+  }
+
+  /// Creates sendMessageAsync() function - async version that returns the result as Promise
+  JSNativeFunction createSendMessageAsync() {
+    return JSNativeFunction(
+      functionName: 'sendMessageAsync',
+      nativeImpl: (args) {
+        if (args.length < 2) {
+          throw JSError(
+            'sendMessageAsync() requires at least 2 arguments: channelName and message',
+          );
+        }
+
+        final channelName = args[0].toString();
+        // Convert all remaining arguments to Dart values (JSObject -> Map, etc.)
+        final messageArgs = args
+            .sublist(1)
+            .map((arg) => _jsToDartValue(arg))
+            .toList();
+        final runtime = JSRuntime.current;
+
+        return JSPromise(
+          JSNativeFunction(
+            functionName: 'sendMessageAsyncExecutor',
+            nativeImpl: (executorArgs) {
+              if (executorArgs.length >= 2) {
+                final resolve = executorArgs[0] as JSNativeFunction;
+                final reject = executorArgs[1] as JSNativeFunction;
+
+                // Execute the async operation and resolve/reject the promise
+                MessageSystem(getInterpreterInstanceId)
+                    .sendMessageAsync(channelName, messageArgs)
+                    .then((result) {
+                      final previousRuntime = JSRuntime.current;
+                      if (runtime != null &&
+                          !identical(previousRuntime, runtime)) {
+                        JSRuntime.setCurrent(runtime);
+                      }
+                      // If the result is an exception, reject the promise
+                      try {
+                        if (result is Exception && result is! FormatException) {
+                          reject.call([
+                            JSValueFactory.string(result.toString()),
+                          ]);
+                        } else {
+                          final jsValue = _dartToJSValue(result);
+                          resolve.call([jsValue]);
+                        }
+                        runtime?.runPendingTasks();
+                      } finally {
+                        if (runtime != null &&
+                            !identical(previousRuntime, runtime)) {
+                          JSRuntime.setCurrent(previousRuntime);
+                        }
+                      }
+                    })
+                    .catchError((error) {
+                      final previousRuntime = JSRuntime.current;
+                      if (runtime != null &&
+                          !identical(previousRuntime, runtime)) {
+                        JSRuntime.setCurrent(runtime);
+                      }
+                      // Reject the promise with the error message
+                      try {
+                        final errorMessage = error is JSError
+                            ? error.message
+                            : error.toString();
+                        reject.call([JSValueFactory.string(errorMessage)]);
+                        runtime?.runPendingTasks();
+                      } finally {
+                        if (runtime != null &&
+                            !identical(previousRuntime, runtime)) {
+                          JSRuntime.setCurrent(previousRuntime);
+                        }
+                      }
+                    });
+              }
+              return JSValueFactory.undefined();
+            },
+          ),
+        );
+        // }
+      },
+    );
+  }
+
+  /// Creates setTimeout() function
+  static JSNativeFunction createSetTimeout() {
+    return JSNativeFunction(
+      functionName: 'setTimeout',
+      expectedArgs: 2,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          throw JSError(
+            'setTimeout() requires at least 1 argument: callback function',
+          );
+        }
+
+        final callback = args[0];
+        if (callback is! JSFunction && callback is! JSNativeFunction) {
+          throw JSTypeError('setTimeout() first argument must be a function');
+        }
+
+        final delay = args.length > 1 ? args[1].toNumber().toInt() : 0;
+        final additionalArgs = args.length > 2 ? args.sublist(2) : <JSValue>[];
+
+        // Get current evaluator for function calls
+        final runtime = JSRuntime.current;
+        if (runtime == null) {
+          throw JSError('setTimeout() called without evaluator context');
+        }
+
+        // Schedule the callback to run after the delay
+        final timeoutId = TimeoutManager.instance.setTimeout(() {
+          try {
+            // Call the callback function with additional arguments
+            runtime.callFunction(callback, additionalArgs);
+            // Process any microtasks enqueued by the callback
+            // (e.g. Promise resolve/reject inside setTimeout)
+            runtime.runPendingTasks();
+          } catch (e) {
+            // Log error but don't crash
+            print('setTimeout callback error: $e');
+          }
+        }, delay);
+
+        // Return the timeout ID
+        return JSValueFactory.number(timeoutId.toDouble());
+      },
+    );
+  }
+
+  /// Creates clearTimeout() function
+  static JSNativeFunction createClearTimeout() {
+    return JSNativeFunction(
+      functionName: 'clearTimeout',
+      expectedArgs: 1,
+      nativeImpl: (args) {
+        if (args.isEmpty) {
+          return JSValueFactory.undefined();
+        }
+
+        final timeoutId = args[0].toNumber().toInt();
+        TimeoutManager.instance.clearTimeout(timeoutId);
+
+        return JSValueFactory.undefined();
+      },
+    );
+  }
+}

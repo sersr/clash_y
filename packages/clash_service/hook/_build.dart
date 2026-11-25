@@ -10,8 +10,9 @@ import 'package:server/tray_asset.dart';
 
 const _fs = LocalFileSystem();
 
-/// 构建并交付桌面端随包分发的原生二进制：`bin/clashyService`（Go 服务端）、
-/// `bin/clashyTunHelper`（Go 特权 TUN helper），以及 macOS 的 `bin/clashyTray`。
+/// 构建并交付桌面端随包分发的原生二进制：`bin/clashyService`（Go 服务端，
+/// 三平台都跑在特权账号下并自己创建 TUN），以及 macOS 的 `bin/clashyTray`
+/// （用户会话里的菜单栏 Agent）。
 ///
 /// 产物先落到 [clashNativeBinDirRelativePath]（稳定目录，仅内容变化时覆盖），
 /// 再作为 DataAsset 交付，应用端按 `flutter_assets/packages/clash_service/bin/`
@@ -31,7 +32,6 @@ Future<void> buildDesktopBinaries(
   binDir.createSync(recursive: true);
 
   await _buildService(input, packageRoot, binDir, targetOs, output);
-  await _buildTunHelper(input, packageRoot, binDir, targetOs, output);
   if (targetOs == .macOS) {
     await _buildTray(
       packageRoot,
@@ -81,41 +81,11 @@ Future<void> _buildService(
 
   output.dependencies.add(Uri.file(coreDir.childFile('go.mod').absolute.path));
   output.dependencies.add(Uri.file(coreDir.childFile('go.sum').absolute.path));
-  for (final sourceDirectory in [
-    coreDir.childDirectory('cmd'),
-    coreDir.childDirectory('tunbroker'),
-  ]) {
-    for (final item in sourceDirectory.listSync(recursive: true)) {
-      if (item case File file when file.basename.endsWith('.go')) {
-        output.dependencies.add(Uri.file(file.absolute.path));
-      }
+  for (final item in coreDir.childDirectory('cmd').listSync(recursive: true)) {
+    if (item case File file when file.basename.endsWith('.go')) {
+      output.dependencies.add(Uri.file(file.absolute.path));
     }
   }
-}
-
-/// Go 特权 TUN helper：`packages/clash_core/core/cmd/clashy_tun_helper`。
-Future<void> _buildTunHelper(
-  BuildInput input,
-  Directory packageRoot,
-  Directory binDir,
-  OS targetOs,
-  BuildOutputBuilder output,
-) async {
-  final coreDir = packageRoot.parent
-      .childDirectory('clash_core')
-      .childDirectory('core');
-  final executableName = clashTunHelperFileName(windows: targetOs == .windows);
-
-  final helperPath = await _goBuild(
-    coreDir: coreDir,
-    packagePath: './cmd/clashy_tun_helper',
-    executableName: executableName,
-    binDir: binDir,
-    targetOs: targetOs,
-    architecture: input.config.code.targetArchitecture,
-    cgo: cgoEnabled(input),
-  );
-  output.dependencies.add(Uri.file(helperPath.absolute.path));
 }
 
 /// 桌面端 Go 二进制的编译标签。

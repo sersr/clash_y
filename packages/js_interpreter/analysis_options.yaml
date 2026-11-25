@@ -1,0 +1,10 @@
+# 第三方代码副本：只保留与自己维护相关的检查，其余沿用上游写法。
+analyzer:
+  language:
+    strict-casts: false
+    strict-raw-types: false
+
+linter:
+  rules:
+    avoid_print: false
+    use_super_parameters: false

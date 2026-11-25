@@ -87,15 +87,14 @@ extern __declspec(dllexport) char* start(char* configDir);
 
 // startTun starts the core with TUN enabled when given a TUN descriptor.
 // A positive fd is an externally established descriptor, supplied by Android's
-// VpnService. On macOS, -1 asks the privileged helper for a descriptor. A zero
-// fd starts the core with TUN disabled.
+// VpnService. A zero fd starts the core with TUN disabled: on desktop the
+// privileged service owns TUN and never accepts a descriptor from the app.
 //
 // Every call re-reads configDir/config.yaml and applies the full mihomo
 // configuration, so ports, proxies, rules, controller and TUN are always
 // up-to-date. The supplied fd is owned by mihomo after a successful call.
 //
 extern __declspec(dllexport) char* startTun(char* configDir, int fd);
-extern __declspec(dllexport) void startDesktopTun(char* configDir, int vpnEnabled);
 
 // stop shuts the core down and closes every listener, including TUN.
 //
@@ -106,14 +105,10 @@ extern __declspec(dllexport) char* stop();
 // Android uses stop(), which also shuts down the complete core.
 //
 extern __declspec(dllexport) char* stopTun();
-extern __declspec(dllexport) void stopDesktopTun();
 
 // freeString releases a string returned by this library.
 //
 extern __declspec(dllexport) void freeString(char* s);
-extern __declspec(dllexport) int startW(char* configDir, int vpnEnabled);
-extern __declspec(dllexport) int stopW();
-extern __declspec(dllexport) void runLoop();
 
 #ifdef __cplusplus
 }

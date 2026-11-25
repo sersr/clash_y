@@ -214,9 +214,21 @@ abstract final class ClashService {
       // while testing. Reuse that API server instead of asking SCM to launch a
       // second instance that collides on the same named pipe.
       if (await ClashServiceApi.getServiceVersion() != null) return true;
-      return startService();
+      if (!await startService()) return false;
+      // 服务已经在 RUNNING，但命名管道可能还没开始监听；先短轮询到管道可用，
+      // 免得紧接着的 status 请求走进 2 秒一次的重试退避。
+      return _waitUntilWindowsServiceReady();
     }
     return false;
+  }
+
+  /// 等待 Windows 服务的控制管道可用，最多 2 秒。
+  static Future<bool> _waitUntilWindowsServiceReady() async {
+    for (var i = 0; i < 20; i++) {
+      if (await ClashServiceApi.getServiceVersion() != null) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return true;
   }
 
   static Future<ApiResp> getClashEnv() => ClashServiceApi.getClashEnv();

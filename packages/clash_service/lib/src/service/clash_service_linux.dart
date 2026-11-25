@@ -42,6 +42,8 @@ Future<int> installSystemdService({bool forceRestart = false}) async {
   }
   // systemd ExecStart 路径含空格时需要引号
   final exec = exePath.contains(' ') ? '"$exePath"' : exePath;
+  // 服务以 root 运行，控制面只放行安装它的桌面用户（见 --allowed-uid）。
+  final uid = await _currentUid();
 
   final script =
       '''
@@ -56,7 +58,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=$exec
+ExecStart=$exec --allowed-uid $uid
 Restart=on-failure
 RestartSec=5
 
@@ -69,6 +71,32 @@ systemctl ${forceRestart ? 'restart' : 'start'} clashy-service.service
 ''';
 
   return _runAsRoot(script);
+}
+
+/// 安装进程所在的桌面用户 uid，用于 `--allowed-uid`。
+///
+/// 如果应用本身是被 `sudo`/`pkexec` 拉起来的（uid 0），回落到会话里记录的
+/// 原始用户，否则设备上唯一的桌面用户反而连不上服务。
+Future<int> _currentUid() async {
+  final result = await Process.run('id', ['-u']);
+  if (result.exitCode != 0) {
+    throw StateError('无法获取当前用户 uid: ${result.stderr}');
+  }
+  final uid = (result.stdout as String).trim();
+  if (!RegExp(r'^\d+$').hasMatch(uid)) {
+    throw FormatException('Unexpected user ID: $uid');
+  }
+  var value = int.parse(uid);
+  if (value == 0) {
+    for (final name in const ['SUDO_UID', 'PKEXEC_UID', 'DOAS_UID']) {
+      final candidate = int.tryParse(Platform.environment[name] ?? '');
+      if (candidate != null && candidate > 0) {
+        value = candidate;
+        break;
+      }
+    }
+  }
+  return value;
 }
 
 /// 停止 systemd 服务（保留 unit 文件，下次开机仍会自动启动）。
@@ -87,8 +115,8 @@ Future<int> uninstallSystemdService() async {
     return 0;
   }
 
-  final script =
-      '''
+  final script = '''
+set -eu
 systemctl disable --now clashy-service.service 2>/dev/null || true
 rm -f $systemdUnitPath
 systemctl daemon-reload

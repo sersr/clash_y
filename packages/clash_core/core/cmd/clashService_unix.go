@@ -10,18 +10,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
-
-	"golang.org/x/sys/unix"
 )
 
-// socketReadyTimeout bounds how long the daemon waits for a privileged TUN
-// helper to start accepting requests.
-const socketReadyTimeout = 10 * time.Second
-
-// listenServiceEndpoint binds the control API to the Unix domain socket. The
-// socket is world-writable because the app runs as a regular desktop user while
-// the daemon runs as root or as a LaunchAgent of that user.
+// listenServiceEndpoint binds the control API to the Unix domain socket.
+//
+// The socket stays world-connectable because the app runs as a regular desktop
+// user while the daemon runs as root, but every accepted connection is checked
+// against allowedClientUID: the control API drives a privileged process, so any
+// other local user must be turned away at accept time instead of being trusted
+// to the HTTP layer.
 func listenServiceEndpoint(path string) (net.Listener, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create Clash service socket directory: %w", err)
@@ -38,33 +35,32 @@ func listenServiceEndpoint(path string) (net.Listener, error) {
 		listener.Close()
 		return nil, fmt.Errorf("allow desktop apps to reach the Clash service socket: %w", err)
 	}
+	if allowedClientUID >= 0 {
+		logf("restricting the Clash service socket to uid %d", allowedClientUID)
+		return &uidCheckedListener{Listener: listener}, nil
+	}
 	return listener, nil
 }
 
-// closeFileDescriptor releases a TUN descriptor handed over by the helper.
-func closeFileDescriptor(fd int) error {
-	if fd <= 2 {
-		return fmt.Errorf("refusing to close a standard file descriptor: %d", fd)
-	}
-	return unix.Close(fd)
+// uidCheckedListener drops connections from users that do not own the
+// installation. Root is always allowed (an administrator debugging the daemon
+// through the socket must not be locked out).
+type uidCheckedListener struct {
+	net.Listener
 }
 
-// waitUntilUnixSocketReady blocks until a privileged TUN helper accepts
-// connections on its Unix socket, or the timeout expires.
-func waitUntilUnixSocketReady(path string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	var lastErr error
+func (l *uidCheckedListener) Accept() (net.Conn, error) {
 	for {
-		conn, err := net.DialTimeout("unix", path, 2*time.Second)
-		if err == nil {
-			_ = conn.Close()
-			return nil
+		conn, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
 		}
-		lastErr = err
-		if time.Now().After(deadline) {
-			return fmt.Errorf("TUN helper socket is not ready: %s (%v)", path, lastErr)
+		uid, ok := socketPeerUID(conn)
+		if ok && (uid == 0 || uid == uint32(allowedClientUID)) {
+			return conn, nil
 		}
-		time.Sleep(100 * time.Millisecond)
+		logf("rejected Clash service connection from uid %d", uid)
+		_ = conn.Close()
 	}
 }
 
@@ -98,8 +94,4 @@ func commandOutput(path string, args ...string) (string, error) {
 		return trimmed, err
 	}
 	return trimmed, nil
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }

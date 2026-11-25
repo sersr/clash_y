@@ -9,22 +9,16 @@ import 'tray_asset.dart';
 
 const windowService = 'clashy_service';
 
-/// 特权 TUN helper 的 Windows 服务名，与 Go 侧
-/// `clashService_windows.go`/`tunbroker` 保持一致。
-const windowTunHelperService = 'clashy_tun_helper';
-
 const _description = 'Clash VPN';
 
 /// 安装服务（未提权时弹 UAC 密码框，与 Linux pkexec 对等）。
 ///
 /// 用 `sc create/config` 写入服务配置，行为对应其他平台的 install：
+/// - 以 LocalSystem 运行：Wintun 适配器、路由和 DNS 都由它自己配置，不需要
+///   额外的特权 helper
 /// - 开机自启（start= auto + DelayedAutostart，与原实现一致）
 /// - 故障自动重启 5 次、间隔 5s、60s 内计数（对应 systemd 的
 ///   `Restart=on-failure` / `RestartSec=5` / `StartLimitBurst=5`）
-///
-/// 同一份脚本顺带注册特权 TUN helper（`clashy_tun_helper`，以 LocalSystem
-/// 运行）：服务在开机时就已具备 Wintun 能力，且 helper 的安装与应用安装共用
-/// 同一次 UAC 授权。
 ///
 /// 幂等：返回服务当前是否存在；用户取消 UAC 返回 false。
 Future<bool> installService() async {
@@ -33,38 +27,60 @@ Future<bool> installService() async {
   return _serviceExists();
 }
 
-/// 启动服务（未安装时先安装）。单次 UAC 完成安装+启动。
+/// 启动服务（未安装时先安装）。
 ///
-/// 返回服务是否处于运行状态。
+/// 服务已安装时走快路径：不改写配置、不提权，直接 `sc start`。安装阶段已经
+/// 把当前用户的 SID 写进服务 DACL 的启动/停止权限（见 [_serviceSddl]），所以
+/// 用户手动停掉服务后再打开 App 不会弹 UAC，也不必等配置脚本重跑一遍。
+/// 只有服务不存在（或旧版本安装没写过权限、`sc start` 被拒绝）时才升级执行
+/// 完整的安装脚本。
 Future<bool> startService() async {
+  if (_serviceExists()) {
+    final state = _serviceState();
+    final started = Process.runSync('sc', ['start', windowService]);
+    // 0 = 已下发启动；1061 = 正处在 STOP_PENDING 之类无法接受控制的状态，
+    // 这几种情况都直接等服务切到 RUNNING，不必再提权重跑配置脚本。
+    if (started.exitCode == 0 ||
+        started.exitCode == 1061 ||
+        state == 2 ||
+        state == 3 ||
+        state == 4) {
+      if (await _waitUntilRunning()) return true;
+    }
+  }
+
   final code = await _runElevated(
     '${_installScript()}sc start $windowService\n',
   );
   if (code == errorCancelled) return false;
-  for (var i = 0; i < 50 && !isServiceRunning(); i++) {
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-  }
-  final running = isServiceRunning();
-  if (!running) {
-    final query = Process.runSync('sc', ['query', windowService]);
-    final config = Process.runSync('sc', ['qc', windowService]);
-    throw StateError(
-      'Failed to start Windows clashyService: elevated script exit code '
-      '$code; sc query exit code ${query.exitCode}; '
-      '${query.stdout} ${query.stderr}; '
-      'sc qc exit code ${config.exitCode}; ${config.stdout} ${config.stderr}',
-    );
-  }
-  return running;
+  if (await _waitUntilRunning()) return true;
+
+  final query = Process.runSync('sc', ['query', windowService]);
+  final config = Process.runSync('sc', ['qc', windowService]);
+  throw StateError(
+    'Failed to start Windows clashyService: elevated script exit code '
+    '$code; sc query exit code ${query.exitCode}; '
+    '${query.stdout} ${query.stderr}; '
+    'sc qc exit code ${config.exitCode}; ${config.stdout} ${config.stderr}',
+  );
 }
 
-/// 停止服务（保留已安装状态）。需要时弹 UAC；未安装/已停止时不弹。
+/// 停止服务（保留已安装状态）。
 ///
+/// 先按普通权限 `sc stop`（安装时已给当前用户停止权限），只有被拒绝时才提权。
 /// 返回服务是否已停止。
 Future<bool> stopService() async {
-  if (_serviceState() == null) return true; // 未安装视为已停止
-  final code = await _runElevated('sc stop $windowService\n');
-  if (code == errorCancelled) return false;
+  final state = _serviceState();
+  if (state == null || state == 1) return true; // 未安装/已停止
+
+  final stop = Process.runSync('sc', ['stop', windowService]);
+  final needsElevation =
+      stop.exitCode != 0 && stop.exitCode != 1062; // 1062 = 服务未启动
+  if (needsElevation) {
+    final code = await _runElevated('sc stop $windowService\n');
+    if (code == errorCancelled) return false;
+  }
+
   for (var i = 0; i < 50; i++) {
     final s = _serviceState();
     if (s == null || s == 1) return true; // 服务不存在或已停止
@@ -75,8 +91,6 @@ Future<bool> stopService() async {
 
 /// 卸载服务。停止 + `sc delete`，单次 UAC。
 ///
-/// 同时卸载特权 TUN helper（它随应用安装，也随应用卸载）。并清理旧 DLL 实现
-/// 残留的 EventLog 注册。
 /// 返回服务是否已不存在；用户取消 UAC 返回 false。
 Future<bool> uninstallService() async {
   if (!_serviceExists()) return true;
@@ -91,14 +105,6 @@ for /l %%i in (1,1,30) do (
 :del
 sc delete $windowService >nul 2>&1
 reg delete "HKLM\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\$windowService" /f >nul 2>&1
-sc stop $windowTunHelperService >nul 2>&1
-for /l %%i in (1,1,20) do (
-  sc query $windowTunHelperService >nul 2>&1 || goto :delHelper
-  sc query $windowTunHelperService | findstr /c:"STOPPED" >nul && goto :delHelper
-  timeout /t 1 /nobreak >nul
-)
-:delHelper
-sc delete $windowTunHelperService >nul 2>&1
 ''';
   final code = await _runElevated(script);
   if (code == errorCancelled) return false;
@@ -132,17 +138,15 @@ String _installScript() {
   if (!File(raw).existsSync()) {
     throw StateError('Bundled Windows clashyService is missing: $raw');
   }
-  // 含空格时 binPath 的值本身需带引号，否则 SCM 拆分导致启动失败
-  final binPath = raw.contains(' ') ? '"\\"$raw\\""' : raw;
+  // 含空格时 binPath 的值本身需带引号，否则 SCM 拆分导致启动失败。
+  // `--allowed-sid` 把控制管道的 DACL 收窄到安装服务的那个用户：服务以
+  // LocalSystem 跑，不能默认让本机任意用户都能驱动它。
+  final sid = _currentUserSid();
+  final binPath = '"\\"$raw\\" --allowed-sid $sid"';
 
-  final helperRaw = p.join(p.dirname(raw), clashTunHelperWindowsExecutableName);
-  if (!File(helperRaw).existsSync()) {
-    throw StateError('Bundled Windows TUN helper is missing: $helperRaw');
-  }
-  final helperBinPath = helperRaw.contains(' ')
-      ? '"\\"$helperRaw\\""'
-      : helperRaw;
-
+  // 服务以 LocalSystem 运行，Wintun 适配器由它自己创建。
+  // `sc sdset` 把当前用户加进服务 DACL：只有启动/停止/查询权限，没有改配置
+  // 或删除权限，这样之后开 App 只需普通权限 `sc start`，不再弹 UAC。
   return 'sc ${_serviceExists() ? 'config' : 'create'} $windowService '
       'binPath= $binPath start= auto obj= "LocalSystem"\n'
       'sc description $windowService "$_description"\n'
@@ -150,20 +154,49 @@ String _installScript() {
       'actions= restart/5000/restart/5000/restart/5000/restart/5000/restart/5000\n'
       'reg add "HKLM\\SYSTEM\\CurrentControlSet\\Services\\$windowService" '
       '/v DelayedAutostart /t REG_DWORD /d 1 /f\n'
-      // TUN helper 由 SYSTEM 运行，服务端只连它的命名管道。create 在服务已存在
-      // 时报错并被丢弃，紧跟的 config 负责更新 binPath 与启动类型。
-      'sc create $windowTunHelperService binPath= $helperBinPath start= auto '
-      '>nul 2>&1\n'
-      'sc config $windowTunHelperService binPath= $helperBinPath start= auto\n'
-      'sc description $windowTunHelperService "Clashy TUN Helper"\n'
-      'sc failure $windowTunHelperService reset= 60 '
-      'actions= restart/5000/restart/5000/restart/5000/restart/5000/restart/5000\n'
-      'sc start $windowTunHelperService >nul 2>&1\n';
+      'sc sdset $windowService "${_serviceSddl(sid)}"\n';
+}
+
+/// 服务对象的安全描述符：默认主体保持原权限，额外授予 [sid] 启动、停止、
+/// 查询状态和读控制权（RP/WP/LC/RC）。
+///
+/// 只加这四个权限，改配置、删除、写 DACL 仍然只有 SYSTEM/Administrators 能做。
+String _serviceSddl(String sid) =>
+    'D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)'
+    '(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)'
+    '(A;;RPWPLCRC;;;$sid)'
+    '(A;;CCLCSWLOCRRC;;;IU)'
+    '(A;;CCLCSWLOCRRC;;;SU)';
+
+/// 等 SCM 把服务切到 RUNNING。`sc start` 返回后服务通常还在 START_PENDING，
+/// 用 100ms 间隔轮询，命中就走，不再固定等满 10 秒。
+Future<bool> _waitUntilRunning() async {
+  for (var i = 0; i < 100; i++) {
+    if (_serviceState() == 4) return true;
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+  return isServiceRunning();
 }
 
 bool _serviceExists() {
   final r = Process.runSync('sc', ['query', windowService]);
   return r.exitCode == 0;
+}
+
+/// 当前登录用户的 SID，用作服务管道的唯一授权主体。
+///
+/// 直接取 `whoami /user` 输出里的 SID 字面量：SID 与系统语言无关，比解析
+/// 用户名/域更稳。
+String _currentUserSid() {
+  final r = Process.runSync('whoami', ['/user']);
+  if (r.exitCode != 0) {
+    throw StateError('Failed to read the current user SID: ${r.stderr}');
+  }
+  final match = RegExp(r'S-1-5-\d+(-\d+)+').firstMatch(r.stdout as String);
+  if (match == null) {
+    throw StateError('Failed to parse the current user SID: ${r.stdout}');
+  }
+  return match.group(0)!;
 }
 
 /// 读取 `sc query` 的 STATE 数字（数字与系统语言无关）。

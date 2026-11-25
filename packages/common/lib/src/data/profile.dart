@@ -24,6 +24,7 @@ extension ProfileExt on Profile {
       if (script == null) return data;
 
       final scriptErrors = <String?>[];
+      js.setGlobal('profileConfig', data);
       js.eval(script.script);
 
       if (scriptErrors.isNotEmpty) {
@@ -31,8 +32,6 @@ extension ProfileExt on Profile {
           scriptErrors.first ?? 'unable to evaluate profile script',
         );
       }
-
-      js.setGlobal('profileConfig', data);
 
       final resultErrors = <String?>[];
       final value = js.evalToDart('main(profileConfig);');
@@ -46,9 +45,9 @@ extension ProfileExt on Profile {
         throw const FormatException('profile script returned no config');
       }
 
-      return jsonDecode(value);
-    } catch (e) {
-      Log.e(e);
+      return value;
+    } catch (e, s) {
+      Log.e('$e\n$s');
       return data;
     } finally {
       // js.close();

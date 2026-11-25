@@ -122,36 +122,6 @@ func TestBuildFdTunOptionsForIOS(t *testing.T) {
 	}
 }
 
-func TestBuildDesktopFdTunOptionsUsesDesktopConfig(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, configFileName)
-	if err := os.WriteFile(
-		cfgPath,
-		[]byte("tun:\n  mtu: 1420\n  auto-detect-interface: false\n"),
-		0o644,
-	); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	if err := setHomeDir(dir); err != nil {
-		t.Fatalf("setHomeDir: %v", err)
-	}
-
-	cfg, err := executor.Parse()
-	if err != nil {
-		t.Fatalf("parse config from configDir: %v", err)
-	}
-	options := buildDesktopFdTunOptions(cfg, 42, "")
-	if options.MTU != 1420 {
-		t.Fatalf("expected desktop TUN MTU 1420, got %d", options.MTU)
-	}
-	if !options.AutoDetectInterface {
-		t.Fatal("expected desktop TUN to auto-detect the physical interface")
-	}
-	if options.FileDescriptor != 42 {
-		t.Fatalf("expected desktop TUN fd 42, got %d", options.FileDescriptor)
-	}
-}
-
 // TestSetHomeDirRejectsEmptyDir documents the error returned for start("").
 func TestSetHomeDirRejectsEmptyDir(t *testing.T) {
 	if err := setHomeDir(""); err == nil {

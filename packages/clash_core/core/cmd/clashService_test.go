@@ -100,17 +100,14 @@ func TestNextUpdateDelay(t *testing.T) {
 }
 
 func TestParseProfile(t *testing.T) {
-	// Older clients post the configuration directory as a plain string.
-	profile := parseProfile(`/tmp/clashy/config`)
-	if profile == nil || profile.ConfigDir != "/tmp/clashy/config" {
-		t.Fatalf("plain string profile was not parsed: %+v", profile)
+	if parseProfile(`/tmp/clashy/config`) != nil {
+		t.Fatal("a plain string must not parse into a profile")
 	}
-
 	if parseProfile("") != nil {
 		t.Fatal("an empty string must not parse into a profile")
 	}
 
-	profile = parseProfile(map[string]any{
+	profile := parseProfile(map[string]any{
 		"configDir":      "/tmp/clashy/config",
 		"name":           "subscription",
 		"url":            "https://example.com/sub",
@@ -205,5 +202,59 @@ func TestRefreshConfigRequiresURLAndConfigFile(t *testing.T) {
 	}
 	if err := runtime.refreshConfig(&clashProfile{ConfigDir: t.TempDir(), URL: "http://127.0.0.1:1/sub"}); err == nil {
 		t.Fatal("expected an error for a missing config file")
+	}
+}
+
+func TestIsNumericSID(t *testing.T) {
+	valid := []string{
+		"S-1-5-21-1234567890-1234567890-1234567890-1001",
+		"S-1-5-18",
+	}
+	for _, value := range valid {
+		if !isNumericSID(value) {
+			t.Fatalf("expected %q to be a numeric SID", value)
+		}
+	}
+	invalid := []string{
+		"",
+		"S-1-5-",
+		"S-1-5-21-x",
+		"S-1-5-21-(A;;GA;;;BA)",
+		"BU",
+	}
+	for _, value := range invalid {
+		if isNumericSID(value) {
+			t.Fatalf("expected %q to be rejected", value)
+		}
+	}
+}
+
+func TestEnsureConfigFileRejectsSymlink(t *testing.T) {
+	configDir := t.TempDir()
+	target := filepath.Join(configDir, "real.yaml")
+	if err := os.WriteFile(target, []byte("mode: rule\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(configDir, configFileName)); err == nil {
+		if err := ensureConfigFile(configDir); err == nil {
+			t.Fatal("expected a symlinked config file to be rejected")
+		}
+	}
+	if err := os.RemoveAll(filepath.Join(configDir, configFileName)); err != nil {
+		t.Fatalf("remove config: %v", err)
+	}
+	if err := ensureConfigFile(configDir); err == nil {
+		t.Fatal("expected a missing config file to be rejected")
+	}
+}
+
+func TestEnsureConfigFileAcceptsRegularFile(t *testing.T) {
+	configDir := t.TempDir()
+	path := filepath.Join(configDir, configFileName)
+	if err := os.WriteFile(path, []byte("mode: rule\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := ensureConfigFile(configDir); err != nil {
+		t.Fatalf("expected a regular config file to be accepted: %v", err)
 	}
 }

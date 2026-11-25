@@ -308,6 +308,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.14"
+  dartjs:
+    dependency: transitive
+    description:
+      name: dartjs
+      sha256: "5a0a6b011c8fe8fd86c1f36078fcac50af83df0de53377705c88d00a7d9723fe"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1"
   data_assets:
     dependency: transitive
     description:
@@ -841,12 +849,11 @@ packages:
     source: hosted
     version: "1.0.0"
   js_interpreter:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: js_interpreter
-      sha256: c5d46cc313a34d448dbc1fce3fe5898727c7105abbbbb655302d20f5ee929fe6
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/js_interpreter"
+      relative: true
+    source: path
     version: "0.0.5"
   json_annotation:
     dependency: "direct main"

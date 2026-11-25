@@ -74,6 +74,11 @@ dependency_overrides:
     git:
       url: https://github.com/sersr/nop_gen
 
+  # 0.0.5 的对象字面量展开（`return {...x}`）会让解析器的 super/await 扫描读
+  # SpreadElement.value 而抛 NoSuchMethodError；这里用仓库内的打过补丁的副本。
+  js_interpreter:
+    path: packages/js_interpreter
+
   # flutter_nop:
   #   path: ../packages/flutter_nop
   # nop:

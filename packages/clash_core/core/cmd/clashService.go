@@ -26,9 +26,9 @@
 //
 // Unlike the Dart server, which drove a `libclash` shared library through FFI,
 // this daemon embeds mihomo in-process and owns the whole desktop lifecycle:
-// privileged TUN provisioning through `mihomo-so/tunbroker` (LaunchDaemon on
-// macOS, systemd unit on Linux, Windows service on Windows), subscription
-// refresh, state persistence and the post-wake TUN health check.
+// the TUN interface (this process itself runs privileged — LaunchDaemon on
+// macOS, systemd system unit on Linux, LocalSystem service on Windows),
+// subscription refresh, state persistence and the post-wake TUN health check.
 package main
 
 import (
@@ -43,11 +43,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"mihomo-so/tunbroker"
 
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
@@ -112,6 +111,51 @@ func main() {
 	runPlatformService()
 }
 
+// allowedClientUID restricts the control API to the desktop user that installed
+// the service (root is always allowed). -1 means "not configured": the daemon
+// then accepts any local user that can reach the endpoint.
+var allowedClientUID int32 = -1
+
+// allowedClientSID is the Windows counterpart of allowedClientUID: the SID of
+// the installing user, used to build the service pipe DACL. Empty means
+// "not configured".
+var allowedClientSID string
+
+// parseAccessRestrictions reads the client restrictions passed by the installer.
+func parseAccessRestrictions() {
+	if raw := argumentValue("--allowed-uid"); raw != "" {
+		if value, err := strconv.ParseInt(raw, 10, 32); err == nil && value >= 0 {
+			allowedClientUID = int32(value)
+		} else {
+			logf("ignoring invalid --allowed-uid %q", raw)
+		}
+	}
+	if sid := argumentValue("--allowed-sid"); sid != "" {
+		// Only accept a numeric SID: it is pasted straight into the pipe DACL.
+		if strings.HasPrefix(sid, "S-1-5-") && isNumericSID(sid) {
+			allowedClientSID = sid
+		} else {
+			logf("ignoring invalid --allowed-sid %q", sid)
+		}
+	}
+}
+
+// isNumericSID reports whether value looks like "S-1-5-21-<digits>" with no
+// unexpected characters.
+func isNumericSID(value string) bool {
+	for _, part := range strings.Split(strings.TrimPrefix(value, "S-1-5-"), "-") {
+		if part == "" {
+			return false
+		}
+		for _, char := range part {
+			if char < '0' || char > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // serviceSocketPath returns the IPC endpoint of the control API.
 func serviceSocketPath() string {
 	if runtime.GOOS == "windows" {
@@ -162,6 +206,7 @@ func errMsgResp(msg string) *apiResponse {
 // serve runs the control API until ctx is cancelled. ready, when not nil, is
 // closed once the IPC endpoint is accepting connections.
 func serve(ctx context.Context, ready chan<- struct{}) error {
+	parseAccessRestrictions()
 	core.initialize()
 
 	listener, err := listenServiceEndpoint(serviceSocketPath())
@@ -355,9 +400,8 @@ func clashRuntimeInfo() map[string]string {
 }
 
 // readBody applies the JSON middleware of the Dart server: only
-// `application/json` bodies are accepted, and a body that is not valid JSON is
-// treated as a plain string, which keeps older clients posting the raw
-// configuration directory working.
+// `application/json` bodies are accepted and a body that is not valid JSON is
+// rejected.
 func readBody(r *http.Request) (any, *apiResponse) {
 	if contentType := r.Header.Get("Content-Type"); contentType != "" &&
 		!strings.HasPrefix(contentType, "application/json") {
@@ -374,7 +418,7 @@ func readBody(r *http.Request) (any, *apiResponse) {
 
 	var data any
 	if err := json.Unmarshal(payload, &data); err != nil {
-		return string(payload), nil
+		return nil, errMsgResp("invalid json body")
 	}
 	return data, nil
 }
@@ -542,26 +586,19 @@ func dartLocalTime(t time.Time) string {
 }
 
 func parseProfile(data any) *clashProfile {
-	switch value := data.(type) {
-	case string:
-		if value == "" {
-			return nil
-		}
-		// Older clients post the configuration directory as a plain string.
-		return &clashProfile{ConfigDir: value}
-	case map[string]any:
-		payload, err := json.Marshal(value)
-		if err != nil {
-			return nil
-		}
-		var profile clashProfile
-		if err := json.Unmarshal(payload, &profile); err != nil {
-			return nil
-		}
-		return &profile
-	default:
+	value, ok := data.(map[string]any)
+	if !ok {
 		return nil
 	}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var profile clashProfile
+	if err := json.Unmarshal(payload, &profile); err != nil {
+		return nil
+	}
+	return &profile
 }
 
 // ------------------------------------------------------------- core runtime
@@ -599,13 +636,19 @@ func newCoreRuntime() *coreRuntime {
 	return runtime
 }
 
+// stateFilePath is the persisted "desired state" file. The service is
+// system-wide on every desktop platform (root LaunchDaemon, LocalSystem service,
+// systemd system unit), so the file lives in a machine-wide directory instead of
+// the per-user profile: a privileged process must never write into a directory
+// the invoking user can rewrite.
 func stateFilePath() (string, error) {
 	if runtime.GOOS == "darwin" {
-		home := os.Getenv("HOME")
-		if home == "" {
-			return "", errors.New("HOME is not set for the macOS service process")
+		return filepath.Join("/Library", "Application Support", "Clashy", stateFileName), nil
+	}
+	if runtime.GOOS == "windows" {
+		if programData := os.Getenv("ProgramData"); programData != "" {
+			return filepath.Join(programData, "Clashy", stateFileName), nil
 		}
-		return filepath.Join(home, "Library", "Application Support", "Clashy", stateFileName), nil
 	}
 	if appData := os.Getenv("APPDATA"); appData != "" {
 		return filepath.Join(appData, "Clashy", stateFileName), nil
@@ -767,14 +810,8 @@ func (c *coreRuntime) runLocked(configDir string, vpnEnabled bool) error {
 		return nil
 	}
 
-	// Every desktop platform goes through the privileged helper: it owns the
-	// TUN device, its descriptor (POSIX) or the Wintun adapter (Windows).
-	if vpnEnabled {
-		if err := ensureTunHelper(); err != nil {
-			logf("register TUN helper failed: %v", err)
-			return fmt.Errorf("register TUN helper failed: %w", err)
-		}
-	}
+	// The daemon itself is privileged on every desktop platform, so it creates the
+	// TUN interface in-process instead of asking a helper for it.
 
 	var interfacesBefore []string
 	if runtime.GOOS == "darwin" {
@@ -807,8 +844,8 @@ func (c *coreRuntime) runLocked(configDir string, vpnEnabled bool) error {
 			logf("unable to identify Clash TUN interface after start")
 		}
 	default:
-		// The Linux and Windows helpers document a fixed interface name.
-		c.tunInterface = tunbroker.InterfaceName
+		// Linux and Windows use the fixed device name we ask sing-tun for.
+		c.tunInterface = defaultTunDevice
 	}
 	return nil
 }
@@ -852,9 +889,8 @@ func firstDifference(values []string, previous []string) string {
 // engineState keeps the mihomo listeners owned by this process. Every field is
 // guarded by coreRuntime.mu: only start/stop paths touch it.
 var engine struct {
-	started      bool
-	tun          *sing_tun.Listener
-	brokerActive bool
+	started bool
+	tun     *sing_tun.Listener
 }
 
 func engineStarted() bool { return engine.started }
@@ -880,8 +916,34 @@ func setHomeDir(configDir string) error {
 
 // startEngine applies configDir/config.yaml. With vpnEnabled it also brings up
 // the TUN interface; without it only the proxy listeners and the controller run.
+// ensureConfigFile rejects a config.yaml that is a symlink or not a regular
+// file: the daemon runs privileged, so the path it follows must be the real file
+// inside the configuration directory.
+// ensureConfigFile rejects a config.yaml that is a symlink or not a regular file:
+// the daemon runs privileged, so the path it follows must be the real file inside
+// the configuration directory.
+func ensureConfigFile(configDir string) error {
+	path := filepath.Join(configDir, configFileName)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("read config file: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to load a symlinked config file: %s", path)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("config file is not a regular file: %s", path)
+	}
+	return nil
+}
+
 func startEngine(configDir string, vpnEnabled bool) error {
 	if err := setHomeDir(configDir); err != nil {
+		return err
+	}
+	// A privileged process must not be steered through a symlink planted in a
+	// user-writable directory.
+	if err := ensureConfigFile(configDir); err != nil {
 		return err
 	}
 
@@ -902,21 +964,9 @@ func startEngine(configDir string, vpnEnabled bool) error {
 		engine.started = false
 	}
 
-	// Every desktop platform asks the privileged helper for the TUN device. The
-	// TUN listener itself is created below through sing_tun.New: the helper owns
-	// the device and the core only attaches to it, while routes are installed by
-	// the helper on POSIX and by mihomo on Windows (Wintun has no descriptor to
-	// pass, only the adapter name).
-
-	tunFD, tunInterface := 0, ""
-	if vpnEnabled {
-		tunFD, tunInterface, err = requestTunLease(cfg)
-		if err != nil {
-			return err
-		}
-		engine.brokerActive = true
-	}
-
+	// mihomo itself must not create the tunnel: the listener below is created
+	// explicitly so that both the stack and the interface options stay under our
+	// control (gvisor stack, our device name, our addresses).
 	cfg.General.Tun.Enable = false
 	hub.ApplyConfig(cfg)
 
@@ -925,37 +975,10 @@ func startEngine(configDir string, vpnEnabled bool) error {
 		return nil
 	}
 
-	// POSIX helpers hand back a real descriptor; the Windows helper provisions
-	// the Wintun adapter and returns fd=0 plus the adapter name instead.
-	tunFDUsable := tunFD > 0
-	tunDeviceUsable := runtime.GOOS == "windows" && tunInterface != ""
-	if !tunFDUsable && !tunDeviceUsable {
-		if engine.brokerActive {
-			engine.brokerActive = false
-			_ = tunbroker.Deactivate()
-		}
-		return errors.New("TUN helper returned no usable TUN device")
-	}
-
-	tunListener, err := sing_tun.New(desktopTunOptions(cfg, tunFD, tunInterface), tunnel.Tunnel)
+	tunListener, err := sing_tun.New(desktopTunOptions(cfg), tunnel.Tunnel)
 	if err != nil {
-		_ = closeDesktopTunFD(tunFD)
-		if engine.brokerActive {
-			_ = tunbroker.Deactivate()
-			engine.brokerActive = false
-		}
 		executor.Shutdown()
 		return fmt.Errorf("start tun: %w", err)
-	}
-
-	if engine.brokerActive {
-		if err := tunbroker.Activate(); err != nil {
-			_ = tunListener.Close()
-			_ = tunbroker.Deactivate()
-			engine.brokerActive = false
-			executor.Shutdown()
-			return fmt.Errorf("activate TUN helper routes: %w", err)
-		}
 	}
 
 	engine.tun = tunListener
@@ -975,83 +998,21 @@ func stopEngine() error {
 func resetTunListener() error {
 	var errs []error
 
-	// Stop mihomo's readers before releasing the helper lease that owns the
-	// underlying TUN device.
+	// Stop mihomo's readers before the device disappears.
 	if engine.tun != nil {
 		if err := engine.tun.Close(); err != nil {
 			errs = append(errs, err)
 		}
 		engine.tun = nil
 	}
-	if engine.brokerActive {
-		if err := tunbroker.Deactivate(); err != nil {
-			errs = append(errs, err)
-		} else {
-			engine.brokerActive = false
-		}
-	}
 	// ReCreateTun clears mihomo's cached TUN configuration.
 	mihomoListener.ReCreateTun(LC.Tun{}, tunnel.Tunnel)
 	return errors.Join(errs...)
 }
 
-// requestTunLease asks the platform helper for the TUN device that the core
-// attaches to. The macOS and Linux helpers create the device and return both its
-// descriptor and name; the Windows helper provisions a Wintun adapter and returns
-// fd=0 plus the adapter name, because there is no descriptor to hand over.
-func requestTunLease(cfg *config.Config) (int, string, error) {
-	tun := cfg.General.Tun
-	if len(tun.RouteAddressSet) > 0 || len(tun.RouteExcludeAddressSet) > 0 {
-		return -1, "", errors.New("TUN helper does not support route-address-set yet")
-	}
-
-	options := tunbroker.Config{
-		MTU:       tun.MTU,
-		AutoRoute: tun.AutoRoute,
-	}
-	for _, address := range tun.Inet4Address {
-		options.Inet4Address = append(options.Inet4Address, address.String())
-	}
-	for _, address := range tun.Inet6Address {
-		options.Inet6Address = append(options.Inet6Address, address.String())
-	}
-	if len(options.Inet4Address) == 0 {
-		options.Inet4Address = []string{defaultInet4Address}
-	}
-	if len(options.Inet6Address) == 0 {
-		options.Inet6Address = []string{defaultInet6Address}
-	}
-	for _, address := range tun.RouteAddress {
-		options.RouteAddress = append(options.RouteAddress, address.String())
-	}
-	for _, address := range tun.Inet4RouteAddress {
-		options.RouteAddress = append(options.RouteAddress, address.String())
-	}
-	for _, address := range tun.Inet6RouteAddress {
-		options.RouteAddress = append(options.RouteAddress, address.String())
-	}
-	for _, address := range tun.RouteExcludeAddress {
-		options.RouteExcludeAddress = append(options.RouteExcludeAddress, address.String())
-	}
-	for _, address := range tun.Inet4RouteExcludeAddress {
-		options.RouteExcludeAddress = append(options.RouteExcludeAddress, address.String())
-	}
-	for _, address := range tun.Inet6RouteExcludeAddress {
-		options.RouteExcludeAddress = append(options.RouteExcludeAddress, address.String())
-	}
-
-	fd, device, err := tunbroker.Acquire(options)
-	if err != nil && runtime.GOOS == "windows" {
-		// A helper that is installed but stopped (or one that could not be
-		// registered because the caller is not an administrator) surfaces here
-		// as a pipe error; say what actually has to be fixed.
-		return fd, device, fmt.Errorf("%w (is the Clashy TUN helper service installed and running?)", err)
-	}
-	return fd, device, err
-}
-
-// desktopTunOptions builds the listener options for a helper supplied TUN.
-func desktopTunOptions(cfg *config.Config, tunFD int, helperInterface string) LC.Tun {
+// desktopTunOptions builds the listener options for the TUN interface this
+// privileged daemon creates itself.
+func desktopTunOptions(cfg *config.Config) LC.Tun {
 	stack := cfg.General.Tun.Stack
 	if stack.String() == "unknown" {
 		stack = constant.TunGvisor
@@ -1062,12 +1023,9 @@ func desktopTunOptions(cfg *config.Config, tunFD int, helperInterface string) LC
 		mtu = 9000
 	}
 
-	device := helperInterface
+	device := cfg.General.Tun.Device
 	if device == "" {
-		device = cfg.General.Tun.Device
-	}
-	if device == "" {
-		device = tunbroker.InterfaceName
+		device = defaultTunDevice
 	}
 
 	inet4Address := cfg.General.Tun.Inet4Address
@@ -1084,7 +1042,7 @@ func desktopTunOptions(cfg *config.Config, tunFD int, helperInterface string) LC
 		Device:                   device,
 		Stack:                    stack,
 		DNSHijack:                []string{defaultDNSHijack},
-		AutoRoute:                runtime.GOOS == "windows",
+		AutoRoute:                true,
 		AutoDetectInterface:      true,
 		Inet4Address:             inet4Address,
 		Inet6Address:             inet6Address,
@@ -1095,25 +1053,16 @@ func desktopTunOptions(cfg *config.Config, tunFD int, helperInterface string) LC
 		Inet4RouteExcludeAddress: cfg.General.Tun.Inet4RouteExcludeAddress,
 		Inet6RouteExcludeAddress: cfg.General.Tun.Inet6RouteExcludeAddress,
 		MTU:                      mtu,
-		FileDescriptor:           tunFD,
 	}
 }
 
 const (
+	defaultTunDevice = "clashy"
+
 	defaultInet4Address = "172.19.0.1/30"
 	defaultInet6Address = "fdfe:dcba:9876::1/126"
 	defaultDNSHijack    = "172.19.0.2:53"
 )
-
-func closeDesktopTunFD(fd int) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	if fd <= 2 {
-		return fmt.Errorf("invalid TUN file descriptor: %d", fd)
-	}
-	return closeFileDescriptor(fd)
-}
 
 // ---------------------------------------------------------- state persistence
 

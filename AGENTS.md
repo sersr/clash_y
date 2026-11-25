@@ -14,17 +14,22 @@
 ## 复用与常量
 
 - 相同语义的常量只定义一处；其他位置引用同一个变量，不重复硬编码或声明副本。
+- `packages/js_interpreter` 是上游 `js_interpreter` 0.0.5 的补丁副本（只修了解析器在对象展开 `{...x}` 上的 super/await 扫描），通过根 `pubspec.yaml` 的 `dependency_overrides` 生效；上游修好后删掉这个覆盖和副本。
 - 优先复用已有实现；只有在确实减少重复且不会引入不必要抽象或复杂度时，才提取共享实现。
-- macOS 特权 TUN helper 的安装路径、LaunchDaemon 配置和注册/安装实现只能维护一份；调用方复用已有定义或接口，不得复制 `/Library/PrivilegedHelperTools/` 等特权路径、plist 内容或安装脚本。
+- macOS 服务的安装路径、plist 内容和注册脚本只在 `packages/clash_service/lib/src/service/clash_service_macos_cmd.dart` 维护一份；调用方复用已导出的接口，不得复制 `/Library/PrivilegedHelperTools/`、`/Library/LaunchDaemons`、`/Library/LaunchAgents` 路径或 plist 文本。
 
 ## 桌面常驻服务与原生二进制
 
 - 桌面常驻服务端是 Go 实现，源码在 `packages/clash_core/core/cmd/`；`go build ./cmd` 产出 `clashyService`（Windows 为 `clashyservice.exe`），其 `serviceVersion` 必须与 `packages/server/lib/server.dart` 的 `version` 保持一致。
-- `packages/server` 只保留 Flutter 端与服务端共用的 `ApiResp`、`ClashProfile`、IPC 端点常量，以及 Windows SCM 服务/TUN helper 的安装、启停、卸载；不要在其中新增服务端运行逻辑。
-- 三平台随包原生二进制（服务端、TUN helper、macOS 托盘）由 `packages/clash_service/hook/` 构建，产物先落到 `packages/clash_service/build/bin`，再以 `bin/*` DataAsset 交付。
+- 服务端在每个平台都以特权身份运行并自己创建/配置 TUN：Windows 是 `LocalSystem` 服务（自己建 Wintun、写路由），macOS 是 `/Library/LaunchDaemons` 的 root LaunchDaemon，Linux 是 systemd system unit（root）。不要再引入独立的 tun-helper 进程或 IPC 代理。
+- macOS 托盘是用户 GUI 会话里的 LaunchAgent（`/Library/LaunchAgents`），system 域的守护进程没有 WindowServer 连接，不能由它拉起或自己画菜单栏。
+- 服务端自己写的状态/日志放在机器级目录（macOS `/Library/Application Support/Clashy`、Windows `%ProgramData%\Clashy`、Linux `/var/lib/clashy`），不要落在用户可写的 profile 目录里。
+- 特权守护进程的控制面只放行安装它的那个桌面用户：安装器把 uid/SID 以 `--allowed-uid` / `--allowed-sid` 传给服务（macOS plist、Linux unit、Windows `sc binPath`），服务在 accept 时用 peer credentials 校验 uid、或用该 SID 生成管道 DACL；root/SYSTEM/Administrators 始终放行。不要退回到 `0666` socket 或 `BU` 的管道描述符。
+- 特权服务不以 root 身份跟随用户可写目录里的符号链接：配置入口会拒绝符号链接和非普通文件的 `config.yaml`，新增读文件的路径时沿用同样的检查。
+- `packages/server` 只保留 Flutter 端与服务端共用的 `ApiResp`、`ClashProfile`、IPC 端点常量，以及 Windows SCM 服务/TUN 的安装、启停、卸载；不要在其中新增服务端运行逻辑。
+- 三平台随包原生二进制（服务端、macOS 托盘）由 `packages/clash_service/hook/` 构建，产物先落到 `packages/clash_service/build/bin`，再以 `bin/*` DataAsset 交付。
 - 这两个 Go 二进制默认 `CGO_ENABLED=0`（依赖图里没有 cgo 包，Windows 上无需 gcc）。确实需要 cgo 时设 `CLASHY_GO_CGO=1` 或 `hooks.user_defines` 的 `clash_service: {cgo: true}`；hook 会自动定位 MSYS2 的 mingw-w64 gcc（`mingw64`/`ucrt64`/`clang64`），也可用 `CLASHY_CC` 指定 `gcc.exe`。
 - 这两个 Go 二进制必须带 `-tags with_gvisor` 构建（hook 里的 `goBuildTags`）；桌面 tun 默认走 gvisor 栈，缺标签启动 TUN 会报 `gVisor is not included in this build`，手工 `go build` 验证时也要带。
-- 特权 TUN helper 的安装实现每个平台只维护一份：macOS/Linux 由 Go 服务端负责，Windows 由应用提权脚本注册（服务名与 Go 服务端共用 `clashy_tun_helper`）。
 
 ## Flutter 响应式状态
 
