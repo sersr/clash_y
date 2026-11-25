@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Matches the light background of the app icon artwork; the subject itself
+     lives in mipmap-*/ic_launcher_foreground.png. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:startColor="#FFFDFDFE"
+        android:endColor="#FFE4E9FB" />
+</shape>
