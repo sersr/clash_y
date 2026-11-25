@@ -49,6 +49,8 @@ import (
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing_tun"
 	"github.com/metacubex/mihomo/tunnel"
+
+	"mihomo-so/internal/geoensure"
 )
 
 // configFileName is the file mihomo reads from the -d home directory.
@@ -70,29 +72,16 @@ func main() {}
 func start(configDir *C.char) *C.char {
 	mu.Lock()
 	defer mu.Unlock()
-	configDirG := C.GoString(configDir)
 
 	enableEmbeddedConfigUpdates()
-	return startMobile(configDirG)
-}
-
-func isDesktopOS() bool {
-	switch runtime.GOOS {
-	case "darwin", "linux", "windows":
-		return true
-	default:
-		return false
-	}
-}
-
-func startMobile(configDir string) *C.char {
 	if !started {
-		resetMobileTunListener()
+		resetTunListener()
 	}
 
-	if err := setHomeDir(configDir); err != nil {
+	if err := setHomeDir(C.GoString(configDir)); err != nil {
 		return cError(err)
 	}
+	ensureGeodata()
 
 	if err := hub.Parse(nil); err != nil {
 		return cError(fmt.Errorf("start core: %w", err))
@@ -102,33 +91,44 @@ func startMobile(configDir string) *C.char {
 	return nil
 }
 
-func startDesktop(configDir string) {
-	// Tear down an earlier TUN listener before applying the config again. This
-	// matters on Windows where start() lets mihomo create the Wintun adapter
-	// directly from config.yaml.
-	// if err := resetDesktopTunListener(); err != nil {
-	// 	return cError(err)
-	// }
-	if started {
-		executor.Shutdown()
-		started = false
-	}
-
-	if err := setHomeDir(configDir); err != nil {
-		return
-	}
-
-	if err := hub.Parse(nil); err != nil {
-		return
-	}
-
-	started = true
+func resetTunListener() {
+	// ReCreateTun serializes against config reloads and clears mihomo's cached
+	// configuration without modifying the mihomo subproject.
+	listener.ReCreateTun(LC.Tun{}, tunnel.Tunnel)
 }
 
-// startTun starts the core with TUN enabled when given a TUN descriptor.
-// A positive fd is an externally established descriptor, supplied by Android's
-// VpnService. A zero fd starts the core with TUN disabled: on desktop the
-// privileged service owns TUN and never accepts a descriptor from the app.
+// prepare downloads the GeoIP/GeoSite databases the configuration references
+// and leaves the rest of the start to start()/startTun().
+//
+// Android calls it before the VpnService establishes its TUN: once that
+// interface owns 0.0.0.0/0 every socket this process opens is routed into a
+// tunnel no one is reading yet, so a download started afterwards only stalls
+// until it fails. Preparing first keeps the download on the phone's normal
+// network.
+//
+//export prepare
+func prepare(configDir *C.char) *C.char {
+	mu.Lock()
+	defer mu.Unlock()
+
+	enableEmbeddedConfigUpdates()
+
+	if err := setHomeDir(C.GoString(configDir)); err != nil {
+		return cError(err)
+	}
+	ensureGeodata()
+
+	return nil
+}
+
+// startTun starts the core like start() but forces tun.enable to true, using
+// the remaining TUN options declared in configDir/config.yaml.
+//
+// fd is the descriptor of the tun device that an Android VpnService already
+// established. The core takes ownership of it and closes it on stop(), so hand
+// over detachFd() instead of keeping a ParcelFileDescriptor open as well. Pass 0
+// (or a negative value) when the core may create the device itself, in which
+// case the file-descriptor from the config file is kept.
 //
 // Every call re-reads configDir/config.yaml and applies the full mihomo
 // configuration, so ports, proxies, rules, controller and TUN are always
@@ -140,12 +140,16 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 	defer mu.Unlock()
 
 	enableEmbeddedConfigUpdates()
-	return startMobileTun(configDir, int(fd))
-}
 
-func startMobileTun(configDir *C.char, fd int) *C.char {
 	if err := setHomeDir(C.GoString(configDir)); err != nil {
 		return cError(err)
+	}
+	if fd <= 0 {
+		// Without a VpnService interface the phone's own network is still
+		// reachable, so the databases can be fetched here as well. With a
+		// descriptor the caller is expected to have called prepare() first:
+		// downloading now would only feed the tunnel.
+		ensureGeodata()
 	}
 
 	cfg, err := executor.Parse()
@@ -153,6 +157,11 @@ func startMobileTun(configDir *C.char, fd int) *C.char {
 		return cError(fmt.Errorf("parse config: %w", err))
 	}
 
+	if fd > 0 && (cfg.Controller == nil || cfg.Controller.ExternalControllerUnix == "") {
+		return cError(errors.New("external-controller-unix is not configured in config.yaml; configDir may not have been loaded"))
+	}
+
+	// Recreate the whole runtime on every startTun call.
 	if tunListener != nil {
 		_ = tunListener.Close()
 		tunListener = nil
@@ -163,8 +172,9 @@ func startMobileTun(configDir *C.char, fd int) *C.char {
 	}
 
 	// Let mihomo apply the complete config except TUN. TUN is created below
-	// directly through sing_tun.New, so the externally established interface
-	// remains under the mobile VPN service's control.
+	// directly through sing_tun.New, exactly like FlClash does, so mixed/system
+	// stacks can bind to the VpnService address and are not limited by hub's
+	// route/listener bookkeeping.
 	cfg.General.Tun.Enable = false
 	hub.ApplyConfig(cfg)
 
@@ -173,12 +183,13 @@ func startMobileTun(configDir *C.char, fd int) *C.char {
 		return nil
 	}
 
-	options := buildFdTunOptions(cfg, fd, runtime.GOOS)
+	options := buildFdTunOptions(cfg, int(fd), runtime.GOOS)
 	listener, err := sing_tun.New(options, tunnel.Tunnel)
 	if err != nil {
 		executor.Shutdown()
 		return cError(fmt.Errorf("start tun: %w", err))
 	}
+
 	tunListener = listener
 	started = true
 	return nil
@@ -201,18 +212,13 @@ func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
 		device = "clashy"
 	}
 
-	autoDetectInterface := cfg.General.Tun.AutoDetectInterface
-	if goos == "android" {
-		autoDetectInterface = false
-	}
-
 	return LC.Tun{
 		Enable:              true,
 		Device:              device,
 		Stack:               stack,
 		DNSHijack:           dnsHijack,
 		AutoRoute:           false,
-		AutoDetectInterface: autoDetectInterface,
+		AutoDetectInterface: false,
 		Inet4Address: []netip.Prefix{
 			netip.MustParsePrefix("172.19.0.1/30"),
 		},
@@ -224,6 +230,31 @@ func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
 	}
 }
 
+// applyTunOptions forces TUN on. A positive fd makes sing-tun adopt that
+// descriptor, which is how a VpnService supplied interface is used: sing-tun
+// then leaves addresses, routes and rules to the system that created it.
+func applyTunOptions(cfg *config.Config, fd int) {
+	cfg.General.Tun.Enable = true
+
+	// Android VpnService owns routing and interface selection. Disabling these
+	// avoids sing-tun's Android netlink monitor, which is unavailable to normal
+	// Android apps and otherwise makes TUN creation fail.
+	cfg.General.Tun.AutoRoute = false
+	cfg.General.Tun.AutoDetectInterface = false
+	cfg.General.Tun.MTU = 1500
+	cfg.General.Tun.Inet4Address = []netip.Prefix{
+		netip.MustParsePrefix("172.19.0.1/30"),
+	}
+	cfg.General.Tun.Inet6Address = []netip.Prefix{
+		netip.MustParsePrefix("fdfe:dcba:9876::1/126"),
+	}
+	cfg.General.Tun.DNSHijack = []string{"0.0.0.0:53"}
+
+	if fd > 0 {
+		cfg.General.Tun.FileDescriptor = fd
+	}
+}
+
 // stop shuts the core down and closes every listener, including TUN.
 //
 //export stop
@@ -231,14 +262,11 @@ func stop() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
-	return stopMobile()
-}
-
-func stopMobile() *C.char {
 	if tunListener != nil {
 		_ = tunListener.Close()
 		tunListener = nil
 	}
+
 	if started {
 		executor.Shutdown()
 		started = false
@@ -258,18 +286,10 @@ func stopTun() *C.char {
 	mu.Lock()
 	defer mu.Unlock()
 
-	return stopMobileTun()
-}
-
-func stopMobileTun() *C.char {
-	resetMobileTunListener()
+	resetTunListener()
 	tunnel.OnSuspend()
 	started = false
 	return nil
-}
-
-func resetMobileTunListener() {
-	listener.ReCreateTun(LC.Tun{}, tunnel.Tunnel)
 }
 
 // freeString releases a string returned by this library.
@@ -310,6 +330,14 @@ func setHomeDir(configDir string) error {
 	}
 
 	return nil
+}
+
+// ensureGeodata fetches the GeoIP/GeoSite databases the current configuration
+// references. mihomo downloads them lazily while parsing rules and aborts the
+// parse when a download fails, so a flaky CDN would otherwise take the whole
+// start down. Callers must have pointed mihomo at its home directory first.
+func ensureGeodata() {
+	geoensure.Ensure(filepath.Join(constant.Path.HomeDir(), configFileName))
 }
 
 // cError converts a Go error into a heap allocated C string.

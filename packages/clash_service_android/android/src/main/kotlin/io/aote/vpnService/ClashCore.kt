@@ -7,6 +7,12 @@ class ClashCore {
 
     external fun start(configDir: String): String?
 
+    // prepare fetches the GeoIP/GeoSite databases the config references. Call it
+    // before establishTun(): once the VpnService interface owns the default
+    // route, every socket of this process lands in a tunnel the core has not
+    // started reading yet.
+    external fun prepare(configDir: String): String?
+
     external fun startTun(configDir: String, tunFd: Int, protector: Protector): String?
 
     external fun stop(): String?

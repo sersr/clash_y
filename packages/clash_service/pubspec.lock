@@ -135,14 +135,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.4.2"
-  clock:
-    dependency: transitive
-    description:
-      name: clock
-      sha256: e51d50bca3217c9a9fa2b41a30e4a38971133f5f9ec7a3d57bae095007f1d28e
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.3"
   code_assets:
     dependency: "direct main"
     description:
@@ -152,7 +144,7 @@ packages:
     source: hosted
     version: "2.1.0"
   collection:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: collection
       sha256: "2f5709ae4d3d59dd8f7cd309b4e023046b57d8a6c82130785d2b0e5868084e76"
@@ -190,14 +182,6 @@ packages:
       relative: true
     source: path
     version: "2.0.2"
-  dart_service_manager:
-    dependency: "direct main"
-    description:
-      name: dart_service_manager
-      sha256: "332cb851ab54974a974c0dd36084420803a643cf982ad2c4187f691c7fed29ed"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.4.0"
   dart_style:
     dependency: transitive
     description:
@@ -239,7 +223,7 @@ packages:
     source: hosted
     version: "2.1.0"
   ffi:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: ffi
       sha256: "6d7fd89431262d8f3125e81b50d3847a091d846eafcd4fdb88dd06f36d705a45"
@@ -315,14 +299,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.0"
-  http_methods:
-    dependency: transitive
-    description:
-      name: http_methods
-      sha256: "6bccce8f1ec7b5d701e7921dca35e202d425b57e317ba1a37f2638590e29e566"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.1"
   http_multi_server:
     dependency: transitive
     description:
@@ -339,14 +315,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
-  intl:
-    dependency: transitive
-    description:
-      name: intl
-      sha256: "1ca20c894b1717686a2319b8548763d812bc0aabdac580420a44c5178c57a867"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.20.3"
   io:
     dependency: transitive
     description:
@@ -379,14 +347,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.0"
-  js_interpreter:
-    dependency: transitive
-    description:
-      name: js_interpreter
-      sha256: c5d46cc313a34d448dbc1fce3fe5898727c7105abbbbb655302d20f5ee929fe6
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.5"
   json_annotation:
     dependency: "direct main"
     description:
@@ -395,14 +355,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.12.0"
-  json_rpc_2:
-    dependency: "direct main"
-    description:
-      name: json_rpc_2
-      sha256: "82dfd37d3b2e5030ae4729e1d7f5538cbc45eb1c73d618b9272931facac3bec1"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.1.0"
   json_serializable:
     dependency: "direct dev"
     description:
@@ -579,7 +531,7 @@ packages:
     source: path
     version: "1.0.0"
   shelf:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: shelf
       sha256: e75e9cf311d7fd712048038cc17c25199c38536c20330d53e7db058b543d5a48
@@ -594,14 +546,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
-  shelf_router:
-    dependency: "direct main"
-    description:
-      name: shelf_router
-      sha256: "2b3eb66f2e7651c9f0af28538e0de53bc02dc102d965d55b13e6ffceafad10e3"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.5"
   shelf_static:
     dependency: transitive
     description:
@@ -611,7 +555,7 @@ packages:
     source: hosted
     version: "1.2.0"
   shelf_web_socket:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: shelf_web_socket
       sha256: "3632775c8e90d6c9712f883e633716432a27758216dfb61bd86a8321c0580925"
@@ -776,7 +720,7 @@ packages:
     source: hosted
     version: "1.0.1"
   web_socket_channel:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: web_socket_channel
       sha256: d645757fb0f4773d602444000a8131ff5d48c9e47adfe9772652dd1a4f2d45c8
@@ -815,14 +759,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.4"
-  yaml_writer:
-    dependency: transitive
-    description:
-      name: yaml_writer
-      sha256: "69651cd7238411179ac32079937d4aa9a2970150d6b2ae2c6fe6de09402a5dc5"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.0"
 sdks:
   dart: ">=3.14.0-200.0.dev <4.0.0"
   flutter: ">=3.35.6"

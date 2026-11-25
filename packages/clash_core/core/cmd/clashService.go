@@ -57,6 +57,8 @@ import (
 	"github.com/metacubex/mihomo/listener/sing_tun"
 	"github.com/metacubex/mihomo/tunnel"
 	"go.yaml.in/yaml/v3"
+
+	"mihomo-so/internal/geoensure"
 )
 
 const (
@@ -509,9 +511,9 @@ type clashProfile struct {
 	ID        string `json:"id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	URL       string `json:"url,omitempty"`
-	// Script is accepted for compatibility. The Dart server evaluated it with
-	// a JavaScript interpreter; this daemon has no JS engine, so it is ignored
-	// with a log line instead of silently producing a different config.
+	// Script is the profile's JavaScript transform. The service runs it itself
+	// (see runProfileScript) so a subscription refresh started by the daemon
+	// produces the same config the app would.
 	Script string `json:"script,omitempty"`
 	// UpdateInterval is the subscription refresh interval in minutes. Zero or
 	// negative disables the automatic updates, matching the Dart model.
@@ -911,6 +913,9 @@ func setHomeDir(configDir string) error {
 	if err := config.Init(abs); err != nil {
 		return fmt.Errorf("init config dir: %w", err)
 	}
+	// mihomo downloads a missing GeoIP/GeoSite database while parsing rules and
+	// aborts the parse when that download fails; fetch it up front instead.
+	geoensure.Ensure(filepath.Join(abs, configFileName))
 	return nil
 }
 
@@ -1208,13 +1213,14 @@ func (c *coreRuntime) refreshConfig(profile *clashProfile) error {
 		return err
 	}
 
-	merged, err := applyConfigOverrides(downloaded, string(current))
+	// The profile script runs on the downloaded config first, then the app-owned
+	// keys of the current file are applied on top: the app's own settings (mode,
+	// mixed-port, tun, dns, ...) must win over anything the script produced,
+	// which is the order the Dart app uses.
+	scripted := runProfileScript(downloaded, profile.Script)
+	configured, err := applyConfigOverrides(scripted, string(current))
 	if err != nil {
 		return err
-	}
-	configured := merged
-	if strings.TrimSpace(profile.Script) != "" {
-		configured = runProfileScript(merged, profile.Script)
 	}
 
 	backupPath := configPath + ".bak"
@@ -1294,15 +1300,6 @@ func downloadConfig(url string) (string, error) {
 		return "", fmt.Errorf("read subscription: %w", err)
 	}
 	return string(payload), nil
-}
-
-// runProfileScript is a compatibility stub. Profile scripts are JavaScript
-// evaluated by the Dart service; this daemon has no JS engine, so the
-// downloaded config is used unchanged and the gap is logged loudly instead of
-// silently producing a different running configuration.
-func runProfileScript(configText string, script string) string {
-	logf("profile script is not supported by the Go service; ignoring it")
-	return configText
 }
 
 // applyConfigOverrides keeps the app-owned top-level keys of current in

@@ -120,19 +120,54 @@ internal object ConfigUpdater {
         val configMap = loader.load<Any?>(config) as? Map<*, *>
             ?: throw IllegalArgumentException("subscription config must be a YAML map")
         val gson = Gson()
-        val inputJson = gson.toJson(configMap)
+        val configJson = gson.toJson(configMap)
         val context = Context.enter()
         try {
             try {
                 context.optimizationLevel = -1
                 context.languageVersion = Context.VERSION_ES6
                 val scope = context.initSafeStandardObjects()
+                // The config is exposed as the global `profileConfig` before the
+                // script runs and also passed to main(); the Dart and Go
+                // implementations use the same entry point.
+                val literal = gson.toJson(configJson)
+                context.evaluateString(
+                    scope,
+                    "var profileConfig = JSON.parse($literal);",
+                    "profile-config.js",
+                    1,
+                    null,
+                )
                 context.evaluateString(scope, script, "profile-script.js", 1, null)
-                scope.put("profileConfigJson", scope, inputJson)
+                context.evaluateString(
+                    scope,
+                    "var __profileResult = main(profileConfig);",
+                    "profile-script-main.js",
+                    1,
+                    null,
+                )
+                val kind = Context.toString(
+                    context.evaluateString(
+                        scope,
+                        "__profileResult === null ? 'null' : typeof __profileResult",
+                        "profile-script-result.js",
+                        1,
+                        null,
+                    ),
+                )
+                if (kind != "object") {
+                    throw IllegalArgumentException(
+                        if (kind == "string") {
+                            "profile script must return the config object, not a JSON string"
+                        } else {
+                            "profile script must return a config object, got $kind"
+                        },
+                    )
+                }
                 val result = context.evaluateString(
                     scope,
-                    "JSON.stringify(main(JSON.parse(profileConfigJson)))",
-                    "profile-script-main.js",
+                    "JSON.stringify(__profileResult)",
+                    "profile-script-output.js",
                     1,
                     null,
                 )
@@ -141,7 +176,7 @@ internal object ConfigUpdater {
                 }
                 val output = gson.fromJson(Context.toString(result), JsonElement::class.java)
                 val outputMap = jsonValueToYamlValue(output) as? Map<*, *>
-                    ?: throw IllegalArgumentException("profile script must return a config map")
+                    ?: throw IllegalArgumentException("profile script must return a config object")
                 val options = DumperOptions().apply {
                     defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
                     indent = 2

@@ -24,9 +24,11 @@ Future<void> buildClash(BuildInput input, BuildOutputBuilder output) async {
   final goDirectory = input.packageRoot.resolve('core/');
 
   final outputName = targetOs.dylibFileName('clash');
+  // Windows 主机上交叉构建 Android 时，路径也必须按 Windows 形式给出，否则
+  // Go 收到 `/C:/...` 会当成根目录下的 `C:` 目录而失败。
   var outputPath = input.outputDirectory
       .resolve(outputName)
-      .toFilePath(windows: targetOs == .windows);
+      .toFilePath(windows: Platform.isWindows);
 
   if (targetOs != .android) {
     outputPath = normalize(

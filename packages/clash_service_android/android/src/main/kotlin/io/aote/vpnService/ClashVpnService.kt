@@ -686,6 +686,14 @@ class ClashVpnService : VpnService() {
             releaseNativeTunFd()
             closeTunDescriptor()
 
+            // Fetch the GeoIP/GeoSite databases now, while the phone's own
+            // network is still reachable: after establish() the interface owns
+            // the default route and a download would just hang in the tunnel.
+            val prepareError = ClashCore().prepare(configDir)
+            if (prepareError != null) {
+                Log.w(TAG, "geo data preparation failed: $prepareError")
+            }
+
             val descriptor = establishTun(
                 allowList,
                 allowedApplications,

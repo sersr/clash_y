@@ -23,29 +23,25 @@ extension ProfileExt on Profile {
       final script = SettingsHive.getScript(scriptId);
       if (script == null) return data;
 
-      final scriptErrors = <String?>[];
       js.setGlobal('profileConfig', data);
       js.eval(script.script);
 
-      if (scriptErrors.isNotEmpty) {
-        throw FormatException(
-          scriptErrors.first ?? 'unable to evaluate profile script',
-        );
-      }
-
-      final resultErrors = <String?>[];
       final value = js.evalToDart('main(profileConfig);');
-
-      if (resultErrors.isNotEmpty) {
-        throw FormatException(
-          resultErrors.first ?? 'unable to execute profile script',
-        );
-      }
       if (value == null) {
         throw const FormatException('profile script returned no config');
       }
+      // All platforms take the object main() returns; a JSON string is a
+      // mistake that must fail here instead of returning a bogus config.
+      if (value is! Map) {
+        throw FormatException(
+          value is String
+              ? 'profile script must return the config object, not a JSON string'
+              : 'profile script must return a config object, got '
+                    '${value.runtimeType}',
+        );
+      }
 
-      return value;
+      return Map<String, dynamic>.from(value);
     } catch (e, s) {
       Log.e('$e\n$s');
       return data;

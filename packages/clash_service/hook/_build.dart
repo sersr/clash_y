@@ -127,6 +127,10 @@ Future<File> _goBuild({
   final arguments = [
     'build',
     '-trimpath',
+    // 随包交付的服务二进制不需要调试符号：剥掉符号表和 DWARF 后体积小约 30%，
+    // 语言运行时依赖的 pclntab 仍在，panic 栈依旧可读。
+    '-ldflags',
+    '-s -w',
     '-tags',
     goBuildTags.join(','),
     '-o',

@@ -127,6 +127,29 @@ class ProfileConfigUpdaterTest {
     }
 
     @Test
+    fun keepsTheOriginalConfigWhenTheScriptReturnsAJsonString() {
+        val original = "mode: rule\nproxies: []"
+
+        assertEquals(
+            original,
+            ConfigUpdater.applyScript(
+                original,
+                "function main(config) { return JSON.stringify(config); }",
+            ),
+        )
+    }
+
+    @Test
+    fun exposesTheConfigAsTheGlobalProfileConfig() {
+        val result = ConfigUpdater.applyScript(
+            "mode: rule\nproxies: []",
+            "function main() { profileConfig.mode = 'direct'; return profileConfig; }",
+        )
+
+        assertTrue(result.contains("mode: direct"), result)
+    }
+
+    @Test
     fun extractsBlocksThatRunToTheEnd() {
         val block = ConfigUpdater.extractTopLevelBlock(current, "tun")
 

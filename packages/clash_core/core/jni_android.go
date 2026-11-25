@@ -112,6 +112,21 @@ func Java_io_aote_vpnService_ClashCore_start(env *C.JNIEnv, thiz C.jobject, conf
 	return jniStringResult(env, startTun(cConfigDir, 0))
 }
 
+//export Java_io_aote_vpnService_ClashCore_prepare
+func Java_io_aote_vpnService_ClashCore_prepare(env *C.JNIEnv, thiz C.jobject, configDir C.jstring) C.jstring {
+	if configDir == C.jstring(0) {
+		return jniError(env, "configDir is empty")
+	}
+
+	cConfigDir := C.clash_jni_get_string(env, configDir)
+	if cConfigDir == nil {
+		return jniError(env, "configDir is not valid UTF-8")
+	}
+	defer C.clash_jni_release_string(env, configDir, cConfigDir)
+
+	return jniStringResult(env, prepare(cConfigDir))
+}
+
 //export Java_io_aote_vpnService_ClashCore_startTun
 func Java_io_aote_vpnService_ClashCore_startTun(env *C.JNIEnv, thiz C.jobject, configDir C.jstring, tunFd C.jint, protector C.jobject) C.jstring {
 	if configDir == C.jstring(0) {

@@ -29,7 +29,9 @@
 - `packages/server` 只保留 Flutter 端与服务端共用的 `ApiResp`、`ClashProfile`、IPC 端点常量，以及 Windows SCM 服务/TUN 的安装、启停、卸载；不要在其中新增服务端运行逻辑。
 - 三平台随包原生二进制（服务端、macOS 托盘）由 `packages/clash_service/hook/` 构建，产物先落到 `packages/clash_service/build/bin`，再以 `bin/*` DataAsset 交付。
 - 这两个 Go 二进制默认 `CGO_ENABLED=0`（依赖图里没有 cgo 包，Windows 上无需 gcc）。确实需要 cgo 时设 `CLASHY_GO_CGO=1` 或 `hooks.user_defines` 的 `clash_service: {cgo: true}`；hook 会自动定位 MSYS2 的 mingw-w64 gcc（`mingw64`/`ucrt64`/`clang64`），也可用 `CLASHY_CC` 指定 `gcc.exe`。
-- 这两个 Go 二进制必须带 `-tags with_gvisor` 构建（hook 里的 `goBuildTags`）；桌面 tun 默认走 gvisor 栈，缺标签启动 TUN 会报 `gVisor is not included in this build`，手工 `go build` 验证时也要带。
+- 这两个 Go 二进制必须带 `-tags with_gvisor` 构建（hook 里的 `goBuildTags`）；桌面 tun 默认走 gvisor 栈，缺标签启动 TUN 会报 `gVisor is not included in this build`，手工 `go build` 验证时也要带。hook 统一用 `-ldflags '-s -w'` 剥离调试符号（体积小约 30%，panic 栈仍可读）。
+- 订阅刷新时的 profile 脚本（JavaScript）在服务端自己执行（`core/cmd/clashService_script.go`，纯 Go 的 `goja`，不引入 cgo）：脚本拿到全局 `profileConfig`，需定义 `main(config)` 并返回配置对象；返回 JSON 字符串或其他类型一律按失败处理（Dart、Android、Go 三端契约一致）。超时 5s、失败则保留原配置；脚本先跑，随后再用当前文件覆盖 app 自己管理的 key（`mixed-port`/`mode`/`tun`/`dns` 等），与 Dart 客户端顺序一致。
+- 配置引用的 GeoIP/GeoSite 数据由 `core/internal/geoensure` 预下载（多镜像、原子写入、体积校验），入口是 Go 的 `prepare`/`startTun`；Android 必须在 `establishTun()` **之前**调用 `ClashCore.prepare(configDir)`。TUN 一旦建立，默认路由就归隧道，core 自己的 DNS/下载会进黑洞，表现为 `lookup ...: no such host` 然后整个解析失败、VPN 建好又被拆掉。
 
 ## Flutter 响应式状态
 
