@@ -160,7 +160,8 @@ final class ClashEvent with NopLifecycle, AlScopeManager {
         }
       }
 
-      if (profile.id case var id?) {
+      if (profile.id case var id?
+          when BaseConfig.profiles.val.al.containsKey(id)) {
         BaseConfig.profiles.val.al[id] = profile;
       }
       return true;

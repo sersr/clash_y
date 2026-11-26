@@ -4,7 +4,7 @@ export 'src/server/models/models.dart';
 export 'src/server/response.dart';
 
 /// 桌面服务版本号，必须与 Go 服务端的 `serviceVersion`
-/// (`packages/clash_core/core/cmd/clashService.go`) 保持一致。
+/// (`packages/clash_core/core/internal/clashsvc/clashService.go`) 保持一致。
 ///
 /// `ClashService.updateDesktopServiceIfOutdated` 用它判断是否需要重装服务。
 const version = '0.0.1';

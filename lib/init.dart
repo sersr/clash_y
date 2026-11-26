@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:clash_service/clash_service.dart';
 import 'package:clashy/pages/application_list/controller/application_list_controller.dart';
 import 'package:clashy/pages/clash_settings/controller/profile_script_controller.dart';
 import 'package:clashy/pages/home/controller/clash_controller.dart';
@@ -21,7 +22,10 @@ Future<bool> initMain() async {
     initLog();
     _registerMacOsShutdownHandler();
 
-    await [G.init()].wait;
+    await G.init();
+    await ClashService.initTunnelSocket(
+      configDir: Platform.isAndroid ? G.appConfigPath : null,
+    );
     initController();
 
     return true;

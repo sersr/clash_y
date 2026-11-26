@@ -1,35 +1,13 @@
-//go:build darwin || linux || windows
-
-// Command clashService is the desktop daemon behind Clashy.
+// Package clashsvc is the Clashy control API: one route table, one envelope,
+// one profile implementation, and the desktop daemon that serves it.
 //
-// It replaces the retired Dart daemon (formerly `packages/cmd/bin/clashyService.dart`
-// plus `package:server`) and keeps the same IPC endpoint and HTTP API, so the
-// Flutter application needs no changes:
-//
-//	GET  /                 fixed greeting
-//	GET  /version          service version the app compares before reinstalling
-//	GET  /baseInfo/path    resolved executable path
-//	GET  /baseInfo/env     process environment
-//	GET  /clash            {"dir":...,"work":...}
-//	GET  /clash/status     whether the core is running
-//	GET  /clash/vpn/status whether the TUN listener is up
-//	POST /clash            start the core with TUN enabled
-//	POST /clash/core       start the core without TUN
-//	POST /clash/vpn/start  enable TUN for the current configuration
-//	POST /clash/vpn/stop   disable TUN and keep the core running
-//	POST /clash/reload     restart the core with the configuration on disk
-//	POST /clash/profile    switch the subscription a running service refreshes
-//	POST /clash/stop       stop the core and forget the persisted state
-//
-// The IPC endpoint is `/tmp/clashy/clash_service.sock` on POSIX systems and the
-// named pipe `\\.\pipe\clashy\clash_service.pipe` on Windows.
-//
-// Unlike the Dart server, which drove a `libclash` shared library through FFI,
-// this daemon embeds mihomo in-process and owns the whole desktop lifecycle:
-// the TUN interface (this process itself runs privileged — LaunchDaemon on
-// macOS, systemd system unit on Linux, LocalSystem service on Windows),
-// subscription refresh, state persistence and the post-wake TUN health check.
-package main
+// The desktop daemon (Run, per-OS in clashService_*.go) runs privileged and
+// owns the whole lifecycle: the core, the TUN device, the persisted state, the
+// subscription timer and the state file. A mobile tunnel process cannot do
+// that — the OS owns the tunnel and the host code starts the core — so it
+// implements only the profile half of the same Host interface and answers
+// ErrUnsupported for the rest. Both serve the same route table from here.
+package clashservice
 
 import (
 	"context"
@@ -37,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -60,6 +39,8 @@ import (
 
 	"mihomo-so/internal/geoensure"
 	"mihomo-so/internal/profilerefresh"
+	"mihomo-so/internal/profileschedule"
+	"mihomo-so/internal/profilescheduler"
 )
 
 const (
@@ -70,7 +51,7 @@ const (
 	serviceSocketUnixPath = "/tmp/clashy/clash_service.sock"
 	servicePipePath       = `\\.\pipe\clashy\clash_service.pipe`
 
-	configFileName = "config.yaml"
+	configFileName = profilerefresh.ConfigFileName
 	stateFileName  = "clash-state.json"
 
 	// wakeSettleDelay gives the network time to come back after a system wake
@@ -81,16 +62,7 @@ const (
 	tunHealthInterval = 30 * time.Second
 	// minUpdateDelay keeps a fresh start from immediately downloading again.
 	minUpdateDelay = 10 * time.Minute
-	// apiErrorCode is the envelope code every failure uses, matching the app.
-	apiErrorCode = 1001
-	// maxRequestBody guards against runaway request payloads. The subscription
-	// download bound lives in profilerefresh, which owns that logic.
-	maxRequestBody = 8 << 20
 )
-
-func main() {
-	runPlatformService()
-}
 
 // allowedClientUID restricts the control API to the desktop user that installed
 // the service (root is always allowed). -1 means "not configured": the daemon
@@ -165,23 +137,55 @@ func argumentValue(name string) string {
 
 // ---------------------------------------------------------------- HTTP layer
 
-// apiResponse is the response envelope the Flutter app decodes.
-type apiResponse struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data any    `json:"data"`
+// desktopHost is the desktop side of the shared control API: it owns the
+// whole core lifecycle, which a tunnel process leaves to its platform.
+type desktopHost struct{}
+
+func (desktopHost) Version() string { return serviceVersion }
+
+func (desktopHost) Runtime() map[string]string { return clashRuntimeInfo() }
+
+func (desktopHost) Path() (string, error) { return os.Executable() }
+
+func (desktopHost) Env() map[string]string {
+	env := make(map[string]string)
+	for _, entry := range os.Environ() {
+		if key, value, found := strings.Cut(entry, "="); found {
+			env[key] = value
+		}
+	}
+	return env
 }
 
-func okResp(data any) *apiResponse {
-	return &apiResponse{Code: 0, Msg: "", Data: data}
-}
+func (desktopHost) Memory() any { return memorySnapshot() }
 
-func errResp(data any) *apiResponse {
-	return &apiResponse{Code: apiErrorCode, Msg: "", Data: data}
-}
+func (desktopHost) Status() (bool, bool) { return core.status() }
 
-func errMsgResp(msg string) *apiResponse {
-	return errResp(msg)
+func (desktopHost) Start(body any, vpn bool) *Response { return startProfile(body, vpn) }
+
+func (desktopHost) StopVPN() *Response { return stopVpn() }
+
+func (desktopHost) Reload() *Response { return reloadConfig() }
+
+func (desktopHost) Stop() *Response { return stopClash() }
+
+// Profiles keeps only the profile metadata that drives the desktop UI; the
+// schedule and the download itself belong to the shared profile API.
+func (desktopHost) Profiles() ProfileHooks {
+	return ProfileHooks{
+		Dir: func(*http.Request) string { return core.runtimeConfigDir() },
+		Store: func(body map[string]any, dir string) {
+			profile := parseProfile(body)
+			if profile == nil {
+				return
+			}
+			core.updateProfile(profile)
+			if err := core.commitAPIState(profile, core.desiredVpnEnabled()); err != nil {
+				logf("save Clash state failed: %v", err)
+			}
+		},
+		Apply: core.applyRefreshedConfig,
+	}
 }
 
 // serve runs the control API until ctx is cancelled. ready, when not nil, is
@@ -229,151 +233,10 @@ func serve(ctx context.Context, ready chan<- struct{}) error {
 }
 
 func handleHTTP(w http.ResponseWriter, r *http.Request) {
-	started := time.Now()
-	res, status := safeRoute(w, r)
-
-	if res == nil {
-		http.Error(w, http.StatusText(status), status)
-	} else {
-		payload, err := json.Marshal(res)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			logf("%s %s -> %d (%dms)", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(started).Milliseconds())
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		_, _ = w.Write(payload)
-	}
-	logf("%s %s -> %d (%dms)", r.Method, r.URL.Path, status, time.Since(started).Milliseconds())
+	ServeHTTP(w, r, Route(desktopHost{}, logf), logf)
 }
 
-// safeRoute turns a handler panic into the same error envelope the Dart server
-// returned, instead of dropping the connection.
-func safeRoute(w http.ResponseWriter, r *http.Request) (res *apiResponse, status int) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			logf("panic while handling %s %s: %v", r.Method, r.URL.Path, recovered)
-			res, status = errResp(fmt.Sprint(recovered)), http.StatusOK
-		}
-	}()
-	return route(w, r)
-}
-
-// route dispatches one request. It returns a nil response for statuses that
-// are not wrapped in the API envelope (404, 405).
-func route(_ http.ResponseWriter, r *http.Request) (*apiResponse, int) {
-	switch r.URL.Path {
-	case "/":
-		if r.Method != http.MethodGet {
-			return nil, http.StatusMethodNotAllowed
-		}
-		return okResp("Clash VPN!"), http.StatusOK
-
-	case "/version":
-		if r.Method != http.MethodGet {
-			return nil, http.StatusMethodNotAllowed
-		}
-		return okResp(serviceVersion), http.StatusOK
-
-	case "/baseInfo/path":
-		if r.Method != http.MethodGet {
-			return nil, http.StatusMethodNotAllowed
-		}
-		executable, err := os.Executable()
-		if err != nil {
-			return errMsgResp(err.Error()), http.StatusOK
-		}
-		return okResp(executable), http.StatusOK
-
-	case "/baseInfo/mem":
-		if r.Method != http.MethodGet {
-			return nil, http.StatusMethodNotAllowed
-		}
-		return okResp(memorySnapshot()), http.StatusOK
-
-	case "/baseInfo/env":
-		if r.Method != http.MethodGet {
-			return nil, http.StatusMethodNotAllowed
-		}
-		env := make(map[string]string)
-		for _, entry := range os.Environ() {
-			if key, value, found := strings.Cut(entry, "="); found {
-				env[key] = value
-			}
-		}
-		return okResp(env), http.StatusOK
-
-	case "/clash":
-		if r.Method == http.MethodGet {
-			return okResp(clashRuntimeInfo()), http.StatusOK
-		}
-		if r.Method != http.MethodPost {
-			return nil, http.StatusMethodNotAllowed
-		}
-		data, res := readBody(r)
-		if res != nil {
-			return res, http.StatusOK
-		}
-		return startProfile(data, true), http.StatusOK
-
-	case "/clash/status":
-		if r.Method != http.MethodGet {
-			return nil, http.StatusMethodNotAllowed
-		}
-		started, _ := core.status()
-		return okResp(started), http.StatusOK
-
-	case "/clash/vpn/status":
-		if r.Method != http.MethodGet {
-			return nil, http.StatusMethodNotAllowed
-		}
-		_, vpn := core.status()
-		return okResp(vpn), http.StatusOK
-
-	case "/clash/core", "/clash/vpn/start":
-		if r.Method != http.MethodPost {
-			return nil, http.StatusMethodNotAllowed
-		}
-		data, res := readBody(r)
-		if res != nil {
-			return res, http.StatusOK
-		}
-		// `/clash` and `/clash/vpn/start` both ask for TUN; `/clash/core`
-		// only boots the proxy so the app can load proxies first.
-		return startProfile(data, r.URL.Path == "/clash/vpn/start"), http.StatusOK
-
-	case "/clash/vpn/stop":
-		if r.Method != http.MethodPost {
-			return nil, http.StatusMethodNotAllowed
-		}
-		return stopVpn(), http.StatusOK
-
-	case "/clash/reload":
-		if r.Method != http.MethodPost {
-			return nil, http.StatusMethodNotAllowed
-		}
-		return reloadConfig(), http.StatusOK
-
-	case "/clash/profile":
-		if r.Method != http.MethodPost {
-			return nil, http.StatusMethodNotAllowed
-		}
-		data, res := readBody(r)
-		if res != nil {
-			return res, http.StatusOK
-		}
-		return updateProfile(data), http.StatusOK
-
-	case "/clash/stop":
-		if r.Method != http.MethodPost {
-			return nil, http.StatusMethodNotAllowed
-		}
-		return stopClash(), http.StatusOK
-	}
-
-	return nil, http.StatusNotFound
-}
+// ------------------------------------------------------------- API handlers
 
 func clashRuntimeInfo() map[string]string {
 	dir := ""
@@ -387,77 +250,71 @@ func clashRuntimeInfo() map[string]string {
 	return map[string]string{"dir": dir, "work": work}
 }
 
-// readBody applies the JSON middleware of the Dart server: only
-// `application/json` bodies are accepted and a body that is not valid JSON is
-// rejected.
-func readBody(r *http.Request) (any, *apiResponse) {
-	if contentType := r.Header.Get("Content-Type"); contentType != "" &&
-		!strings.HasPrefix(contentType, "application/json") {
-		return nil, errMsgResp("content-type != application/json")
-	}
-
-	payload, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBody))
-	if err != nil {
-		return nil, errMsgResp(err.Error())
-	}
-	if len(payload) == 0 {
-		return "", nil
-	}
-
-	var data any
-	if err := json.Unmarshal(payload, &data); err != nil {
-		return nil, errMsgResp("invalid json body")
-	}
-	return data, nil
-}
-
 // ------------------------------------------------------------- API handlers
 
-func startProfile(data any, vpnEnabled bool) *apiResponse {
+func startProfile(data any, vpnEnabled bool) *Response {
 	profile := parseProfile(data)
 	if profile == nil || profile.ConfigDir == "" {
-		return errMsgResp("invalid profile")
+		return Error("invalid profile")
 	}
 
 	if err := core.run(profile.ConfigDir, vpnEnabled); err != nil {
-		return errResp(err.Error())
+		return Error(err.Error())
 	}
 	core.setProfile(profile)
 	if err := core.commitAPIState(profile, vpnEnabled); err != nil {
-		return errMsgResp("save Clash state failed: " + err.Error())
+		return Error("save Clash state failed: " + err.Error())
 	}
-	return okResp(nil)
+	return OK(nil)
 }
 
-func updateProfile(data any) *apiResponse {
-	profile := parseProfile(data)
-	if profile == nil {
-		return errMsgResp("invalid profile")
+// applyRefreshedConfig restarts the core so it reads the config the shared
+// API just wrote, restoring config.yaml.bak when the restart rejects it.
+func (c *coreRuntime) applyRefreshedConfig(dir string) error {
+	configPath := filepath.Join(dir, configFileName)
+	backupPath := configPath + ".bak"
+
+	c.mu.Lock()
+	vpnEnabled := c.desiredVPN
+	restart := c.started && c.configDir == dir
+	var restartErr error
+	if restart {
+		restartErr = c.restartLocked(dir, vpnEnabled)
+	}
+	c.mu.Unlock()
+
+	if !restart {
+		_ = os.Remove(backupPath)
+		return nil
+	}
+	if restartErr == nil {
+		_ = os.Remove(backupPath)
+		return nil
 	}
 
-	configDir := core.apiConfigDir()
-	if configDir == "" {
-		configDir = core.runtimeConfigDir()
+	logf("restart with the updated config failed: %v", restartErr)
+	if restored, err := os.ReadFile(backupPath); err == nil {
+		if err := os.WriteFile(configPath, restored, 0o644); err != nil {
+			logf("restore previous config failed: %v", err)
+		}
 	}
-	if profile.ConfigDir == "" && configDir == "" {
-		return errMsgResp("invalid profile")
-	}
+	_ = os.Remove(backupPath)
 
-	apiProfile := profile
-	if profile.ConfigDir == "" {
-		apiProfile = profile.withConfigDir(configDir)
+	c.mu.Lock()
+	var restoreErr error
+	if c.configDir == dir {
+		restoreErr = c.restartLocked(dir, vpnEnabled)
 	}
-
-	core.updateProfile(apiProfile)
-	if err := core.commitAPIState(apiProfile, core.desiredVpnEnabled()); err != nil {
-		return errMsgResp("save Clash state failed: " + err.Error())
+	c.mu.Unlock()
+	if restoreErr != nil {
+		logf("restore previous config failed: %v", restoreErr)
 	}
-	return okResp(nil)
+	return restartErr
 }
 
-func stopVpn() *apiResponse {
+func stopVpn() *Response {
 	if err := core.stopVpn(); err != nil {
-		return errResp(err.Error())
+		return Error(err.Error())
 	}
 
 	configDir := core.apiConfigDir()
@@ -466,27 +323,27 @@ func stopVpn() *apiResponse {
 	}
 	if configDir != "" {
 		if err := core.commitAPIState(core.apiProfileSnapshot(), false); err != nil {
-			return errMsgResp("save Clash state failed: " + err.Error())
+			return Error("save Clash state failed: " + err.Error())
 		}
 	}
-	return okResp(nil)
+	return OK(nil)
 }
 
-func reloadConfig() *apiResponse {
+func reloadConfig() *Response {
 	if err := core.reload(); err != nil {
-		return errResp(err.Error())
+		return Error(err.Error())
 	}
-	return okResp(nil)
+	return OK(nil)
 }
 
-func stopClash() *apiResponse {
+func stopClash() *Response {
 	if err := core.stop(); err != nil {
-		return errResp(err.Error())
+		return Error(err.Error())
 	}
 	if err := core.clearAPIState(); err != nil {
-		return errMsgResp("clear Clash state failed: " + err.Error())
+		return Error("clear Clash state failed: " + err.Error())
 	}
-	return okResp(nil)
+	return OK(nil)
 }
 
 // ------------------------------------------------------ profile and scheduling
@@ -498,8 +355,8 @@ type clashProfile struct {
 	Name      string `json:"name,omitempty"`
 	URL       string `json:"url,omitempty"`
 	// Script is the profile's JavaScript transform. The service runs it itself
-	// (see runProfileScript) so a subscription refresh started by the daemon
-	// produces the same config the app would.
+	// (see internal/profilerefresh) so a subscription refresh started by the
+	// daemon produces the same config the app would.
 	Script string `json:"script,omitempty"`
 	// UpdateInterval is the subscription refresh interval in minutes. Zero or
 	// negative disables the automatic updates, matching the Dart model.
@@ -532,24 +389,17 @@ func (p *clashProfile) displayName() string {
 	}
 }
 
-// nextUpdateDelay mirrors `ClashProfile.nextUpdateDelay`: a profile that is
-// already due still waits minUpdateDelay so a fresh start is not immediately
-// followed by another download.
+// nextUpdateDelay reports when this profile is refreshed again. The rule (and
+// the floor that keeps a fresh start from downloading immediately) lives in
+// internal/profileschedule so the desktop daemon, the mobile services and the
+// app all wait the same time. A profile the app never downloaded has no
+// schedule here, matching `ClashProfile.nextUpdateDelay`.
 func (p *clashProfile) nextUpdateDelay(now time.Time) (time.Duration, bool) {
 	last, ok := parseProfileTime(p.UpdateTime)
-	if !ok || p.UpdateInterval <= 0 {
+	if !ok {
 		return 0, false
 	}
-
-	due := last.Add(time.Duration(p.UpdateInterval) * time.Minute)
-	if !due.After(now) {
-		return minUpdateDelay, true
-	}
-	delay := due.Sub(now)
-	if delay < minUpdateDelay {
-		return minUpdateDelay, true
-	}
-	return delay, true
+	return profileschedule.Delay(now, last, p.UpdateInterval, profileschedule.DesktopSettleDelay)
 }
 
 func parseProfileTime(value string) (time.Time, bool) {
@@ -590,6 +440,11 @@ func parseProfile(data any) *clashProfile {
 }
 
 // ------------------------------------------------------------- core runtime
+
+// Run starts the desktop daemon; each OS file implements runPlatformService.
+func Run() {
+	runPlatformService()
+}
 
 var core = newCoreRuntime()
 
@@ -772,7 +627,34 @@ func (c *coreRuntime) shutdown() error {
 
 func (c *coreRuntime) replaceProfileLocked(profile *clashProfile) {
 	c.profile = profile
+	c.mirrorScheduleLocked()
 	c.scheduleProfileUpdateLocked()
+}
+
+// mirrorScheduleLocked writes the refresh schedule to the state file the
+// control API reads, so GET /clash/schedule answers the same on desktop as in a
+// tunnel process. The desktop timer below stays the owner of when it fires; both
+// sides use the rule in internal/profileschedule.
+func (c *coreRuntime) mirrorScheduleLocked() {
+	if c.profile == nil || c.profile.ConfigDir == "" {
+		return
+	}
+	last := int64(0)
+	if updated, ok := parseProfileTime(c.profile.UpdateTime); ok {
+		last = updated.UnixMilli()
+	}
+	var schedule *profileschedule.Schedule
+	if c.profile.URL != "" && c.profile.UpdateInterval > 0 {
+		schedule = &profileschedule.Schedule{
+			URL:             c.profile.URL,
+			Script:          c.profile.Script,
+			IntervalMinutes: c.profile.UpdateInterval,
+			LastUpdateMs:    last,
+		}
+	}
+	if err := profileschedule.Save(c.profile.ConfigDir, schedule); err != nil {
+		logf("write profile schedule: %v", err)
+	}
 }
 
 func (c *coreRuntime) scheduleProfileUpdateLocked() {
@@ -1179,10 +1061,12 @@ func (c *coreRuntime) updateFromSubscription(target *clashProfile) {
 	if err != nil {
 		logf("profile update failed: %v", err)
 		c.profile = target.withUpdateTime(time.Now())
+		c.mirrorScheduleLocked()
 		c.scheduleProfileUpdateLocked()
 		return
 	}
 	c.profile = target.withUpdateTime(time.Now())
+	c.mirrorScheduleLocked()
 	c.scheduleProfileUpdateLocked()
 	logf("profile updated: %s", target.displayName())
 }
@@ -1200,55 +1084,9 @@ func (c *coreRuntime) refreshConfig(profile *clashProfile) error {
 	if err := profilerefresh.RefreshFile(profile.ConfigDir, profile.URL, profile.Script); err != nil {
 		return err
 	}
-
-	configPath := filepath.Join(profile.ConfigDir, configFileName)
-	backupPath := configPath + ".bak"
-
-	// Restart only when the core is actually running that profile.
-	c.mu.Lock()
-	vpnEnabled := c.desiredVPN
-	restart := c.started && c.profile == profile
-	var restartErr error
-	if restart {
-		restartErr = c.restartLocked(profile.ConfigDir, vpnEnabled)
-	}
-	c.mu.Unlock()
-
-	if !restart {
-		_ = os.Remove(backupPath)
-		return nil
-	}
-	if restartErr == nil {
-		_ = os.Remove(backupPath)
-		return nil
-	}
-
-	logf("restart with the updated config failed: %v", restartErr)
-	restored, readErr := os.ReadFile(backupPath)
-	if readErr == nil {
-		if writeErr := os.WriteFile(configPath, restored, 0o644); writeErr != nil {
-			logf("restore previous config failed: %v", writeErr)
-		}
-	}
-	_ = os.Remove(backupPath)
-
-	c.mu.Lock()
-	var restoreErr error
-	if c.profile == profile {
-		restoreErr = c.restartLocked(profile.ConfigDir, vpnEnabled)
-	}
-	c.mu.Unlock()
-	if restoreErr != nil {
-		logf("restore previous config failed: %v", restoreErr)
-	}
-	return restartErr
+	return c.applyRefreshedConfig(profile.ConfigDir)
 }
 
-// ------------------------------------------------------------ TUN health
-
-// watchTunHealth replaces the Dart macOS IOKit wake monitor with the periodic
-// health poll the Dart server already used on Linux and Windows: after a system
-// wake the TUN interface disappears, and the core has to be restarted.
 func (c *coreRuntime) watchTunHealth(ctx context.Context) {
 	ticker := time.NewTicker(tunHealthInterval)
 	defer ticker.Stop()
@@ -1399,3 +1237,699 @@ func memorySnapshot() memorySnapshotData {
 func logf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "%s %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(format, args...))
 }
+
+// SocketName is the control socket a tunnel process serves inside configDir.
+//
+// The name is short on purpose: `sockaddr_un` caps the whole path at 104 bytes
+// on Darwin, and the iOS App Group container already eats most of that budget.
+const SocketName = "cs.sock"
+
+// maxSocketPath is the `sockaddr_un.sun_path` budget on Darwin. Unix sockets
+// elsewhere allow more, but keeping one rule means the app and the core always
+// agree on where the socket is.
+const maxSocketPath = 100
+
+// SocketPath returns the control socket of a config directory.
+//
+// A path that would not fit the Darwin budget moves one level up: the iOS App
+// Group container prefix alone can leave a handful of bytes, while the parent
+// of the config directory is still private to the same process.
+func SocketPath(configDir string) string {
+	path := filepath.Join(configDir, SocketName)
+	if len(path) <= maxSocketPath {
+		return path
+	}
+	parent := filepath.Dir(configDir)
+	return filepath.Join(parent, SocketName)
+}
+
+// Routes of the control API. The desktop daemon answers all of them, a tunnel
+// process only the profile ones.
+const (
+	RootPath         = "/"
+	VersionPath      = "/version"
+	PathPath         = "/baseInfo/path"
+	MemPath          = "/baseInfo/mem"
+	EnvPath          = "/baseInfo/env"
+	ClashPath        = "/clash"
+	StatusPath       = "/clash/status"
+	VPNStatusPath    = "/clash/vpn/status"
+	CorePath         = "/clash/core"
+	VPNStartPath     = "/clash/vpn/start"
+	VPNStopPath      = "/clash/vpn/stop"
+	ReloadPath       = "/clash/reload"
+	ProfilePath      = "/clash/profile"
+	RefreshPath      = "/clash/refresh"
+	SchedulePath     = "/clash/schedule"
+	StopPath         = "/clash/stop"
+	maxRequestBody   = 8 << 20
+	maxProfileBody   = 1 << 20
+	apiErrorCode     = 1001
+	greetingResponse = "Clash VPN!"
+)
+
+// Response is the `{code,msg,data}` envelope every host answers with.
+type Response struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data any    `json:"data"`
+}
+
+// OK builds a successful response.
+func OK(data any) *Response { return &Response{Code: 0, Data: data} }
+
+// Error builds a failed response with the code the app understands.
+func Error(message string) *Response { return &Response{Code: apiErrorCode, Msg: message} }
+
+// RouteFunc dispatches one request into the shared envelope.
+type RouteFunc func(w http.ResponseWriter, r *http.Request) (*Response, int)
+
+// Host is what the shared router needs from a runtime.
+//
+// The desktop daemon implements every method; a tunnel process implements the
+// profile half and returns ErrUnsupported for the rest.
+type Host interface {
+	// Version is the service version the app compares before reinstalling.
+	Version() string
+	// Runtime feeds GET /clash: where the service runs from.
+	Runtime() map[string]string
+	// Path is the resolved executable.
+	Path() (string, error)
+	// Env is the process environment.
+	Env() map[string]string
+	// Memory feeds GET /baseInfo/mem.
+	Memory() any
+	// Status reports whether the core runs and whether the tunnel is up.
+	Status() (started bool, vpn bool)
+	// Start boots the core for the profile body, with TUN when vpn is set.
+	Start(body any, vpn bool) *Response
+	StopVPN() *Response
+	Reload() *Response
+	Stop() *Response
+	// Profiles is the profile API's bookkeeping for this host.
+	Profiles() ProfileHooks
+}
+
+// Route is the single route table of the control API.
+func Route(h Host, logf func(format string, args ...any)) RouteFunc {
+	return func(w http.ResponseWriter, r *http.Request) (*Response, int) {
+		switch r.URL.Path {
+		case RootPath:
+			if r.Method != http.MethodGet {
+				return nil, http.StatusMethodNotAllowed
+			}
+			return OK(greetingResponse), http.StatusOK
+
+		case VersionPath:
+			if r.Method != http.MethodGet {
+				return nil, http.StatusMethodNotAllowed
+			}
+			return OK(h.Version()), http.StatusOK
+
+		case PathPath:
+			if r.Method != http.MethodGet {
+				return nil, http.StatusMethodNotAllowed
+			}
+			path, err := h.Path()
+			if err != nil {
+				return Error(err.Error()), http.StatusOK
+			}
+			return OK(path), http.StatusOK
+
+		case MemPath:
+			if r.Method != http.MethodGet {
+				return nil, http.StatusMethodNotAllowed
+			}
+			return OK(h.Memory()), http.StatusOK
+
+		case EnvPath:
+			if r.Method != http.MethodGet {
+				return nil, http.StatusMethodNotAllowed
+			}
+			return OK(h.Env()), http.StatusOK
+
+		case ClashPath:
+			if r.Method == http.MethodGet {
+				return OK(h.Runtime()), http.StatusOK
+			}
+			if r.Method != http.MethodPost {
+				return nil, http.StatusMethodNotAllowed
+			}
+			data, res := readBody(r)
+			if res != nil {
+				return res, http.StatusOK
+			}
+			return h.Start(data, true), http.StatusOK
+
+		case StatusPath:
+			if r.Method != http.MethodGet {
+				return nil, http.StatusMethodNotAllowed
+			}
+			started, _ := h.Status()
+			return OK(started), http.StatusOK
+
+		case VPNStatusPath:
+			if r.Method != http.MethodGet {
+				return nil, http.StatusMethodNotAllowed
+			}
+			_, vpn := h.Status()
+			return OK(vpn), http.StatusOK
+
+		case CorePath, VPNStartPath:
+			if r.Method != http.MethodPost {
+				return nil, http.StatusMethodNotAllowed
+			}
+			data, res := readBody(r)
+			if res != nil {
+				return res, http.StatusOK
+			}
+			// `/clash` and `/clash/vpn/start` both ask for TUN; `/clash/core`
+			// only boots the proxy so the app can load proxies first.
+			return h.Start(data, r.URL.Path == VPNStartPath), http.StatusOK
+
+		case VPNStopPath:
+			if r.Method != http.MethodPost {
+				return nil, http.StatusMethodNotAllowed
+			}
+			return h.StopVPN(), http.StatusOK
+
+		case ReloadPath:
+			if r.Method != http.MethodPost {
+				return nil, http.StatusMethodNotAllowed
+			}
+			return h.Reload(), http.StatusOK
+
+		case ProfilePath:
+			return handleProfileRoute(r, h.Profiles(), logf)
+
+		case RefreshPath:
+			return handleRefreshRoute(r, h.Profiles(), logf)
+
+		case SchedulePath:
+			return handleScheduleRoute(r, h.Profiles())
+
+		case StopPath:
+			if r.Method != http.MethodPost {
+				return nil, http.StatusMethodNotAllowed
+			}
+			return h.Stop(), http.StatusOK
+		}
+
+		return nil, http.StatusNotFound
+	}
+}
+
+// readBody applies the JSON middleware of the retired Dart server: only
+// `application/json` bodies are accepted and a body that is not valid JSON is
+// rejected.
+func readBody(r *http.Request) (any, *Response) {
+	if contentType := r.Header.Get("Content-Type"); contentType != "" &&
+		!strings.HasPrefix(contentType, "application/json") {
+		return nil, Error("content-type != application/json")
+	}
+
+	payload, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBody))
+	if err != nil {
+		return nil, Error(err.Error())
+	}
+	if len(payload) == 0 {
+		return "", nil
+	}
+
+	var data any
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return nil, Error("invalid json body")
+	}
+	return data, nil
+}
+
+// ServeHTTP runs one request through the shared envelope, panic guard and
+// logging. Every host uses this; only the Host differs.
+func ServeHTTP(
+	w http.ResponseWriter,
+	r *http.Request,
+	route RouteFunc,
+	logf func(format string, args ...any),
+) {
+	started := time.Now()
+	res, status := safeRoute(w, r, route, logf)
+
+	if res == nil {
+		http.Error(w, http.StatusText(status), status)
+	} else {
+		payload, err := json.Marshal(res)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			logf("%s %s -> %d (%dms)", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(started).Milliseconds())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write(payload)
+	}
+	logf("%s %s -> %d (%dms)", r.Method, r.URL.Path, status, time.Since(started).Milliseconds())
+}
+
+func safeRoute(
+	w http.ResponseWriter,
+	r *http.Request,
+	route RouteFunc,
+	logf func(format string, args ...any),
+) (res *Response, status int) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logf("panic while handling %s %s: %v", r.Method, r.URL.Path, recovered)
+			res, status = Error(fmt.Sprint(recovered)), http.StatusOK
+		}
+	}()
+	return route(w, r)
+}
+
+// ProfileHooks lets a host keep its own profile bookkeeping while the profile
+// routes stay here. A tunnel process passes Dir/Apply/OnSchedule; the desktop
+// daemon uses Store to persist the profile name/id it shows in the UI.
+type ProfileHooks struct {
+	// Dir resolves the config directory of a request; nil keeps the body's.
+	Dir func(r *http.Request) string
+	// Store receives the raw profile body and the resolved directory.
+	Store func(body map[string]any, dir string)
+	// Apply loads the refreshed config into the running core.
+	Apply func(dir string) error
+	// OnSchedule tells the host's timer that the stored schedule changed.
+	OnSchedule func()
+}
+
+func (h ProfileHooks) dir(r *http.Request) string {
+	if h.Dir == nil {
+		return ""
+	}
+	return h.Dir(r)
+}
+
+func (h ProfileHooks) scheduleChanged() {
+	if h.OnSchedule != nil {
+		h.OnSchedule()
+	}
+}
+
+func (h ProfileHooks) applyConfig(dir string) error {
+	if h.Apply == nil {
+		return nil
+	}
+	return h.Apply(dir)
+}
+
+// refreshMu keeps two refreshes from downloading at the same time: the
+// schedule file is written atomically, but a duplicate download would still
+// waste the provider's bandwidth.
+var refreshMu sync.Mutex
+
+// profileRequest is the `ClashProfile` the app already builds for the desktop
+// daemon: the refresh interval is `updateInterval` in minutes.
+type profileRequest struct {
+	URL            string `json:"url"`
+	Script         string `json:"script"`
+	UpdateInterval int    `json:"updateInterval"`
+	UpdateTime     any    `json:"updateTime"`
+}
+
+func handleProfileRoute(r *http.Request, hooks ProfileHooks, logf func(format string, args ...any)) (*Response, int) {
+	if r.Method != http.MethodPost {
+		return nil, http.StatusMethodNotAllowed
+	}
+	defer r.Body.Close()
+
+	dir := hooks.dir(r)
+	payload, err := io.ReadAll(io.LimitReader(r.Body, maxProfileBody))
+	if err != nil {
+		return Error("read profile: " + err.Error()), http.StatusBadRequest
+	}
+
+	var request profileRequest
+	if err := json.Unmarshal(payload, &request); err != nil {
+		return Error("invalid profile: " + err.Error()), http.StatusBadRequest
+	}
+	if hooks.Store != nil {
+		var body map[string]any
+		if json.Unmarshal(payload, &body) == nil && body != nil {
+			hooks.Store(body, dir)
+			if configDir, ok := body["configDir"].(string); ok && configDir != "" {
+				dir = configDir
+			}
+		}
+	}
+	if dir == "" {
+		return Error("config dir is empty"), http.StatusOK
+	}
+
+	schedule := &profileschedule.Schedule{
+		URL:             strings.TrimSpace(request.URL),
+		Script:          request.Script,
+		IntervalMinutes: request.UpdateInterval,
+		LastUpdateMs:    parseUpdateTime(request.UpdateTime),
+	}
+	if !schedule.Scheduled() {
+		// A profile without a url or interval is still a valid selection: drop
+		// the schedule so the tunnel stops downloading on its own.
+		if err := profileschedule.Save(dir, nil); err != nil {
+			return Error(err.Error()), http.StatusOK
+		}
+		hooks.scheduleChanged()
+		return OK(nextDelayPayload(dir)), http.StatusOK
+	}
+	if err := profileschedule.Save(dir, schedule); err != nil {
+		return Error(err.Error()), http.StatusOK
+	}
+	hooks.scheduleChanged()
+
+	// ?refresh=false stores the profile for the next scheduled download only;
+	// the app uses it when it already wrote config.yaml itself.
+	if r.URL.Query().Get("refresh") == "false" {
+		return OK(nextDelayPayload(dir)), http.StatusOK
+	}
+
+	if err := refreshProfile(dir, schedule); err != nil {
+		logf("profile refresh failed: %v", err)
+		return Error(err.Error()), http.StatusOK
+	}
+	if err := hooks.applyConfig(dir); err != nil {
+		logf("apply profile config: %v", err)
+		return Error(err.Error()), http.StatusOK
+	}
+	return OK(nextDelayPayload(dir)), http.StatusOK
+}
+
+func handleRefreshRoute(r *http.Request, hooks ProfileHooks, logf func(format string, args ...any)) (*Response, int) {
+	if r.Method != http.MethodPost {
+		return nil, http.StatusMethodNotAllowed
+	}
+	defer r.Body.Close()
+
+	dir := hooks.dir(r)
+	if dir == "" {
+		return Error("config dir is empty"), http.StatusOK
+	}
+	schedule, err := profileschedule.Load(dir)
+	if err != nil {
+		return Error(err.Error()), http.StatusOK
+	}
+	if !schedule.Scheduled() {
+		return Error("profile schedule is empty"), http.StatusOK
+	}
+	if err := refreshProfile(dir, schedule); err != nil {
+		logf("scheduled profile refresh failed: %v", err)
+		return Error(err.Error()), http.StatusOK
+	}
+	if err := hooks.applyConfig(dir); err != nil {
+		logf("apply profile config: %v", err)
+		return Error(err.Error()), http.StatusOK
+	}
+	return OK(nextDelayPayload(dir)), http.StatusOK
+}
+
+func handleScheduleRoute(r *http.Request, hooks ProfileHooks) (*Response, int) {
+	if r.Method != http.MethodGet {
+		return nil, http.StatusMethodNotAllowed
+	}
+	dir := hooks.dir(r)
+	if dir == "" {
+		return Error("config dir is empty"), http.StatusOK
+	}
+	schedule, err := profileschedule.Load(dir)
+	if err != nil {
+		return Error(err.Error()), http.StatusOK
+	}
+	return OK(schedulePayload(schedule)), http.StatusOK
+}
+
+// refreshProfile downloads the subscription of schedule, rewrites config.yaml
+// and records the attempt. A failed download still counts as an attempt, so the
+// next one waits a full interval instead of retrying in a tight loop.
+func refreshProfile(configDir string, schedule *profileschedule.Schedule) error {
+	refreshMu.Lock()
+	defer refreshMu.Unlock()
+
+	refreshErr := profilerefresh.RefreshFile(configDir, schedule.URL, schedule.Script)
+
+	schedule.LastUpdateMs = time.Now().UnixMilli()
+	if err := profileschedule.Save(configDir, schedule); err != nil && refreshErr == nil {
+		return err
+	}
+	return refreshErr
+}
+
+// listenSocket serves the API on `<configDir>/cs.sock`; the caller closes the
+// listener when the host stops. The socket is created 0600, so only the app and
+// the extension sharing the directory can reach it.
+func listenSocket(configDir string) (net.Listener, error) {
+	path := SocketPath(configDir)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create config dir: %w", err)
+	}
+	// A socket left behind by a killed process makes Listen fail, and the name
+	// belongs to this API, so a stale one is always safe to remove.
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("remove stale control socket: %w", err)
+	}
+
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, fmt.Errorf("listen on control socket: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		_ = listener.Close()
+		return nil, fmt.Errorf("restrict control socket: %w", err)
+	}
+	return listener, nil
+}
+
+// schedulePayload is the `data` of /clash/schedule and of every refresh response:
+// the app and the platform timers only need `nextDelayMs` (-1 = no schedule).
+func schedulePayload(schedule *profileschedule.Schedule) map[string]any {
+	if schedule == nil {
+		return map[string]any{"scheduled": false, "nextDelayMs": int64(-1)}
+	}
+	delay, ok := schedule.Delay(time.Now(), profileschedule.SettleDelay)
+	return map[string]any{
+		"scheduled":   schedule.Scheduled(),
+		"url":         schedule.URL,
+		"interval":    schedule.IntervalMinutes,
+		"lastUpdate":  schedule.LastUpdateMs,
+		"nextDelayMs": delayMilliseconds(delay, ok),
+	}
+}
+
+func nextDelayPayload(configDir string) map[string]any {
+	schedule, err := profileschedule.Load(configDir)
+	if err != nil {
+		return map[string]any{"scheduled": false, "nextDelayMs": int64(-1)}
+	}
+	return schedulePayload(schedule)
+}
+
+func delayMilliseconds(delay time.Duration, ok bool) int64 {
+	if !ok {
+		return -1
+	}
+	if delay <= 0 {
+		return 0
+	}
+	return delay.Milliseconds()
+}
+
+// parseUpdateTime accepts what the app writes: an ISO-8601 string (Dart's
+// `toIso8601String`) or a millisecond number. Anything else counts as "never
+// downloaded".
+func parseUpdateTime(value any) int64 {
+	switch typed := value.(type) {
+	case string:
+		if typed == "" {
+			return 0
+		}
+		for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999999"} {
+			parsed, err := time.ParseInLocation(layout, typed, time.Local)
+			if err == nil {
+				return parsed.UnixMilli()
+			}
+		}
+		return 0
+	case float64:
+		return int64(typed)
+	case json.Number:
+		milliseconds, err := typed.Int64()
+		if err != nil {
+			return 0
+		}
+		return milliseconds
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	default:
+		return 0
+	}
+}
+
+func writeOK(w http.ResponseWriter, data any) {
+	writeEnvelope(w, http.StatusOK, 0, "", data)
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeEnvelope(w, status, apiErrorCode, message, nil)
+}
+
+func writeEnvelope(w http.ResponseWriter, status int, code int, message string, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	payload, err := json.Marshal(map[string]any{"code": code, "msg": message, "data": data})
+	if err != nil {
+		return
+	}
+	_, _ = w.Write(payload)
+}
+
+// ------------------------------------------------------- tunnel profile API
+
+// Server serves the profile API from inside a tunnel process, where the
+// platform starts the core and this only refreshes the subscription and applies
+// config.yaml to it. The desktop daemon does not use it: it owns the whole
+// lifecycle and serves every route itself.
+type Server struct {
+	dir       string
+	listener  net.Listener
+	server    *http.Server
+	scheduler *profilescheduler.Scheduler
+	mu        sync.Mutex
+}
+
+// ServeTunnel exposes `<configDir>/cs.sock` with the profile routes. apply
+// loads the refreshed config into the running core; it must not hold a lock the
+// caller takes later.
+func ServeTunnel(configDir string, apply func(configDir string) error) (*Server, error) {
+	if configDir == "" {
+		return nil, errors.New("config dir is empty")
+	}
+
+	s := &Server{dir: configDir}
+
+	s.scheduler = profilescheduler.New(configDir, logf, func() error { return apply(configDir) })
+	s.scheduler.Start()
+
+	host := &tunnelHost{
+		dir:   configDir,
+		apply: apply,
+		profiles: ProfileHooks{
+			Dir:   func(*http.Request) string { return configDir },
+			Apply: apply,
+		},
+	}
+	handle := func(w http.ResponseWriter, r *http.Request) {
+		ServeHTTP(w, r, Route(host, logf), logf)
+	}
+
+	path := SocketPath(configDir)
+	listener, err := listenSocket(configDir)
+	if err != nil {
+		s.scheduler.Stop()
+		return nil, err
+	}
+	s.listener = listener
+	s.server = &http.Server{Handler: http.HandlerFunc(handle)}
+
+	go func() {
+		if err := s.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logf("profile API stopped: %v", err)
+		}
+	}()
+	logf("profile API listening on %s", path)
+	return s, nil
+}
+
+// Dir reports the configuration directory being served.
+func (s *Server) Dir() string { return s.dir }
+
+// Close stops the timer and the API, letting net.UnixListener unlink the socket.
+func (s *Server) Close() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.scheduler != nil {
+		s.scheduler.Stop()
+		s.scheduler = nil
+	}
+	if s.server != nil {
+		_ = s.server.Close()
+		s.server = nil
+	}
+	if s.listener != nil {
+		_ = s.listener.Close()
+		s.listener = nil
+	}
+	s.dir = ""
+}
+
+// tunnelHost answers the control API from inside a tunnel process.
+//
+// The OS owns the tunnel and the host code starts the core, so the routes that
+// would start, stop or rebuild one are not available here: the app drives that
+// through its own platform session (NEPacketTunnelProvider on iOS,
+// VpnService on Android). Everything that only rewrites config.yaml — the
+// profile routes and /clash/reload — works as on the desktop.
+type tunnelHost struct {
+	dir      string
+	apply    func(configDir string) error
+	profiles ProfileHooks
+}
+
+func (h *tunnelHost) Version() string { return "" }
+
+func (h *tunnelHost) Runtime() map[string]string {
+	dir := ""
+	if executable, err := os.Executable(); err == nil {
+		dir = executable
+	}
+	return map[string]string{"dir": dir}
+}
+
+func (h *tunnelHost) Path() (string, error) { return os.Executable() }
+
+func (h *tunnelHost) Env() map[string]string {
+	env := make(map[string]string)
+	for _, entry := range os.Environ() {
+		if key, value, found := strings.Cut(entry, "="); found {
+			env[key] = value
+		}
+	}
+	return env
+}
+
+func (h *tunnelHost) Memory() any { return nil }
+
+// Status: a tunnel process only serves this API while its core runs and its
+// tunnel is up, so both answers are true by definition.
+func (h *tunnelHost) Status() (bool, bool) { return true, true }
+
+func (h *tunnelHost) Start(any, bool) *Response {
+	return Error("the tunnel is started by the app, not by this API")
+}
+
+func (h *tunnelHost) StopVPN() *Response {
+	return Error("the tunnel is stopped by the app, not by this API")
+}
+
+// Reload re-reads config.yaml into the running core, the same hot apply a
+// subscription refresh uses.
+func (h *tunnelHost) Reload() *Response {
+	if err := h.apply(h.dir); err != nil {
+		return Error(err.Error())
+	}
+	return OK(nil)
+}
+
+func (h *tunnelHost) Stop() *Response {
+	return Error("the tunnel is stopped by the app, not by this API")
+}
+
+func (h *tunnelHost) Profiles() ProfileHooks { return h.profiles }

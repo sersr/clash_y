@@ -19,7 +19,6 @@
 //	char *start(const char *configDir);
 //	char *startTun(const char *configDir, int fd);
 //	char *prepare(const char *configDir);
-//	char *refreshProfile(const char *configDir, const char *url, const char *script);
 //	char *stop(void);
 //	void  freeString(char *s);
 //
@@ -50,19 +49,25 @@ import (
 	"github.com/metacubex/mihomo/listener"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing_tun"
+	mlog "github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
 
+	"mihomo-so/internal/clashservice"
 	"mihomo-so/internal/geoensure"
 	"mihomo-so/internal/profilerefresh"
 )
 
 // configFileName is the file mihomo reads from the -d home directory.
-const configFileName = "config.yaml"
+const configFileName = profilerefresh.ConfigFileName
 
 var (
 	mu          sync.Mutex
 	started     bool
 	tunListener *sing_tun.Listener
+
+	// profileAPI guards the profile service the tunnel process serves.
+	profileMu  sync.Mutex
+	profileAPI *clashservice.Server
 )
 
 // main is required by -buildmode=c-shared and never runs.
@@ -91,6 +96,10 @@ func start(configDir *C.char) *C.char {
 	}
 
 	started = true
+
+	// The profile API does not need TUN: with the core running the app can
+	// already switch the subscription and have it applied.
+	serveProfileAPI(C.GoString(configDir))
 	return nil
 }
 
@@ -143,6 +152,10 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 	defer mu.Unlock()
 
 	enableEmbeddedConfigUpdates()
+	// Serve the profile API before anything slow (geodata, parse, TUN), so the
+	// app never has to guess when the socket appears. Both the VpnService start
+	// (fd > 0) and the core-only start (fd == 0) get it from here.
+	serveProfileAPI(C.GoString(configDir))
 
 	if err := setHomeDir(C.GoString(configDir)); err != nil {
 		return cError(err)
@@ -195,6 +208,9 @@ func startTun(configDir *C.char, fd C.int) *C.char {
 
 	tunListener = listener
 	started = true
+
+	// The API started above keeps refreshing the subscription while the app is
+	// suspended, and it also applies the refreshed config to this TUN.
 	return nil
 }
 
@@ -215,13 +231,17 @@ func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
 		device = "clashy"
 	}
 
+	// iOS keeps the profile's automatic interface detection; a VpnService
+	// supplied descriptor does not, since the system owns routing there.
+	autoDetect := goos == "ios" && cfg.General.Tun.AutoDetectInterface
+
 	options := LC.Tun{
 		Enable:              true,
 		Device:              device,
 		Stack:               stack,
 		DNSHijack:           dnsHijack,
 		AutoRoute:           false,
-		AutoDetectInterface: false,
+		AutoDetectInterface: autoDetect,
 		Inet4Address: []netip.Prefix{
 			netip.MustParsePrefix("172.19.0.1/30"),
 		},
@@ -269,47 +289,14 @@ func applyTunOptions(cfg *config.Config, fd int) {
 	}
 }
 
-// refreshProfile downloads url, applies the profile script and overlays the
-// app-owned keys of the config currently in configDir, writing the result back
-// to configDir/config.yaml.
-//
-// The mobile runtimes call this instead of reimplementing the refresh: the
-// download, the JavaScript transform and the key overlay all live in
-// internal/profilerefresh, the same code the desktop daemon runs. The previous
-// file is kept as config.yaml.bak so the caller can roll back when the core
-// rejects the new one.
-//
-// The core is not restarted: callers decide whether to restart based on
-// whether the tunnel is already running this profile.
-//
-//export refreshProfile
-func refreshProfile(configDir *C.char, url *C.char, script *C.char) *C.char {
-	mu.Lock()
-	defer mu.Unlock()
-
-	dir := C.GoString(configDir)
-	if dir == "" {
-		return cError(errors.New("config dir is empty"))
-	}
-	subscription := C.GoString(url)
-	if subscription == "" {
-		return cError(errors.New("profile url is empty"))
-	}
-	transform := ""
-	if script != nil {
-		transform = C.GoString(script)
-	}
-
-	if err := profilerefresh.RefreshFile(dir, subscription, transform); err != nil {
-		return cError(err)
-	}
-	return nil
-}
-
 // stop shuts the core down and closes every listener, including TUN.
 //
 //export stop
 func stop() *C.char {
+	// Stop the profile API first: it applies config to the core, which must not
+	// run while mu is held.
+	closeProfileAPI()
+
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -341,6 +328,67 @@ func stopTun() *C.char {
 	tunnel.OnSuspend()
 	started = false
 	return nil
+}
+
+// applyConfigFile loads config.yaml into the running core after a refresh.
+//
+// The TUN listener startTun created keeps the descriptor the tunnel owns, so
+// applying the config without TUN does not touch it.
+func applyConfigFile(configDir string) error {
+	if configDir == "" {
+		return errors.New("config dir is empty")
+	}
+
+	// Parsing a config rewrites mihomo's process-wide state, so it must not run
+	// while start/stop are rebuilding the core.
+	mu.Lock()
+	defer mu.Unlock()
+	if err := setHomeDir(configDir); err != nil {
+		return err
+	}
+	cfg, err := executor.Parse()
+	if err != nil {
+		return fmt.Errorf("parse config: %w", err)
+	}
+	cfg.General.Tun.Enable = false
+	hub.ApplyConfig(cfg)
+	return nil
+}
+
+func serveProfileAPI(configDir string) {
+	if configDir == "" {
+		return
+	}
+	profileMu.Lock()
+	defer profileMu.Unlock()
+	if profileAPI != nil && profileAPI.Dir() == configDir {
+		return
+	}
+	// Close directly instead of through closeProfileAPI: that helper locks
+	// profileMu again, and a second Lock on the same mutex deadlocks. This hung
+	// every mobile start before the socket was ever created.
+	if profileAPI != nil {
+		profileAPI.Close()
+		profileAPI = nil
+	}
+	server, err := clashservice.ServeTunnel(configDir, applyConfigFile)
+	if err != nil {
+		// Silence here hid a socket that never appeared: the app then only saw
+		// ENOENT on cs.sock. Keep the error visible in the core log instead.
+		mlog.Errorln("serve profile API in %s: %v", configDir, err)
+		return
+	}
+	profileAPI = server
+}
+
+func closeProfileAPI() {
+	profileMu.Lock()
+	defer profileMu.Unlock()
+	if profileAPI == nil {
+		return
+	}
+	profileAPI.Close()
+	profileAPI = nil
 }
 
 // freeString releases a string returned by this library.

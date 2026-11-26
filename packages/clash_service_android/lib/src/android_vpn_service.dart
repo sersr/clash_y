@@ -240,25 +240,19 @@ abstract final class AndroidVpnService {
     }
   }
 
-  /// Updates the running service's profile title, traffic socket, and refresh
-  /// schedule without restarting the core.
+  /// Updates the notification title and traffic socket of the running
+  /// service.
   ///
-  /// The core is left untouched, so switching profiles does not restart the
-  /// VPN. When the service is not running the call is a no-op, and the next
-  /// [start] carries the profile instead.
+  /// The core reads config.yaml from disk and owns the refresh schedule in Go,
+  /// so neither the config nor the subscription is pushed here: the service
+  /// only keeps what the foreground notification and the traffic monitor need.
+  /// When it is not running the call is a no-op and the next [start] carries
+  /// the profile instead.
   static Future<bool> updateProfile({
-    required String configDir,
-    String? profileUrl,
-    String? profileName,
-    String? script,
+    required String profileName,
     String? controllerSocketPath,
-    int? updateIntervalMinutes,
-    DateTime? updateTime,
   }) async {
     if (!isSupported) return false;
-
-    final directory = configDir.trim();
-    if (directory.isEmpty) return false;
 
     final context = _applicationContext();
     if (context == null) return false;
@@ -266,21 +260,17 @@ abstract final class AndroidVpnService {
     try {
       final intent = _serviceIntent(context, _Contract.actionUpdateProfile);
       try {
-        _putString(intent, _Contract.extraConfigDir, directory);
-        _putProfile(
+        _putString(intent, _Contract.extraProfileName, profileName);
+        _putString(
           intent,
-          profileUrl,
-          profileName,
-          script,
-          controllerSocketPath,
-          updateIntervalMinutes,
-          updateTime,
+          _Contract.extraControllerSocket,
+          controllerSocketPath ?? '',
         );
         _startService(context, intent);
       } finally {
         intent.release();
       }
-      _log('Asked ClashVpnService to update the profile for $directory');
+      _log('Asked ClashVpnService to update the notification for $profileName');
       return true;
     } catch (error, stackTrace) {
       _log('Failed to update the VPN profile', error, stackTrace);

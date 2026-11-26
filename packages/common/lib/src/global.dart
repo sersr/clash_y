@@ -14,27 +14,18 @@ abstract final class G {
   static String get appSubPath => _appSubPath!;
   static String get appConfigPath => join(appSubPath, 'clash_config');
 
-  static String? _iosControlSocketPath;
+  static String? _unixSocketPath;
+
+  /// Controller socket of the mihomo core; written into the profile as
+  /// `external-controller-unix` and used by `ClashApi`.
+  static String get unixSocketPath => _unixSocketPath!;
 
   static File getCacheFile(String url) {
     return fs.currentDirectory.childFile(join(appCachePath, basename(url)));
   }
 
-  static String get unixSocketPath {
-    return switch (defaultTargetPlatform) {
-      .windows => r"\\.\pipe\clashy.pipe",
-      .iOS => _iosControlSocketPath ?? '',
-      _ => join(G.appCachePath, 'clash_config', 'socket_clash.sock'),
-    };
-  }
-
   static Future<void> init() async {
     await [
-      if (defaultTargetPlatform == .iOS)
-        Future(
-          () async =>
-              _iosControlSocketPath = await ClashService.iosControlSocketPath,
-        ),
       getApplicationDocumentsDirectory().then((docDir) {
         _appPath = join(docDir.path, 'clashy');
       }),
@@ -45,6 +36,15 @@ abstract final class G {
         _appCachePath = join(cache.path, 'clashy');
       }),
     ].wait;
+
+    // iOS keeps the core socket in the App Group, so the tunnel process can
+    // reach it; that lookup needs the platform channel and runs after the
+    // plain path lookups above.
+    _unixSocketPath = switch (defaultTargetPlatform) {
+      .windows => r"\\.\pipe\clashy.pipe",
+      .iOS => await ClashService.iosControlSocketPath,
+      _ => join(appCachePath, 'clash_config', 'socket_clash.sock'),
+    };
 
     return Hives.init(join(appSubPath, 'hives'));
   }
@@ -58,6 +58,7 @@ abstract final class G {
 
     _appSubPath = join(dir, 'clashy');
     _appCachePath = join(cache, 'clashy');
+    _unixSocketPath = join(_appCachePath!, 'clash_config', 'socket_clash.sock');
 
     return Hives.init(join(appSubPath, 'hives'));
   }

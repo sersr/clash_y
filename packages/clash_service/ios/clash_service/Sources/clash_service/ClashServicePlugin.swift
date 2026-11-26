@@ -111,35 +111,6 @@ public final class ClashServicePlugin: NSObject, FlutterPlugin {
         }
       }
 
-    case "refreshProfile":
-      guard let arguments = call.arguments as? [String: Any],
-            let configDirectory = arguments["configDir"] as? String,
-            let url = arguments["url"] as? String,
-            !configDirectory.isEmpty,
-            !url.isEmpty else {
-        result(FlutterError(
-          code: "invalid_arguments",
-          message: IOSVpnError.invalidArguments.localizedDescription,
-          details: nil
-        ))
-        return
-      }
-      let script = arguments["script"] as? String ?? ""
-      let interval = arguments["interval"] as? Int ?? 0
-      Task {
-        do {
-          let refreshed = try await Self.refreshProfile(
-            configDirectory: configDirectory,
-            url: url,
-            script: script,
-            intervalMinutes: interval
-          )
-          Self.deliver(result, value: refreshed)
-        } catch {
-          Self.deliver(result, error: error)
-        }
-      }
-
     case "stop":
       Task {
         do {
@@ -276,48 +247,6 @@ public final class ClashServicePlugin: NSObject, FlutterPlugin {
     let message = try JSONSerialization.data(
       withJSONObject: ["action": "reload"]
     )
-    return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
-      do {
-        try session.sendProviderMessage(message) { response in
-          guard let response,
-                let result = try? JSONSerialization.jsonObject(with: response) as? [String: Bool] else {
-            continuation.resume(returning: false)
-            return
-          }
-          continuation.resume(returning: result["success"] == true)
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
-  }
-
-  /// Asks the running tunnel to download the subscription and rewrite
-  /// config.yaml itself, so a refresh can happen while the app is suspended.
-  /// The download, the profile script and the app-owned key overlay all run in
-  /// the Go core, the same code the desktop daemon uses.
-  private static func refreshProfile(
-    configDirectory: String,
-    url: String,
-    script: String,
-    intervalMinutes: Int
-  ) async throws -> Bool {
-    guard let manager = try await loadManager(),
-          manager.isEnabled,
-          let session = manager.connection as? NETunnelProviderSession else {
-      return false
-    }
-
-    var payload: [String: String] = [
-      "action": "refresh",
-      "url": url,
-      "interval": String(intervalMinutes),
-    ]
-    if !script.isEmpty {
-      payload["script"] = script
-    }
-    let message = try JSONSerialization.data(withJSONObject: payload)
-
     return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
       do {
         try session.sendProviderMessage(message) { response in

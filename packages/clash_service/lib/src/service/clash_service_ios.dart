@@ -30,7 +30,14 @@ abstract final class IOSVpnService {
     return p.join(appGroup, _configDirectoryName);
   }
 
-  static Future<String> _appGroupDirectory() async {
+  /// The App Group container never moves while the process lives, and the
+  /// channel round trip hops to the main thread, so ask once and keep it.
+  static Future<String> _appGroupDirectory() =>
+      _appGroup ??= _queryAppGroupDirectory();
+
+  static Future<String>? _appGroup;
+
+  static Future<String> _queryAppGroupDirectory() async {
     final path = await _channel.invokeMethod<String>('appGroupDirectory');
     if (path == null || path.isEmpty) {
       throw StateError('The iOS VPN App Group container is unavailable.');
@@ -51,35 +58,6 @@ abstract final class IOSVpnService {
     await _copyConfigDirectory(profile.configDir, configDirectory);
     return await _channel.invokeMethod<bool>('start', {
           'configDir': configDirectory,
-        }) ??
-        false;
-  }
-
-  static Future<bool> updateProfile(ClashProfile profile) async {
-    final configDirectory = await sharedConfigDirectory;
-    await _copyConfigDirectory(profile.configDir, configDirectory);
-    return await _channel.invokeMethod<bool>('updateProfile', {
-          'configDir': configDirectory,
-        }) ??
-        false;
-  }
-
-  /// Asks the running tunnel to download [profile]'s subscription and rewrite
-  /// the shared config itself. The download, the profile script and the
-  /// app-owned key overlay run in the Go core, so this works while the app is
-  /// in the background and produces the same file the app would.
-  ///
-  /// Returns `false` when the tunnel is not running.
-  static Future<bool> refreshProfile(ClashProfile profile) async {
-    final url = profile.url;
-    if (url == null || url.isEmpty) return false;
-
-    final configDirectory = await sharedConfigDirectory;
-    return await _channel.invokeMethod<bool>('refreshProfile', {
-          'configDir': configDirectory,
-          'url': url,
-          'script': profile.script ?? '',
-          'interval': profile.updateInterval ?? 0,
         }) ??
         false;
   }
@@ -134,13 +112,16 @@ abstract final class IOSVpnService {
     await destination.create(recursive: true);
 
     for (final relativePath in directories) {
-      await Directory(
-        p.join(destinationPath, relativePath),
-      ).create(recursive: true);
+      await Directory(p.join(destinationPath, relativePath))
+          .create(recursive: true);
     }
     for (final entry in files.entries) {
       final target = File(p.join(destinationPath, entry.key));
       await target.parent.create(recursive: true);
+      // config.yaml becomes the core's file once the tunnel has written it:
+      // otherwise a later start would copy the app's older config back over a
+      // subscription the core refreshed in the background.
+      if (entry.key == 'config.yaml' && await target.exists()) continue;
       await entry.value.copy(target.path);
     }
 

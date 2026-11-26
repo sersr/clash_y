@@ -4,18 +4,77 @@ import 'package:clash_service_android/clash_service_android.dart' as android;
 import 'package:file/local.dart' as f;
 import 'package:nop/nop.dart';
 import 'package:server/clash_service_windows.dart';
+import 'package:path/path.dart' as p;
 import 'package:server/server.dart' show ApiResp, ClashProfile, version;
 
 import 'src/service/api.dart';
-import 'src/service/clash_service_linux.dart';
 import 'src/service/clash_service_ios.dart';
+import 'src/service/clash_service_linux.dart';
 import 'src/service/clash_service_macos_cmd.dart';
 
 export 'package:server/server.dart';
 
 const fs = f.LocalFileSystem();
 
+/// The app's only entry point to clashyService.
+///
+/// clashyService is the Go process that owns mihomo: on desktop it is the
+/// installed daemon behind `clashSocket`, on mobile it is the tunnel process
+/// behind the socket [initTunnelSocket] resolves at start-up. Its wire protocol
+/// lives in [ClashServiceApi], which stays inside this package: callers use the
+/// methods below and never reach for the API object, so the socket choice, the
+/// platform split and the response envelope are handled in one place.
+///
+/// Two groups of methods are deliberately platform-bound and no-op elsewhere:
+/// desktop ones ([updateDesktopServiceIfOutdated], [hasOtherVpnConnection],
+/// [close], [uninstall]) and mobile ones ([initTunnelSocket]). The rest either
+/// route to the right platform backend or talk to whichever service the client
+/// currently points at.
 abstract final class ClashService {
+  static bool get _isDesktop =>
+      Platform.isMacOS || Platform.isLinux || Platform.isWindows;
+
+  /// Points [ClashServiceApi] at the mobile tunnel's control socket, once, at
+  /// app start: the directory comes from the platform (the app's own on
+  /// Android, the App Group copy on iOS, which the tunnel cannot reach from the
+  /// app sandbox). Desktop keeps the daemon socket it already defaults to.
+  static Future<void> initTunnelSocket({String? configDir}) async {
+    final String? directory;
+    if (Platform.isIOS) {
+      directory = await IOSVpnService.sharedConfigDirectory;
+    } else if (Platform.isAndroid) {
+      directory = configDir;
+    } else {
+      directory = null;
+    }
+    if (directory == null) return;
+
+    ClashServiceApi.socketPath = _clashControlSocket(directory);
+  }
+
+  /// Waits until the service answers. Android starts its core inside the
+  /// `:vpn` process asynchronously (and may still be fetching GeoIP data), so
+  /// the control socket shows up later than the start request returns.
+  static Future<bool> waitForService({
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (await ClashServiceApi.isReady()) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    return false;
+  }
+
+  static String _clashControlSocket(String configDir) {
+    final direct = p.join(configDir, _controlSocketName);
+    if (direct.length <= _maxUnixSocketPath) return direct;
+    return p.join(p.dirname(configDir), _controlSocketName);
+  }
+
+  static const _controlSocketName = 'cs.sock';
+  static const _maxUnixSocketPath = 100;
+
   /// iOS control socket path shared with the Packet Tunnel extension.
   static Future<String> get iosControlSocketPath =>
       IOSVpnService.controlSocketPath;
@@ -32,20 +91,16 @@ abstract final class ClashService {
 
   /// Whether macOS has an active VPN connection or a route through a utun
   /// interface that could conflict with Clashy.
-  static Future<bool> hasOtherVpnConnection({
-    bool clashyIsRunning = false,
-  }) async {
+  static Future<bool> hasOtherVpnConnection() async {
     if (!Platform.isMacOS) return false;
-    return MacOSServiceProcess.hasOtherVpnConnection(
-      checkTunnelRoutes: !clashyIsRunning,
-    );
+    return MacOSServiceProcess.hasOtherVpnConnection();
   }
 
   /// Reinstalls the desktop service if its running version is older than this app.
   static Future<void> updateDesktopServiceIfOutdated({
     required String controllerSocketPath,
   }) async {
-    if (!Platform.isMacOS && !Platform.isLinux && !Platform.isWindows) return;
+    if (!_isDesktop) return;
     if (!await _isDesktopServiceRunning()) return;
 
     final serviceVersion = await ClashServiceApi.getServiceVersion();
@@ -161,7 +216,7 @@ abstract final class ClashService {
     required String controllerSocketPath,
   }) async {
     if (Platform.isAndroid) {
-      return android.AndroidVpnService.start(
+      final requested = await android.AndroidVpnService.start(
         profile.configDir,
         profileUrl: profile.url,
         profileName: profile.name,
@@ -173,21 +228,27 @@ abstract final class ClashService {
         allowedApplications: allowedApplications,
         disallowedApplications: disallowedApplications,
       );
+      if (!requested) return false;
+      // Android establishes the TUN inside the `:vpn` process after the intent
+      // returns; until then the platform still reports the previous state.
+      return _waitForVpnState(true);
     }
 
     if (Platform.isIOS) {
       return IOSVpnService.start(profile);
     }
 
-    if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
+    if (_isDesktop) {
       if (!await _startDesktopService(
         controllerSocketPath: controllerSocketPath,
       )) {
         return false;
       }
-      if (!await ClashServiceApi.isClashRunning()) {
-        final coreResponse = await ClashServiceApi.startClashCore(profile);
-        if (!coreResponse.success) return false;
+      try {
+        await _startDesktopCore(profile);
+      } catch (e) {
+        Log.e('starting the desktop core failed: $e');
+        return false;
       }
       final vpnResponse = await ClashServiceApi.startVpn(profile);
       return vpnResponse.success && await ClashServiceApi.isVpnActive();
@@ -217,47 +278,47 @@ abstract final class ClashService {
       if (!await startService()) return false;
       // 服务已经在 RUNNING，但命名管道可能还没开始监听；先短轮询到管道可用，
       // 免得紧接着的 status 请求走进 2 秒一次的重试退避。
-      return _waitUntilWindowsServiceReady();
+      await _waitUntilWindowsServiceReady();
+      return true;
     }
     return false;
   }
 
-  /// 等待 Windows 服务的控制管道可用，最多 2 秒。
-  static Future<bool> _waitUntilWindowsServiceReady() async {
+  /// 等待 Windows 服务的控制管道可用，最多 2 秒。管道迟迟不就绪时由
+  /// `_RetryInterceptor` 的重试退避兜底，所以这里只等、不判失败。
+  static Future<void> _waitUntilWindowsServiceReady() async {
     for (var i = 0; i < 20; i++) {
-      if (await ClashServiceApi.getServiceVersion() != null) return true;
+      if (await ClashServiceApi.getServiceVersion() != null) return;
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
-    return true;
   }
-
-  static Future<ApiResp> getClashEnv() => ClashServiceApi.getClashEnv();
-
-  static Future<ApiResp> startClash(ClashProfile profile) =>
-      ClashServiceApi.startClash(profile);
-
-  static Future<ApiResp> startVpn(ClashProfile profile) =>
-      ClashServiceApi.startVpn(profile);
-
-  static Future<ApiResp> stopVpn() => ClashServiceApi.stopVpn();
 
   static Future<ApiResp> reloadClashConfig() =>
       ClashServiceApi.reloadClashConfig();
 
-  static Future<ApiResp> updateClashProfile(ClashProfile profile) =>
-      ClashServiceApi.updateClashProfile(profile);
-
-  static Future<ApiResp> stopClash() => ClashServiceApi.stopClash();
-
-  static Future<bool> isClashRunning() => ClashServiceApi.isClashRunning();
-
   /// Whether the platform's VPN interface or tunnel is active.
+  /// Waits until the platform reports [active].
+  ///
+  /// Android starts and stops its TUN asynchronously inside the `:vpn`
+  /// process, so the state read right after the intent still belongs to the
+  /// previous session. Callers that flip a switch would otherwise show the old
+  /// value for a few seconds.
+  static Future<bool> _waitForVpnState(
+    bool active, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (await isVpnActive() == active) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return false;
+  }
+
   static Future<bool> isVpnActive() async {
     if (Platform.isAndroid) return android.AndroidVpnService.isVpnActive();
     if (Platform.isIOS) return IOSVpnService.isActive();
-    if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
-      return ClashServiceApi.isVpnActive();
-    }
+    if (_isDesktop) return ClashServiceApi.isVpnActive();
     return false;
   }
 
@@ -281,27 +342,33 @@ abstract final class ClashService {
       );
     }
 
-    if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
+    if (_isDesktop) {
       if (!await _startDesktopService(
         controllerSocketPath: controllerSocketPath,
       )) {
         return false;
       }
-      if (await ClashServiceApi.isClashRunning()) return true;
-
-      final response = await ClashServiceApi.startClashCore(profile);
-      if (!response.success) {
-        final details = response.data ?? response.msg;
-        throw StateError(
-          details == null || '$details'.isEmpty
-              ? 'Desktop service failed to start the Clash core.'
-              : 'Desktop service failed to start the Clash core: $details',
-        );
-      }
+      await _startDesktopCore(profile);
       return true;
     }
 
     return false;
+  }
+
+  /// Starts the daemon's core unless it already runs; throws with the service's
+  /// own message so callers can surface it.
+  static Future<void> _startDesktopCore(ClashProfile profile) async {
+    if (await ClashServiceApi.isClashRunning()) return;
+
+    final response = await ClashServiceApi.startClashCore(profile);
+    if (response.success) return;
+
+    final details = response.data ?? response.msg;
+    throw StateError(
+      details == null || '$details'.isEmpty
+          ? 'Desktop service failed to start the Clash core.'
+          : 'Desktop service failed to start the Clash core: $details',
+    );
   }
 
   /// Reloads the Android core configuration without changing VPN state.
@@ -321,31 +388,30 @@ abstract final class ClashService {
     );
   }
 
-  /// Whether the Android VPN interface is currently established.
-  /// Updates the profile shown/used by a running service without restarting
-  /// the core.
+  /// Hands [profile] to the running service and updates what it shows.
   ///
-  /// Desktop services are driven through their IPC API instead; this only
-  /// covers Android, whose backend lives in the VPN process.
+  /// The service owns the config and the refresh schedule, so the profile is
+  /// only announced: Android also renames its notification title, while iOS and
+  /// desktop have nothing else to update. Returns false when the service
+  /// rejects the call, which means it is not running yet.
   static Future<bool> updateProfile(
     ClashProfile profile, {
+    bool refresh = true,
     String? controllerSocketPath,
   }) async {
+    final response = await ClashServiceApi.updateProfile(
+      profile,
+      refresh: refresh,
+    );
+    if (response?.success != true) return false;
+
     if (Platform.isAndroid) {
-      return android.AndroidVpnService.updateProfile(
-        configDir: profile.configDir,
-        profileUrl: profile.url,
-        profileName: profile.name,
-        script: profile.script,
+      await android.AndroidVpnService.updateProfile(
+        profileName: profile.name ?? '',
         controllerSocketPath: controllerSocketPath,
-        updateIntervalMinutes: profile.updateInterval,
-        updateTime: profile.updateTime,
       );
     }
-    if (Platform.isIOS) {
-      return IOSVpnService.updateProfile(profile);
-    }
-    return false;
+    return true;
   }
 
   /// Tears the VPN service down.
@@ -354,7 +420,9 @@ abstract final class ClashService {
   /// 弹 UAC）。已停止时直接返回 `true`，不触发提权。
   static Future<bool> close() async {
     if (Platform.isAndroid) {
-      return android.AndroidVpnService.close();
+      final closed = await android.AndroidVpnService.close();
+      if (!closed) return false;
+      return _waitForVpnState(false);
     }
     if (Platform.isIOS) {
       return IOSVpnService.close();
@@ -382,25 +450,22 @@ abstract final class ClashService {
 
   static Future<bool> stop() async {
     if (Platform.isAndroid) {
-      return android.AndroidVpnService.stopVpn();
+      final stopped = await android.AndroidVpnService.stopVpn();
+      if (!stopped) return false;
+      return _waitForVpnState(false);
     }
     if (Platform.isIOS) {
       return IOSVpnService.close();
     }
 
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      try {
-        final response = await ClashService.stopVpn();
-        if (!response.success) {
-          return false;
-        }
-        return true;
-      } catch (e) {
-        return false;
-      }
-    }
+    if (!_isDesktop) return false;
 
-    return false;
+    try {
+      return (await ClashServiceApi.stopVpn()).success;
+    } catch (e) {
+      Log.e('stopping the desktop VPN failed: $e');
+      return false;
+    }
   }
 
   /// Removes the VPN service entirely.

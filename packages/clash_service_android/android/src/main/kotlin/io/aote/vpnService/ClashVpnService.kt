@@ -14,6 +14,7 @@ import android.os.ParcelFileDescriptor
 import android.os.ResultReceiver
 import android.util.Log
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -53,12 +54,8 @@ class ClashVpnService : VpnService() {
         private const val KEY_ALLOWED_APPS = "allowedApplications"
         private const val KEY_DISALLOWED_APPS = "disallowedApplications"
 
-        /** 自动更新配置用的 Profile（App 未运行时由本进程刷新）。 */
-        private const val KEY_PROFILE_URL = "profileUrl"
         private const val KEY_PROFILE_NAME = "profileName"
-        private const val KEY_PROFILE_SCRIPT = "profileScript"
         private const val KEY_CONTROLLER_SOCKET = "controllerSocket"
-        private const val KEY_UPDATE_INTERVAL = "updateInterval"
         private const val KEY_UPDATE_TIME = "updateTime"
 
         /** 上一次真正执行 `startCore` 的时刻（`System.currentTimeMillis()`）。 */
@@ -97,13 +94,6 @@ class ClashVpnService : VpnService() {
 
     /** 排队等待退避到期的自动恢复任务，同一时刻至多一个。 */
     private var pendingAutoStart: Runnable? = null
-
-    /** 已排队的下一次 Profile 刷新任务。 */
-    private var pendingProfileUpdate: Runnable? = null
-
-    /** 当前运行配置对应的 Profile；为空表示不做自动更新。 */
-    @Volatile
-    private var profileUpdate: ProfileUpdate? = null
 
     @Volatile
     private var profileName = ""
@@ -194,7 +184,6 @@ class ClashVpnService : VpnService() {
         Log.i(TAG, "VPN permission revoked")
         // 授权被撤销：持久化开关同步关闭，避免 sticky 重启再拉起
         cancelPendingWork()
-        clearProfileUpdateState()
         setEnabled(false)
         writeVpnActive(false)
         executor.execute {
@@ -247,10 +236,12 @@ class ClashVpnService : VpnService() {
      * App 切到别的 Profile 时只更新调度信息，不打断正在运行的 VPN。
      * 服务没在运行时直接退出：下一次显式启动会带上新的 Profile。
      */
+    /**
+     * 切换 Profile 时只更新通知里的名字：订阅的下载、调度和应用都在 Go 核心
+     * 里（App 通过控制 socket 调 `/clash/profile`），服务不再保存调度状态。
+     */
     private fun handleUpdateProfile(intent: Intent?) {
         val receiver = intent?.getResultReceiver()
-        // 用持久化开关而不是 coreStarted 判断：内核重启（含配置更新）
-        // 期间 coreStarted 会短暂为 false。
         if (!coreStarted && !isVpnEnabled()) {
             Log.i(TAG, "profile update ignored: Clash core is not running")
             sendResult(receiver, false, "Clash core is not running")
@@ -258,11 +249,8 @@ class ClashVpnService : VpnService() {
         }
 
         applyNotificationProfile(intent)
-        profileUpdate = intent.readProfileUpdate()
-        persistProfile(profileUpdate)
-        scheduleProfileUpdate()
         sendResult(receiver, true)
-        Log.i(TAG, "profile schedule updated: ${profileUpdate?.url ?: "none"}")
+        Log.i(TAG, "profile notification updated: $profileName")
     }
 
     private fun handleStart(intent: Intent?) {
@@ -290,8 +278,6 @@ class ClashVpnService : VpnService() {
             stopSelf()
             return
         }
-
-        profileUpdate = intent.readProfileUpdate()
 
         val allowedApplications = intent?.getStringArrayListExtra(
             VpnServiceContract.EXTRA_ALLOWED_APPLICATIONS
@@ -369,11 +355,8 @@ class ClashVpnService : VpnService() {
     private fun handleStartCore(intent: Intent?) {
         val receiver = intent?.getResultReceiver()
         applyNotificationProfile(intent)
-        profileUpdate = intent.readProfileUpdate()
 
         if (coreStarted) {
-            persistProfile(profileUpdate)
-            scheduleProfileUpdate()
             sendResult(receiver, true)
             return
         }
@@ -402,7 +385,6 @@ class ClashVpnService : VpnService() {
             )
             if (error == null) {
                 sendResult(receiver, true)
-                scheduleProfileUpdate()
             } else {
                 sendResult(receiver, false, error)
                 stopForegroundCompat()
@@ -419,7 +401,6 @@ class ClashVpnService : VpnService() {
         }
 
         applyNotificationProfile(intent)
-        profileUpdate = intent.readProfileUpdate()
         val configDir = intent
             ?.getStringExtra(VpnServiceContract.EXTRA_CONFIG_DIR)
             ?.trim()
@@ -451,7 +432,6 @@ class ClashVpnService : VpnService() {
             }
             if (error == null) {
                 sendResult(receiver, true)
-                scheduleProfileUpdate()
             } else {
                 sendResult(receiver, false, error)
                 Log.e(TAG, "Failed to reload the current configuration: $error")
@@ -511,123 +491,6 @@ class ClashVpnService : VpnService() {
 
     private fun cancelPendingWork() {
         cancelPendingAutoStart()
-        cancelProfileUpdate()
-    }
-
-    private fun clearProfileUpdateState() {
-        profileUpdate = null
-        clearPersistedProfile()
-    }
-
-    // ---------------------------------------------------------------------
-    // Profile auto update（App 未运行时由本进程刷新 config.yaml）
-    // ---------------------------------------------------------------------
-
-    private fun Intent?.readProfileUpdate(): ProfileUpdate? {
-        val url = this?.getStringExtra(VpnServiceContract.EXTRA_PROFILE_URL)
-            ?: prefs.getString(KEY_PROFILE_URL, null)
-        val interval = this?.getStringExtra(VpnServiceContract.EXTRA_UPDATE_INTERVAL)
-            ?: prefs.getString(KEY_UPDATE_INTERVAL, null)
-        val updateTime = this?.getStringExtra(VpnServiceContract.EXTRA_UPDATE_TIME)
-            ?: prefs.getString(KEY_UPDATE_TIME, null)
-        val script = this?.getStringExtra(VpnServiceContract.EXTRA_PROFILE_SCRIPT)
-            ?: prefs.getString(KEY_PROFILE_SCRIPT, null)
-        return ProfileUpdate.fromExtras(url, interval, updateTime, script)
-    }
-
-    private fun persistProfile(update: ProfileUpdate?) {
-        val editor = prefs.edit()
-        if (update == null) {
-            editor.remove(KEY_PROFILE_URL)
-                .remove(KEY_UPDATE_INTERVAL)
-                .remove(KEY_UPDATE_TIME)
-                .remove(KEY_PROFILE_SCRIPT)
-        } else {
-            editor.putString(KEY_PROFILE_URL, update.url)
-                .putString(KEY_UPDATE_INTERVAL, update.intervalMinutes.toString())
-                .putString(KEY_UPDATE_TIME, update.updateTimeMs.toString())
-                .putString(KEY_PROFILE_SCRIPT, update.script)
-        }
-        editor.apply()
-    }
-
-    private fun clearPersistedProfile() = persistProfile(null)
-
-    private fun scheduleProfileUpdate() {
-        cancelProfileUpdate()
-        val update = profileUpdate ?: return
-        val delay = update.nextDelayMs() ?: return
-
-        val task = Runnable { runProfileUpdate() }
-        pendingProfileUpdate = task
-        mainHandler.postDelayed(task, delay)
-        Log.i(TAG, "next profile update in ${delay}ms (${update.url})")
-    }
-
-    private fun cancelProfileUpdate() {
-        val task = pendingProfileUpdate ?: return
-        pendingProfileUpdate = null
-        mainHandler.removeCallbacks(task)
-    }
-
-    private fun runProfileUpdate() {
-        pendingProfileUpdate = null
-        executor.execute {
-            val configDir = prefs.getString(KEY_CONFIG_DIR, null)
-            val update = profileUpdate
-            if (update == null || configDir == null || !coreStarted) {
-                mainHandler.post { scheduleProfileUpdate() }
-                return@execute
-            }
-
-            try {
-                Log.i(TAG, "updating profile from ${update.url}")
-                val backup = ConfigUpdater.updateConfig(configDir, update.url, update.script)
-                if (restartForProfile(configDir, backup)) Log.i(TAG, "profile updated")
-                // 无论成败都从当前时刻重新计时：失败后按完整周期重试，
-                // 避免订阅地址不可达时反复下载。App 期间切换了 Profile
-                // 时不要覆盖新的调度。
-                if (profileUpdate == update) {
-                    profileUpdate = update.copy(updateTimeMs = System.currentTimeMillis())
-                    persistProfile(profileUpdate)
-                }
-            } catch (t: Throwable) {
-                Log.e(TAG, "profile update failed", t)
-                profileUpdate = update.copy(updateTimeMs = System.currentTimeMillis())
-            } finally {
-                mainHandler.post { scheduleProfileUpdate() }
-            }
-        }
-    }
-
-    /** 重启内核加载磁盘上的新配置；失败时回滚到上一份配置。 */
-    private fun restartForProfile(configDir: String, backup: File): Boolean {
-        val allowList = prefs.getBoolean(KEY_ALLOW_LIST, false)
-        val allowed = prefs.getStringSet(KEY_ALLOWED_APPS, null)?.toList().orEmpty()
-        val disallowed = prefs.getStringSet(KEY_DISALLOWED_APPS, null)?.toList().orEmpty()
-
-        val error = startCoreInternal(configDir, allowList, allowed, disallowed)
-        if (error == null) {
-            backup.delete()
-            return true
-        }
-
-        Log.e(TAG, "restart with the updated config failed: $error; rolling back")
-        try {
-            ConfigUpdater.writeAtomically(
-                File(configDir, "config.yaml"),
-                backup.readText(),
-            )
-        } catch (t: Throwable) {
-            Log.e(TAG, "failed to restore the previous config", t)
-        }
-        backup.delete()
-
-        val rollbackError = startCoreInternal(configDir, allowList, allowed, disallowed)
-        if (rollbackError != null) {
-            Log.e(TAG, "rollback start failed: $rollbackError")
-        }
-        return false
     }
 
     private fun startCore(
@@ -659,7 +522,6 @@ class ClashVpnService : VpnService() {
                 return
             }
             sendResult(receiver, true)
-            scheduleProfileUpdate()
             return
         }
 
@@ -728,7 +590,6 @@ class ClashVpnService : VpnService() {
                 disallowedApplications,
                 enabled = true,
             )
-            persistProfile(profileUpdate)
             Log.i(TAG, "mihomo started, configDir=$configDir nativeFd=$detachedNativeFd")
             startTrafficMonitor()
             null
@@ -744,7 +605,6 @@ class ClashVpnService : VpnService() {
         val receiver = intent?.getResultReceiver()
         // 手动停止是一次干净的收场：撤掉排队中的退避启动并清风暴计数
         cancelPendingWork()
-        clearProfileUpdateState()
         prefs.edit().putInt(KEY_STORM_LEVEL, 0).apply()
         executor.execute {
             // 先关持久化开关：即使随后进程被杀，sticky 重启也不会再拉起
@@ -789,7 +649,6 @@ class ClashVpnService : VpnService() {
             }
             stopForegroundCompat()
             sendResult(receiver, true)
-            scheduleProfileUpdate()
             Log.i(TAG, "VPN disabled and notification dismissed; mihomo core remains running")
         }
     }
@@ -822,7 +681,6 @@ class ClashVpnService : VpnService() {
                 disallowedApplications,
                 enabled = false,
             )
-            persistProfile(profileUpdate)
             writeVpnActive(false)
             null
         } catch (t: Throwable) {

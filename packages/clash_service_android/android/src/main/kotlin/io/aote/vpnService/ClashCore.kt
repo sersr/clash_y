@@ -15,12 +15,6 @@ class ClashCore {
 
     external fun startTun(configDir: String, tunFd: Int, protector: Protector): String?
 
-    // refreshProfile downloads the subscription, runs the profile script and
-    // overlays the app-owned keys of the config already in configDir, writing
-    // the result back to configDir/config.yaml. Returns null on success, else a
-    // message. The core is not restarted; the caller decides that.
-    external fun refreshProfile(configDir: String, url: String, script: String): String?
-
     external fun stop(): String?
 
     companion object {

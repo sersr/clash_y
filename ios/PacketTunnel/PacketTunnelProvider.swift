@@ -46,16 +46,6 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
   private var configDirectory: String?
   private var pathMonitor: NWPathMonitor?
 
-  // Subscription refresh schedule, persisted in the App Group so a restarted
-  // tunnel resumes it without help from the app.
-  private var refreshTimer: Timer?
-  private var refreshURL: String?
-  private var refreshScript = ""
-  private var refreshIntervalMinutes = 0
-  private var refreshDueDate: Date?
-
-  private static let refreshStateName = "profile_refresh.json"
-
   // Reused across pump iterations: a per-packet array Allocation on every
   // read is measurable on the extension's small heap.
   private var receiveBuffer = [UInt8](repeating: 0, count: 65_536)
@@ -107,7 +97,6 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             try self.startCore(configDirectory: configDirectory)
             self.startPacketFlowPump()
             self.startPathMonitor()
-            self.resumeRefreshSchedule()
             completionHandler(nil)
           } catch {
             self.stopCore()
@@ -124,7 +113,6 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
   ) {
     packetQueue.async {
       self.stopPathMonitor()
-      self.stopRefreshSchedule()
       self.stopCore()
       completionHandler()
     }
@@ -156,76 +144,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }
       }
 
-    case "refresh":
-      // The app hands over the profile it wants refreshed; the download, the
-      // profile script and the app-owned key overlay all run inside the core so
-      // a background refresh produces the same config the app would.
-      guard let url = message["url"], !url.isEmpty else {
-        completionHandler?(Self.message(success: false))
-        return
-      }
-      let script = message["script"] ?? ""
-      let interval = Int(message["interval"] ?? "") ?? 0
-      packetQueue.async {
-        do {
-          try self.downloadAndApplyProfile(
-            configDirectory: configDirectory,
-            url: url,
-            script: script
-          )
-          try self.restartForNewConfig(configDirectory: configDirectory)
-          self.scheduleRefresh(
-            configDirectory: configDirectory,
-            url: url,
-            script: script,
-            intervalMinutes: interval,
-            lastUpdate: Date()
-          )
-          completionHandler?(Self.message(success: true))
-        } catch {
-          NSLog(
-            "Clashy Packet Tunnel profile refresh failed: %@",
-            error.localizedDescription
-          )
-          // A failed download still counts as an attempt so the schedule keeps
-          // moving instead of retrying in a tight loop.
-          self.scheduleRefresh(
-            configDirectory: configDirectory,
-            url: url,
-            script: script,
-            intervalMinutes: interval,
-            lastUpdate: Date()
-          )
-          completionHandler?(Self.message(success: false))
-        }
-      }
-
     default:
       completionHandler?(Self.message(success: false))
-    }
-  }
-
-  /// Downloads the subscription and rewrites config.yaml through the core.
-  private func downloadAndApplyProfile(
-    configDirectory: String,
-    url: String,
-    script: String
-  ) throws {
-    let errorPointer = configDirectory.withCString { dir in
-      url.withCString { profileURL in
-        script.withCString { profileScript in
-          refreshProfile(
-            UnsafeMutablePointer(mutating: dir),
-            UnsafeMutablePointer(mutating: profileURL),
-            UnsafeMutablePointer(mutating: profileScript)
-          )
-        }
-      }
-    }
-    if let errorPointer {
-      let message = String(cString: errorPointer)
-      freeString(errorPointer)
-      throw PacketTunnelError.core(message)
     }
   }
 
@@ -264,130 +184,6 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   // MARK: - Subscription refresh schedule
-
-  /// Records the refresh parameters and arms the timer.
-  ///
-  /// The schedule lives in the tunnel, not in the app: the extension keeps
-  /// running while the app is suspended, which is exactly when a subscription
-  /// needs to refresh. `lastUpdate` anchors the interval the same way the app
-  /// does, so a restart resumes instead of downloading again immediately.
-  private func scheduleRefresh(
-    configDirectory: String,
-    url: String,
-    script: String,
-    intervalMinutes: Int,
-    lastUpdate: Date
-  ) {
-    refreshTimer?.invalidate()
-    refreshTimer = nil
-
-    refreshURL = url
-    refreshScript = script
-    refreshIntervalMinutes = intervalMinutes
-
-    guard intervalMinutes > 0, !url.isEmpty else {
-      refreshDueDate = nil
-      persistRefreshState(configDirectory: configDirectory)
-      return
-    }
-
-    let due = lastUpdate.addingTimeInterval(TimeInterval(intervalMinutes) * 60)
-    refreshDueDate = due
-    persistRefreshState(configDirectory: configDirectory)
-
-    let delay = max(0, due.timeIntervalSinceNow)
-    let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
-      self?.packetQueue.async {
-        self?.runScheduledRefresh(configDirectory: configDirectory)
-      }
-    }
-    // The tunnel's run loop only services the main queue; a timer added to it
-    // from packetQueue still fires there, which is what we want.
-    RunLoop.main.add(timer, forMode: .common)
-    refreshTimer = timer
-  }
-
-  private func runScheduledRefresh(configDirectory: String) {
-    guard let url = refreshURL, !url.isEmpty else { return }
-    guard withStateLock({ coreStarted }) else { return }
-
-    do {
-      try downloadAndApplyProfile(
-        configDirectory: configDirectory,
-        url: url,
-        script: refreshScript
-      )
-      try restartForNewConfig(configDirectory: configDirectory)
-      scheduleRefresh(
-        configDirectory: configDirectory,
-        url: url,
-        script: refreshScript,
-        intervalMinutes: refreshIntervalMinutes,
-        lastUpdate: Date()
-      )
-    } catch {
-      NSLog(
-        "Clashy Packet Tunnel scheduled refresh failed: %@",
-        error.localizedDescription
-      )
-      // Retry on the next interval rather than immediately, so an unreachable
-      // provider does not turn into a download loop.
-      scheduleRefresh(
-        configDirectory: configDirectory,
-        url: url,
-        script: refreshScript,
-        intervalMinutes: refreshIntervalMinutes,
-        lastUpdate: Date()
-      )
-    }
-  }
-
-  /// Re-arms the schedule after a tunnel restart, using the persisted state.
-  private func resumeRefreshSchedule() {
-    guard let configDirectory else { return }
-    guard let state = loadRefreshState(configDirectory: configDirectory) else {
-      return
-    }
-    scheduleRefresh(
-      configDirectory: configDirectory,
-      url: state["url"] as? String ?? "",
-      script: state["script"] as? String ?? "",
-      intervalMinutes: state["interval"] as? Int ?? 0,
-      lastUpdate: (state["lastUpdate"] as? Double).map {
-        Date(timeIntervalSince1970: $0)
-      } ?? Date()
-    )
-  }
-
-  private func stopRefreshSchedule() {
-    refreshTimer?.invalidate()
-    refreshTimer = nil
-  }
-
-  private func persistRefreshState(configDirectory: String) {
-    let payload: [String: Any] = [
-      "url": refreshURL ?? "",
-      "script": refreshScript,
-      "interval": refreshIntervalMinutes,
-      "lastUpdate": (refreshDueDate?.timeIntervalSince1970 ?? Date().timeIntervalSince1970)
-        - TimeInterval(refreshIntervalMinutes) * 60,
-    ]
-    let path = (configDirectory as NSString)
-      .appendingPathComponent(Self.refreshStateName)
-    guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
-      return
-    }
-    try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
-  }
-
-  private func loadRefreshState(configDirectory: String) -> [String: Any]? {
-    let path = (configDirectory as NSString)
-      .appendingPathComponent(Self.refreshStateName)
-    guard let data = FileManager.default.contents(atPath: path) else {
-      return nil
-    }
-    return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-  }
 
   private func validatedConfigDirectory() throws -> String {
     guard let requestedPath = (protocolConfiguration as? NETunnelProviderProtocol)?

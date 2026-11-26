@@ -26,11 +26,9 @@ class _ClashHomeState extends State<ClashHome> {
       child: SafeArea(
         child: Cs(() {
           final data = clashMainNotifier.data;
-          final proxies = data?.proxies;
-          final hasData =
-              proxies != null &&
-              proxies.any((element) => proxyHasData(element));
-          if (data == null || proxies == null) {
+          final proxies = data?.proxies ?? [];
+          final hasData = proxies.any((element) => proxyHasData(element));
+          if (!clashMainNotifier.isActived && proxies.isEmpty) {
             return Loading();
           }
 

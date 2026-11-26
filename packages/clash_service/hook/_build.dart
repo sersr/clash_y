@@ -71,7 +71,7 @@ Future<void> _buildService(
 
   await _goBuild(
     coreDir: coreDir,
-    packagePath: './cmd',
+    packagePath: './cmd/clashService',
     executableName: executableName,
     binDir: binDir,
     targetOs: targetOs,

@@ -9,13 +9,11 @@ part 'profile.dart';
 part 'proxy_item.dart';
 part 'traffic.dart';
 
-
 class ProxiesData {
   const ProxiesData({required this.history, required this.proxies});
   final List<History> history;
   final List<ProxyItem> proxies;
 }
-
 
 bool proxyHasData(ProxyItem data) {
   return data.all != null && data.name != null && data.type != null;

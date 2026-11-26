@@ -115,7 +115,8 @@ Future<int> uninstallSystemdService() async {
     return 0;
   }
 
-  final script = '''
+  final script =
+      '''
 set -eu
 systemctl disable --now clashy-service.service 2>/dev/null || true
 rm -f $systemdUnitPath

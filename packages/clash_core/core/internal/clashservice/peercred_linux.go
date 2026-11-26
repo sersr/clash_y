@@ -1,6 +1,6 @@
-//go:build darwin
+//go:build linux
 
-package main
+package clashservice
 
 import (
 	"net"
@@ -9,7 +9,7 @@ import (
 )
 
 // socketPeerUID reports the uid that opened the other end of a Unix socket
-// connection through LOCAL_PEERCRED, which is macOS' equivalent of SO_PEERCRED.
+// connection, using the kernel-provided peer credentials.
 func socketPeerUID(conn net.Conn) (uint32, bool) {
 	unixConn, ok := conn.(*net.UnixConn)
 	if !ok {
@@ -23,11 +23,11 @@ func socketPeerUID(conn net.Conn) (uint32, bool) {
 	var uid uint32
 	var okFlag bool
 	if err := raw.Control(func(fd uintptr) {
-		xucred, credErr := unix.GetsockoptXucred(int(fd), unix.SOL_LOCAL, unix.LOCAL_PEERCRED)
+		cred, credErr := unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
 		if credErr != nil {
 			return
 		}
-		uid = xucred.Uid
+		uid = cred.Uid
 		okFlag = true
 	}); err != nil {
 		return 0, false

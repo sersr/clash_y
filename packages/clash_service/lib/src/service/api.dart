@@ -7,29 +7,24 @@ import 'package:server/server.dart' show ApiResp, ClashProfile, clashSocket;
 import '../api/dio/unix_socket_dio.dart';
 
 abstract final class _Apis {
-  static const clashEnv = 'baseInfo/env';
   static const serviceVersion = 'version';
-  static const clashStart = 'clash';
   static const clashStartCore = 'clash/core';
   static const clashVpnStart = 'clash/vpn/start';
   static const clashVpnStop = 'clash/vpn/stop';
   static const clashVpnStatus = 'clash/vpn/status';
   static const clashReload = 'clash/reload';
   static const clashProfile = 'clash/profile';
-  static const clashStop = 'clash/stop';
   static const clashStatus = 'clash/status';
 }
 
 abstract final class ClashServiceApi {
+  /// Socket the client talks to. The desktop daemon by default; the mobile
+  /// tunnel sets it once during app start, before the first request.
+  static String socketPath = clashSocket;
+
   static final _dio = Dio(
     .new(baseUrl: 'http://localhost/', contentType: Headers.jsonContentType),
   )..interceptors.add(_RetryInterceptor());
-
-  static Future<ApiResp> getClashEnv() async {
-    final res = await _dio.get(_Apis.clashEnv);
-    return .transform(res.data);
-  }
-
   static Future<String?> getServiceVersion() async {
     try {
       final res = await _dio.get(_Apis.serviceVersion);
@@ -47,10 +42,17 @@ abstract final class ClashServiceApi {
     return null;
   }
 
-  static Future<ApiResp> startClash(ClashProfile profile) async {
-    final res = await _dio.post(_Apis.clashStart, data: profile.toJson());
-
-    return .transform(res.data);
+  /// One non-retrying probe of the control API: Android starts its service
+  /// asynchronously, so callers poll this instead of waiting on retries.
+  static Future<bool> isReady() async {
+    try {
+      final res = await _RetryInterceptor._implDio.get<Object?>(
+        _Apis.serviceVersion,
+      );
+      return res.data is Map;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<ApiResp> startClashCore(ClashProfile profile) async {
@@ -77,17 +79,24 @@ abstract final class ClashServiceApi {
     return .transform(res.data);
   }
 
-  /// Switches the profile a running service refreshes itself from.
-  static Future<ApiResp> updateClashProfile(ClashProfile profile) async {
-    final res = await _dio.post(_Apis.clashProfile, data: profile.toJson());
-
-    return .transform(res.data);
-  }
-
-  static Future<ApiResp> stopClash() async {
-    final res = await _dio.post(_Apis.clashStop);
-
-    return .transform(res.data);
+  /// Hands [profile] to the running service. Unless [refresh] is false it
+  /// also refreshes the subscription; with `refresh: false` only the schedule
+  /// is stored, which is what the app wants right after writing config.yaml.
+  static Future<ApiResp?> updateProfile(
+    ClashProfile profile, {
+    bool refresh = true,
+  }) async {
+    try {
+      final res = await _dio.post(
+        _Apis.clashProfile,
+        data: profile.toJson(),
+        queryParameters: refresh ? null : {'refresh': 'false'},
+      );
+      return ApiResp.transform(res.data);
+    } catch (e) {
+      Log.d('profile API unavailable: $e');
+      return null;
+    }
   }
 
   static Future<bool> isClashRunning() async {
@@ -104,9 +113,13 @@ abstract final class ClashServiceApi {
 }
 
 class _RetryInterceptor extends Interceptor {
-  static final _implDio = Dio(
+  /// Built on the first request, so it picks up the socket the app resolved
+  /// during start-up.
+  static Dio? _client;
+
+  static Dio get _implDio => _client ??= Dio(
     .new(baseUrl: 'http://localhost/', contentType: Headers.jsonContentType),
-  )..httpClientAdapter = UnixSocketAdapter(clashSocket);
+  )..httpClientAdapter = UnixSocketAdapter(ClashServiceApi.socketPath);
 
   @override
   void onRequest(

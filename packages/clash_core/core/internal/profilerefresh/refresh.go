@@ -2,9 +2,9 @@
 // config.yaml the core runs.
 //
 // It is shared by every place that refreshes a profile without the Dart app in
-// the loop: the desktop daemon and the iOS Packet Tunnel extension. Keeping one
-// implementation guarantees a background refresh produces the same file as a
-// refresh started from the app.
+// the loop: the desktop daemon, the Android VPN service and the iOS Packet
+// Tunnel extension. Keeping one implementation guarantees a background refresh
+// produces the same file as a refresh started from the app.
 package profilerefresh
 
 import (
@@ -115,7 +115,7 @@ func merge(downloaded string, script string, current string) (string, error) {
 }
 
 // RunScript applies the profile JavaScript to configText, mirroring the Dart
-// app and the Android updater:
+// app, the only other place that runs a profile script:
 //
 //	const profileConfig = <config as JSON>
 //	<script>
@@ -167,7 +167,7 @@ func evaluateScript(configText string, script string) (result string, err error)
 	defer timer.Stop()
 
 	// The script sees the config as the global `profileConfig` and receives it
-	// as main()'s argument, like the Dart and Android implementations.
+	// as main()'s argument, like the Dart app.
 	quoted := strconv.Quote(string(payload))
 	if _, err := vm.RunString("var profileConfig = JSON.parse(" + quoted + ");"); err != nil {
 		return "", fmt.Errorf("parse config inside the profile script: %w", err)

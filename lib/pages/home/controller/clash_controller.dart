@@ -11,9 +11,13 @@ import 'package:nop/nop.dart';
 class ClashController with NopLifecycle, AlScopeManager {
   ClashController();
 
-  static String get unixSockPath => G.unixSocketPath;
-
   late final ClashEvent clashEvent = getType();
+
+  /// Controller lifetime, used to poll faster and to stay quiet while the core
+  /// is still coming up.
+  final _boot = Stopwatch()..start();
+
+  bool get _isBooting => _boot.elapsed < const Duration(seconds: 30);
   final _mainChangedNotifier = (<String, AV<int>>{});
 
   final _delayQueue = TaskQueue(channels: 10);
@@ -29,20 +33,18 @@ class ClashController with NopLifecycle, AlScopeManager {
 
   bool get isActived => _data.data is DataSuccess;
 
-  final AV<DateTime?> _lastRefreshTime = .val(null);
-  DateTime? get lastRefreshTime => _lastRefreshTime.value;
   final _isRunning = false.val;
   bool get isRunning => _isRunning.value;
 
   AV<bool> get isRunningRaw => _isRunning;
 
   final DataStatusScope<Null, Null> loading = .idle();
-  bool get isLoading => loading.data is StatusLoading;
+  bool get isLoading {
+    return loading.data is StatusLoading;
+  }
 
   Future<void> _initialization = Future<void>.value();
 
-  final map = <String, int?>{};
-  late final ss = map.val;
   String getName(String proxyName) {
     if (data case var data?) {
       for (var item in data.proxies) {
@@ -92,28 +94,32 @@ class ClashController with NopLifecycle, AlScopeManager {
     if (_timer case var timer? when timer.isActive) return;
     if (!_shown.value) return;
 
+    // While the core is still coming up on the first run, poll quickly so the
+    // proxy list is not blank for a full 5s round trip; settle afterwards.
     _timer = Timer(
-      isActived ? const .new(seconds: 30) : const .new(seconds: 5),
+      isActived
+          ? const .new(seconds: 30)
+          : (_isBooting ? const .new(seconds: 1) : const .new(seconds: 5)),
       _loop,
     );
   }
 
   final _timerQueue = TaskQueue();
   Future<void> _loop() async {
-    await _waitForInitialization();
     if (_timerQueue.actived) return _timerQueue.runner;
-
     await _timerQueue.run(() async {
       await _data.load(() async {
         try {
           final remoteData = await clashEvent.clashApi.getProxies();
           if (remoteData != null) {
             _data.success(remoteData);
-          } else {
+          } else if (!_isBooting) {
             _data.failure("get null.");
           }
         } catch (e, s) {
-          _data.failure(e.toString(), s);
+          // The core needs a moment to come up on launch; a refused socket in
+          // that window is expected, so keep the state and retry silently.
+          if (!_isBooting) _data.failure(e.toString(), s);
         }
         await _queryRunningState();
         Log.w('running: $isRunning');
@@ -126,42 +132,45 @@ class ClashController with NopLifecycle, AlScopeManager {
   Future<void> _loadInitialState() async {
     try {
       await _startCoreForInitialization();
-      await _syncProfileWithService();
+      await _pushProfileToService();
     } catch (error, stackTrace) {
       Log.e('Load Clash state failed: $error\n$stackTrace');
       showMsg('Load Clash state failed: $error');
     }
+    _loop();
   }
 
-  Future<bool> _startCoreForInitialization() async {
+  Future<void> _startCoreForInitialization() async {
     final platform = defaultTargetPlatform;
-    if (platform != TargetPlatform.android && !platform.isDesktop) return false;
+    if (platform != TargetPlatform.android && !platform.isDesktop) return;
 
-    await ClashService.updateDesktopServiceIfOutdated(
-      controllerSocketPath: G.unixSocketPath,
-    );
+    // Only desktop installs a daemon; Android starts the core inside the app.
+    if (platform.isDesktop) {
+      await ClashService.updateDesktopServiceIfOutdated(
+        controllerSocketPath: G.unixSocketPath,
+      );
+    }
 
     final profile = await _currentProfile();
     final started = await ClashService.startCore(
       profile,
-      controllerSocketPath: unixSockPath,
+      controllerSocketPath: G.unixSocketPath,
     );
     if (!started) {
       throw StateError(
-        'Failed to start the Clash core (service startup failed or unsupported platform).',
+        'Failed to start the Clash core (service startup failed).',
       );
     }
-    return true;
-  }
-
-  Future<bool> _waitForInitialization() async {
-    await _initialization;
-    return true;
+    if (platform == TargetPlatform.android) {
+      // The intent only asks the :vpn process to start; its control socket
+      // appears once the core is up, so do not announce the profile before.
+      await ClashService.waitForService();
+    }
   }
 
   final _queue = TaskQueue();
   Future<void> start() async {
-    if (!await _waitForInitialization()) return;
+    await _initialization;
 
     final task = loading.load(() => _queue.run(_start))..whenComplete(_loop);
     await task;
@@ -169,7 +178,8 @@ class ClashController with NopLifecycle, AlScopeManager {
 
   Future<void> _start() async {
     try {
-      if (defaultTargetPlatform.isDesktop && await _hasOtherVpnConnection()) {
+      if (defaultTargetPlatform.isDesktop &&
+          await ClashService.hasOtherVpnConnection()) {
         _reportError(
           'Another VPN connection or tunnel route is active. '
           'Disconnect the other VPN and try again.',
@@ -189,11 +199,22 @@ class ClashController with NopLifecycle, AlScopeManager {
         disallowedApplications: mode == .blackList
             ? SettingsHive.disAllowApplications.value
             : const <String>[],
-        controllerSocketPath: unixSockPath,
+        controllerSocketPath: G.unixSocketPath,
       );
       if (!started) {
         _reportError('Start VPN failed.');
         return;
+      }
+      if (!defaultTargetPlatform.isDesktop) {
+        // The tunnel now serves the control API: hand it the schedule, so it
+        // keeps refreshing while the app is in the background. Only the
+        // schedule is stored — the app already wrote config.yaml.
+        await ClashService.waitForService();
+        await ClashService.updateProfile(
+          profile,
+          refresh: false,
+          controllerSocketPath: G.unixSocketPath,
+        );
       }
     } catch (e) {
       _reportError('Start Clash failed: $e');
@@ -201,10 +222,6 @@ class ClashController with NopLifecycle, AlScopeManager {
   }
 
   Future<ClashProfile> _currentProfile() => clashEvent.currentClashProfile();
-
-  Future<bool> _hasOtherVpnConnection() async {
-    return ClashService.hasOtherVpnConnection();
-  }
 
   void _reportError(String message, {bool warning = false}) {
     if (warning) {
@@ -219,33 +236,38 @@ class ClashController with NopLifecycle, AlScopeManager {
   /// refreshes `config.yaml` from the right subscription while the app is in
   /// the background.
   Future<void> syncProfileWithService() async {
-    if (!await _waitForInitialization()) return;
-    await _syncProfileWithService();
+    await _initialization;
+    await _pushProfileToService();
   }
 
-  Future<void> _syncProfileWithService() async {
+  Future<void> _pushProfileToService() async {
     final profile = BaseConfig.currentProfileData.value;
-    if (profile.url == null) {
-      return;
-    }
+    if (profile.url == null) return;
 
     final clashProfile = profile.toClashProfile(configYaml.parent.path);
     try {
-      if (defaultTargetPlatform.isDesktop) {
-        await ClashService.updateClashProfile(clashProfile);
-      } else {
-        await ClashService.updateProfile(
-          clashProfile,
-          controllerSocketPath: unixSockPath,
-        );
+      // Announce the profile and its schedule only. The service owns the timer
+      // and downloads the subscription when it is actually due; asking it to
+      // download here would block startup for seconds and re-apply the config
+      // right after the core came up. A false result only means the service is
+      // not up yet, and the profile is picked up on the next start.
+      final pushed = await ClashService.updateProfile(
+        clashProfile,
+        refresh: false,
+        controllerSocketPath: G.unixSocketPath,
+      );
+      if (!pushed) {
+        Log.w('the service does not accept profiles yet; profile kept');
+        return;
       }
+      Log.i('profile refreshed through the service control API');
     } catch (e) {
       Log.e('sync profile with service failed: $e');
     }
   }
 
   Future<void> getData() async {
-    if (!await _waitForInitialization()) return;
+    await _initialization;
     return _loop();
   }
 
@@ -281,14 +303,15 @@ class ClashController with NopLifecycle, AlScopeManager {
   }
 
   Future<void> _stopAfterInitialization() async {
-    if (!await _waitForInitialization()) return;
-    final task = loading.load(() => _queue.run(_stop))..whenComplete(_loop);
+    await _initialization;
+    final task = loading.load(() => _queue.run(_stop));
     await task;
   }
 
   Future<void> _stop() async {
     try {
       final success = await ClashService.stop();
+      await _loop();
       Log.w('close vpn: $success');
     } catch (_) {}
   }
@@ -300,7 +323,7 @@ class ClashController with NopLifecycle, AlScopeManager {
   }
 
   Future<void> uninstall() async {
-    if (!await _waitForInitialization()) return;
+    await _initialization;
     final success = await ClashService.uninstall();
     _loop();
     Log.w('close vpn: $success');
@@ -313,14 +336,14 @@ class ClashController with NopLifecycle, AlScopeManager {
 
   Future<void> selectProxy(String? selector, String? proxy) async {
     if (selector == null || proxy == null) return;
-    if (!await _waitForInitialization()) return;
+    await _initialization;
     return EventQueue.runOne([selector, proxy], () async {
       await clashEvent.clashApi.selectProxy(selector, proxy);
     });
   }
 
   Future<void> getDelay(String proxy) async {
-    if (!await _waitForInitialization()) return;
+    await _initialization;
     final delay = await clashEvent.clashApi.getDelay(proxy, 3000, testUrl);
 
     getSelector(proxy).value = delay?.delay ?? 0;
@@ -350,7 +373,7 @@ class ClashController with NopLifecycle, AlScopeManager {
   }
 
   Future<void> listenLogTraffic() async {
-    if (!await _waitForInitialization()) return;
+    await _initialization;
     _log?.cancel();
     _traffic?.cancel();
     _log = clashEvent.clashApi

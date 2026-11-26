@@ -155,39 +155,6 @@ func Java_io_aote_vpnService_ClashCore_startTun(env *C.JNIEnv, thiz C.jobject, c
 	return jniStringResult(env, message)
 }
 
-//export Java_io_aote_vpnService_ClashCore_refreshProfile
-func Java_io_aote_vpnService_ClashCore_refreshProfile(env *C.JNIEnv, thiz C.jobject, configDir C.jstring, url C.jstring, script C.jstring) C.jstring {
-	if configDir == C.jstring(0) {
-		return jniError(env, "configDir is empty")
-	}
-	if url == C.jstring(0) {
-		return jniError(env, "profile url is empty")
-	}
-
-	cConfigDir := C.clash_jni_get_string(env, configDir)
-	if cConfigDir == nil {
-		return jniError(env, "configDir is not valid UTF-8")
-	}
-	defer C.clash_jni_release_string(env, configDir, cConfigDir)
-
-	cURL := C.clash_jni_get_string(env, url)
-	if cURL == nil {
-		return jniError(env, "profile url is not valid UTF-8")
-	}
-	defer C.clash_jni_release_string(env, url, cURL)
-
-	var cScript *C.char
-	if script != C.jstring(0) {
-		cScript = C.clash_jni_get_string(env, script)
-		if cScript == nil {
-			return jniError(env, "profile script is not valid UTF-8")
-		}
-		defer C.clash_jni_release_string(env, script, cScript)
-	}
-
-	return jniStringResult(env, refreshProfile(cConfigDir, cURL, cScript))
-}
-
 //export Java_io_aote_vpnService_ClashCore_stop
 func Java_io_aote_vpnService_ClashCore_stop(env *C.JNIEnv, thiz C.jobject) C.jstring {
 	androidProtectorEnabled = false
