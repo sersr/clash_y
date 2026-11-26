@@ -43,6 +43,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -210,6 +211,7 @@ func errMsgResp(msg string) *apiResponse {
 func serve(ctx context.Context, ready chan<- struct{}) error {
 	parseAccessRestrictions()
 	core.initialize()
+	go watchWake(ctx)
 
 	listener, err := listenServiceEndpoint(serviceSocketPath())
 	if err != nil {
@@ -305,6 +307,12 @@ func route(_ http.ResponseWriter, r *http.Request) (*apiResponse, int) {
 			return errMsgResp(err.Error()), http.StatusOK
 		}
 		return okResp(executable), http.StatusOK
+
+	case "/baseInfo/mem":
+		if r.Method != http.MethodGet {
+			return nil, http.StatusMethodNotAllowed
+		}
+		return okResp(memorySnapshot()), http.StatusOK
 
 	case "/baseInfo/env":
 		if r.Method != http.MethodGet {
@@ -858,6 +866,9 @@ func (c *coreRuntime) stopLocked() error {
 	if !c.started {
 		c.configDir = ""
 		c.runtimeVPN = false
+		// 停下之后把堆里的空闲页还给系统：这个进程长期驻留，Go 默认只是把页
+		// 留着复用，macOS 上看起来就是「关掉 VPN 了内存还不降」。
+		debug.FreeOSMemory()
 	}
 	return err
 }
@@ -996,6 +1007,12 @@ func stopEngine() error {
 		return err
 	}
 	tunnel.OnSuspend()
+	if engine.started {
+		// 只关 TUN 会把这一轮配置的规则、代理和 inbound listener 全留在内存里：
+		// 实测 reload 一次堆就多出约 100MB 且不再回收。Shutdown 会关掉 listener、
+		// 清 resolver/tproxy，下一次 ApplyConfig 再整体重建。
+		executor.Shutdown()
+	}
 	engine.started = false
 	return nil
 }
@@ -1482,6 +1499,55 @@ func configEnablesTun(configDir string) bool {
 }
 
 // ------------------------------------------------------------------ logging
+
+// watchWake 在系统睡眠唤醒后把空闲堆还给操作系统。睡眠期间进程被挂起，唤醒后
+// Go 只是把页留着复用，活动监视器看到的就是内存长期高位（实测唤醒后能到 300MB）。
+// 用墙上时钟和定时器周期的差判断「睡过一觉」，比接各平台的唤醒通知简单，三平台
+// 也一致：定时器暂停期间墙上时钟照样前进，唤醒后的第一个 tick 就能看出缺口。
+func watchWake(ctx context.Context) {
+	const interval = 20 * time.Second
+	lastWall := time.Now().UnixNano()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			now := time.Now().UnixNano()
+			gap := time.Duration(now - lastWall)
+			lastWall = now
+			if gap <= 2*interval {
+				continue
+			}
+			debug.FreeOSMemory()
+			logf("reclaimed memory after %s pause", gap.Round(time.Second))
+		}
+	}
+}
+
+// memorySnapshot reports what a long-lived daemon is actually holding: goroutine
+// count is the cheap signal for "every reload leaks a listener", heap numbers
+// distinguish idle-but-retained pages from real retention.
+type memorySnapshotData struct {
+	Goroutines int    `json:"goroutines"`
+	HeapInuse  uint64 `json:"heapInuse"`
+	HeapAlloc  uint64 `json:"heapAlloc"`
+	HeapSys    uint64 `json:"heapSys"`
+	StackInuse uint64 `json:"stackInuse"`
+}
+
+func memorySnapshot() memorySnapshotData {
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+	return memorySnapshotData{
+		Goroutines: runtime.NumGoroutine(),
+		HeapInuse:  stats.HeapInuse,
+		HeapAlloc:  stats.HeapAlloc,
+		HeapSys:    stats.HeapSys,
+		StackInuse: stats.StackInuse,
+	}
+}
 
 func logf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "%s %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(format, args...))
