@@ -18,6 +18,8 @@
 //
 //	char *start(const char *configDir);
 //	char *startTun(const char *configDir, int fd);
+//	char *prepare(const char *configDir);
+//	char *refreshProfile(const char *configDir, const char *url, const char *script);
 //	char *stop(void);
 //	void  freeString(char *s);
 //
@@ -51,6 +53,7 @@ import (
 	"github.com/metacubex/mihomo/tunnel"
 
 	"mihomo-so/internal/geoensure"
+	"mihomo-so/internal/profilerefresh"
 )
 
 // configFileName is the file mihomo reads from the -d home directory.
@@ -212,7 +215,7 @@ func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
 		device = "clashy"
 	}
 
-	return LC.Tun{
+	options := LC.Tun{
 		Enable:              true,
 		Device:              device,
 		Stack:               stack,
@@ -228,6 +231,17 @@ func buildFdTunOptions(cfg *config.Config, fd int, goos string) LC.Tun {
 		MTU:            mtu,
 		FileDescriptor: fd,
 	}
+
+	// recvmsgx/sendmsgx are utun-only extensions. Applying them to the
+	// socketpair an iOS Packet Tunnel supplies makes sing-tun issue
+	// UTUN_OPT_MAX_PENDING_PACKETS on a non-utun descriptor, which fails and
+	// aborts the whole start. Ignore the profile's value on iOS.
+	if goos != "ios" {
+		options.RecvMsgX = cfg.General.Tun.RecvMsgX
+		options.SendMsgX = cfg.General.Tun.SendMsgX
+	}
+
+	return options
 }
 
 // applyTunOptions forces TUN on. A positive fd makes sing-tun adopt that
@@ -253,6 +267,43 @@ func applyTunOptions(cfg *config.Config, fd int) {
 	if fd > 0 {
 		cfg.General.Tun.FileDescriptor = fd
 	}
+}
+
+// refreshProfile downloads url, applies the profile script and overlays the
+// app-owned keys of the config currently in configDir, writing the result back
+// to configDir/config.yaml.
+//
+// The mobile runtimes call this instead of reimplementing the refresh: the
+// download, the JavaScript transform and the key overlay all live in
+// internal/profilerefresh, the same code the desktop daemon runs. The previous
+// file is kept as config.yaml.bak so the caller can roll back when the core
+// rejects the new one.
+//
+// The core is not restarted: callers decide whether to restart based on
+// whether the tunnel is already running this profile.
+//
+//export refreshProfile
+func refreshProfile(configDir *C.char, url *C.char, script *C.char) *C.char {
+	mu.Lock()
+	defer mu.Unlock()
+
+	dir := C.GoString(configDir)
+	if dir == "" {
+		return cError(errors.New("config dir is empty"))
+	}
+	subscription := C.GoString(url)
+	if subscription == "" {
+		return cError(errors.New("profile url is empty"))
+	}
+	transform := ""
+	if script != nil {
+		transform = C.GoString(script)
+	}
+
+	if err := profilerefresh.RefreshFile(dir, subscription, transform); err != nil {
+		return cError(err)
+	}
+	return nil
 }
 
 // stop shuts the core down and closes every listener, including TUN.

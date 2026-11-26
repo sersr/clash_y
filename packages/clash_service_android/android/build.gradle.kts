@@ -77,9 +77,9 @@ kotlin {
 }
 
 dependencies {
-    implementation("com.google.code.gson:gson:2.11.0")
-    implementation("org.mozilla:rhino:1.7.15")
-    implementation("org.yaml:snakeyaml:2.2")
+    // Gson, Rhino and SnakeYAML are gone: the profile script, the subscription
+    // download and the config overlay all run in the Go core (refreshProfile),
+    // so the VPN service no longer parses YAML or evaluates JavaScript itself.
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }

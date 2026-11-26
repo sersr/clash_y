@@ -37,7 +37,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -60,6 +59,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"mihomo-so/internal/geoensure"
+	"mihomo-so/internal/profilerefresh"
 )
 
 const (
@@ -81,34 +81,12 @@ const (
 	tunHealthInterval = 30 * time.Second
 	// minUpdateDelay keeps a fresh start from immediately downloading again.
 	minUpdateDelay = 10 * time.Minute
-	// requestTimeout bounds a subscription download.
-	requestTimeout = 15 * time.Second
-	// serviceUserAgent is the User-Agent providers expect from Clash clients.
-	serviceUserAgent = "clash/mihomo"
 	// apiErrorCode is the envelope code every failure uses, matching the app.
 	apiErrorCode = 1001
-	// maxRequestBody and maxSubscriptionSize guard against runaway payloads.
-	maxRequestBody      = 8 << 20
-	maxSubscriptionSize = 32 << 20
+	// maxRequestBody guards against runaway request payloads. The subscription
+	// download bound lives in profilerefresh, which owns that logic.
+	maxRequestBody = 8 << 20
 )
-
-// configOverrideKeys are the top-level keys owned by the app.
-//
-// The app writes device-specific settings (ports, TUN, DNS, controller
-// socket ...) and GeoX CDN URLs into `config.yaml`; subscription updates must
-// keep those values instead of whatever the provider ships.
-var configOverrideKeys = []string{
-	"external-controller-unix",
-	"external-controller-pipe",
-	"log-level",
-	"mixed-port",
-	"mode",
-	"ipv6",
-	"allow-lan",
-	"tun",
-	"dns",
-	"geox-url",
-}
 
 func main() {
 	runPlatformService()
@@ -932,9 +910,6 @@ func setHomeDir(configDir string) error {
 
 // startEngine applies configDir/config.yaml. With vpnEnabled it also brings up
 // the TUN interface; without it only the proxy listeners and the controller run.
-// ensureConfigFile rejects a config.yaml that is a symlink or not a regular
-// file: the daemon runs privileged, so the path it follows must be the real file
-// inside the configuration directory.
 // ensureConfigFile rejects a config.yaml that is a symlink or not a regular file:
 // the daemon runs privileged, so the path it follows must be the real file inside
 // the configuration directory.
@@ -1213,41 +1188,21 @@ func (c *coreRuntime) updateFromSubscription(target *clashProfile) {
 }
 
 // refreshConfig downloads the subscription and restarts the core with the
-// merged config. The previous config file is restored when the restart fails.
+// refreshed config. The previous config file is restored when the restart
+// fails.
+//
+// The download, the profile script and the overlay of app-owned keys live in
+// internal/profilerefresh, the same code the mobile runtimes use: the script
+// runs on the downloaded config first and the app's own settings (mode,
+// mixed-port, tun, dns, ...) are applied on top, so they win over anything the
+// script produced.
 func (c *coreRuntime) refreshConfig(profile *clashProfile) error {
-	if profile.URL == "" {
-		return errors.New("profile url is empty")
+	if err := profilerefresh.RefreshFile(profile.ConfigDir, profile.URL, profile.Script); err != nil {
+		return err
 	}
 
 	configPath := filepath.Join(profile.ConfigDir, configFileName)
-	current, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("missing config file: %s", configPath)
-	}
-
-	downloaded, err := downloadConfig(profile.URL)
-	if err != nil {
-		return err
-	}
-
-	// The profile script runs on the downloaded config first, then the app-owned
-	// keys of the current file are applied on top: the app's own settings (mode,
-	// mixed-port, tun, dns, ...) must win over anything the script produced,
-	// which is the order the Dart app uses.
-	scripted := runProfileScript(downloaded, profile.Script)
-	configured, err := applyConfigOverrides(scripted, string(current))
-	if err != nil {
-		return err
-	}
-
 	backupPath := configPath + ".bak"
-	if err := os.WriteFile(backupPath, current, 0o644); err != nil {
-		return fmt.Errorf("back up config: %w", err)
-	}
-	if err := os.WriteFile(configPath, []byte(configured), 0o644); err != nil {
-		_ = os.Remove(backupPath)
-		return fmt.Errorf("write config: %w", err)
-	}
 
 	// Restart only when the core is actually running that profile.
 	c.mu.Lock()
@@ -1287,114 +1242,6 @@ func (c *coreRuntime) refreshConfig(profile *clashProfile) error {
 		logf("restore previous config failed: %v", restoreErr)
 	}
 	return restartErr
-}
-
-func downloadConfig(url string) (string, error) {
-	transport := &http.Transport{
-		DialContext: (&net.Dialer{Timeout: requestTimeout}).DialContext,
-	}
-	client := &http.Client{Transport: transport}
-	defer client.CloseIdleConnections()
-
-	request, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return "", fmt.Errorf("create subscription request: %w", err)
-	}
-	request.Header.Set("User-Agent", serviceUserAgent)
-
-	response, err := client.Do(request)
-	if err != nil {
-		return "", fmt.Errorf("download subscription: %w", err)
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode >= http.StatusBadRequest {
-		return "", fmt.Errorf("download subscription: unexpected status %s", response.Status)
-	}
-
-	payload, err := io.ReadAll(io.LimitReader(response.Body, maxSubscriptionSize))
-	if err != nil {
-		return "", fmt.Errorf("read subscription: %w", err)
-	}
-	return string(payload), nil
-}
-
-// applyConfigOverrides keeps the app-owned top-level keys of current in
-// downloaded, matching `applyConfigOverrides` of the Dart server.
-func applyConfigOverrides(downloaded string, current string) (string, error) {
-	var currentDoc yaml.Node
-	if err := yaml.Unmarshal([]byte(current), &currentDoc); err != nil {
-		return downloaded, nil
-	}
-	currentMapping := documentMapping(&currentDoc)
-	if currentMapping == nil {
-		return downloaded, nil
-	}
-
-	var downloadedDoc yaml.Node
-	if err := yaml.Unmarshal([]byte(downloaded), &downloadedDoc); err != nil {
-		return "", errors.New("downloaded config is not a YAML map")
-	}
-	downloadedMapping := documentMapping(&downloadedDoc)
-	if downloadedMapping == nil {
-		return "", errors.New("downloaded config is not a YAML map")
-	}
-
-	for _, key := range configOverrideKeys {
-		value := mappingValue(currentMapping, key)
-		if value == nil {
-			continue
-		}
-		replaceMappingValue(downloadedMapping, key, value)
-	}
-
-	payload, err := yaml.Marshal(&downloadedDoc)
-	if err != nil {
-		return "", fmt.Errorf("write merged config: %w", err)
-	}
-	return string(payload), nil
-}
-
-func documentMapping(document *yaml.Node) *yaml.Node {
-	if document.Kind == yaml.DocumentNode && len(document.Content) > 0 {
-		mapping := document.Content[0]
-		if mapping.Kind == yaml.MappingNode {
-			return mapping
-		}
-	}
-	return nil
-}
-
-func mappingValue(mapping *yaml.Node, key string) *yaml.Node {
-	for index := 0; index+1 < len(mapping.Content); index += 2 {
-		if mapping.Content[index].Value == key {
-			return mapping.Content[index+1]
-		}
-	}
-	return nil
-}
-
-func replaceMappingValue(mapping *yaml.Node, key string, value *yaml.Node) {
-	for index := 0; index+1 < len(mapping.Content); index += 2 {
-		if mapping.Content[index].Value == key {
-			mapping.Content[index+1] = cloneNode(value)
-			return
-		}
-	}
-	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
-	mapping.Content = append(mapping.Content, keyNode, cloneNode(value))
-}
-
-func cloneNode(node *yaml.Node) *yaml.Node {
-	if node == nil {
-		return nil
-	}
-	copied := *node
-	copied.Content = make([]*yaml.Node, len(node.Content))
-	for index, child := range node.Content {
-		copied.Content[index] = cloneNode(child)
-	}
-	return &copied
 }
 
 // ------------------------------------------------------------ TUN health

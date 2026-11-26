@@ -2,20 +2,6 @@ package io.aote.vpnService
 
 import java.io.File
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URI
-import java.util.logging.Level
-import java.util.logging.Logger
-import com.google.gson.Gson
-import com.google.gson.JsonElement
-import com.google.gson.JsonNull
-import com.google.gson.JsonObject
-import com.google.gson.JsonPrimitive
-import org.mozilla.javascript.Context
-import org.yaml.snakeyaml.DumperOptions
-import org.yaml.snakeyaml.LoaderOptions
-import org.yaml.snakeyaml.Yaml
-import org.yaml.snakeyaml.constructor.SafeConstructor
 
 /**
  * The profile the VPN service keeps up to date while the Flutter app is gone.
@@ -73,236 +59,46 @@ internal data class ProfileUpdate(
 /**
  * Rewrites `config.yaml` with a freshly downloaded subscription.
  *
- * The subscription only provides proxies and rules; the device specific
- * settings written by the app (ports, TUN, DNS, controller socket...) are
- * carried over from the running config before the profile script is applied.
+ * The download, the profile script and the overlay of app-owned keys all run in
+ * the Go core (`refreshProfile`), the same code the desktop daemon and the iOS
+ * Packet Tunnel use. Keeping one implementation guarantees a background refresh
+ * produces the same file as a refresh started from the app.
  */
 internal object ConfigUpdater {
     private const val CONFIG_NAME = "config.yaml"
-    private const val TAG = "ClashVpnService"
-    private val logger = Logger.getLogger(TAG)
-
-    /** Top-level keys owned by the app rather than the subscription. */
-    val overrideKeys = listOf(
-        "external-controller-unix",
-        "external-controller-pipe",
-        "log-level",
-        "mixed-port",
-        "mode",
-        "ipv6",
-        "allow-lan",
-        "tun",
-        "dns",
-        "geox-url",
-    )
+    private const val BACKUP_NAME = "$CONFIG_NAME.bak"
 
     /**
-     * Downloads [url] and writes it to `<configDir>/config.yaml`.
+     * Asks the core to refresh [configDir]'s `config.yaml` from [url].
      *
-     * Returns the backup holding the previous config so the caller can roll
-     * back when the core rejects the new one.
+     * Returns the `.bak` file the core wrote next to the config so the caller
+     * can roll back when the core rejects the new one.
+     *
+     * @throws IOException when the refresh fails; the config on disk is then
+     *   left untouched.
      */
     fun updateConfig(configDir: String, url: String, script: String = ""): File {
         val configFile = File(configDir, CONFIG_NAME)
-        val current = configFile.readText()
-        val downloaded = download(url)
-        val merged = applyOverrides(downloaded, current)
-        val configured = if (script.isBlank()) merged else applyScript(merged, script)
+        if (!configFile.exists()) {
+            throw IOException("config.yaml is missing in $configDir")
+        }
 
-        val backup = File(configDir, "$CONFIG_NAME.bak")
-        configFile.copyTo(backup, overwrite = true)
-        writeAtomically(configFile, configured)
-        return backup
+        // The core writes both the backup and the new config, so the app only
+        // holds the snapshot it needs to roll back to.
+        val error = ClashCore().refreshProfile(configDir, url, script)
+        if (error != null) {
+            throw IOException(error)
+        }
+        return File(configDir, BACKUP_NAME)
     }
 
-    internal fun applyScript(config: String, script: String): String {
-        val loader = Yaml(SafeConstructor(LoaderOptions()))
-        val configMap = loader.load<Any?>(config) as? Map<*, *>
-            ?: throw IllegalArgumentException("subscription config must be a YAML map")
-        val gson = Gson()
-        val configJson = gson.toJson(configMap)
-        val context = Context.enter()
-        try {
-            try {
-                context.optimizationLevel = -1
-                context.languageVersion = Context.VERSION_ES6
-                val scope = context.initSafeStandardObjects()
-                // The config is exposed as the global `profileConfig` before the
-                // script runs and also passed to main(); the Dart and Go
-                // implementations use the same entry point.
-                val literal = gson.toJson(configJson)
-                context.evaluateString(
-                    scope,
-                    "var profileConfig = JSON.parse($literal);",
-                    "profile-config.js",
-                    1,
-                    null,
-                )
-                context.evaluateString(scope, script, "profile-script.js", 1, null)
-                context.evaluateString(
-                    scope,
-                    "var __profileResult = main(profileConfig);",
-                    "profile-script-main.js",
-                    1,
-                    null,
-                )
-                val kind = Context.toString(
-                    context.evaluateString(
-                        scope,
-                        "__profileResult === null ? 'null' : typeof __profileResult",
-                        "profile-script-result.js",
-                        1,
-                        null,
-                    ),
-                )
-                if (kind != "object") {
-                    throw IllegalArgumentException(
-                        if (kind == "string") {
-                            "profile script must return the config object, not a JSON string"
-                        } else {
-                            "profile script must return a config object, got $kind"
-                        },
-                    )
-                }
-                val result = context.evaluateString(
-                    scope,
-                    "JSON.stringify(__profileResult)",
-                    "profile-script-output.js",
-                    1,
-                    null,
-                )
-                if (result === org.mozilla.javascript.Undefined.instance) {
-                    throw IllegalArgumentException("profile script returned no config")
-                }
-                val output = gson.fromJson(Context.toString(result), JsonElement::class.java)
-                val outputMap = jsonValueToYamlValue(output) as? Map<*, *>
-                    ?: throw IllegalArgumentException("profile script must return a config object")
-                val options = DumperOptions().apply {
-                    defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
-                    indent = 2
-                }
-                return Yaml(options).dump(outputMap)
-            } catch (error: Exception) {
-                logger.log(
-                    Level.SEVERE,
-                    "profile script failed; keeping the unmodified config",
-                    error,
-                )
-                return config
-            }
-        } finally {
-            Context.exit()
-        }
-    }
-
-    private fun jsonValueToYamlValue(value: JsonElement): Any? = when {
-        value is JsonNull -> null
-        value is JsonObject -> value.entrySet().associate { (key, child) ->
-            key to jsonValueToYamlValue(child)
-        }
-        value.isJsonArray -> value.asJsonArray.map(::jsonValueToYamlValue)
-        value is JsonPrimitive -> when {
-            value.isBoolean -> value.asBoolean
-            value.isNumber -> {
-                val number = value.asString
-                if (number.matches(Regex("-?(0|[1-9][0-9]*)"))) {
-                    number.toBigInteger()
-                } else {
-                    number.toBigDecimalOrNull()
-                        ?: throw IllegalArgumentException(
-                            "invalid numeric value in profile script output",
-                        )
-                }
-            }
-            else -> value.asString
-        }
-        else -> throw IllegalArgumentException("unsupported value in profile script output")
-    }
-
-    fun download(url: String): String {
-        val connection = URI(url).toURL().openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
-            connection.instanceFollowRedirects = true
-            connection.setRequestProperty("User-Agent", "clash/mihomo")
-
-            val status = connection.responseCode
-            if (status !in 200..299) {
-                throw IOException("unexpected status $status")
-            }
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            if (body.isBlank()) throw IOException("empty response")
-            return body
-        } finally {
-            connection.disconnect()
-        }
-    }
-
+    /** Replaces [file] with [content], via a temporary file in the same dir. */
     fun writeAtomically(file: File, content: String) {
-        val temporary = File(file.parentFile, "${file.name}.tmp")
-        temporary.writeText(content)
-        if (!temporary.renameTo(file)) {
+        val temp = File(file.parentFile, "${file.name}.tmp")
+        temp.writeText(content)
+        if (!temp.renameTo(file)) {
             file.writeText(content)
-            temporary.delete()
+            temp.delete()
         }
     }
-
-    /** Keeps the app owned top-level blocks of [current] in [downloaded]. */
-    fun applyOverrides(downloaded: String, current: String): String {
-        var result = downloaded
-        for (key in overrideKeys) {
-            val block = extractTopLevelBlock(current, key) ?: continue
-            result = replaceTopLevelBlock(result, key, block)
-        }
-        return result
-    }
-
-    internal fun extractTopLevelBlock(text: String, key: String): String? {
-        val lines = text.lines()
-        val start = lines.indexOfFirst { isTopLevelKey(it, key) }
-        if (start < 0) return null
-
-        var end = start + 1
-        while (end < lines.size && !startsTopLevelNode(lines[end])) end++
-        return lines.subList(start, end).joinToString("\n").trimEnd('\n')
-    }
-
-    internal fun replaceTopLevelBlock(text: String, key: String, block: String): String {
-        val lines = text.lines().toMutableList()
-        val blockLines = block.lines()
-        var index = 0
-        var replaced = false
-
-        while (index < lines.size) {
-            if (!isTopLevelKey(lines[index], key)) {
-                index++
-                continue
-            }
-            var end = index + 1
-            while (end < lines.size && !startsTopLevelNode(lines[end])) end++
-            lines.subList(index, end).clear()
-            if (!replaced) {
-                lines.addAll(index, blockLines)
-                index += blockLines.size
-            }
-            replaced = true
-        }
-
-        if (!replaced) {
-            if (lines.isNotEmpty() && lines.last().isNotBlank()) lines.add("")
-            lines.addAll(blockLines)
-        }
-        return lines.joinToString("\n")
-    }
-
-    private fun isTopLevelKey(line: String, key: String): Boolean {
-        if (line.isEmpty() || line[0].isWhitespace() || line[0] == '#') return false
-        val colon = line.indexOf(':')
-        if (colon <= 0) return false
-        return line.substring(0, colon).trim() == key
-    }
-
-    private fun startsTopLevelNode(line: String): Boolean =
-        line.isNotEmpty() && !line[0].isWhitespace() && line[0] != '#'
 }

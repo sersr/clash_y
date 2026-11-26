@@ -2,162 +2,17 @@ package io.aote.vpnService
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
+/**
+ * Only the scheduling half of the updater is covered here.
+ *
+ * The download, the profile script and the app-owned key overlay moved into the
+ * Go core (`refreshProfile`) and are tested in
+ * `packages/clash_core/core/internal/profilerefresh`, so there is no Kotlin
+ * implementation left to test for those.
+ */
 class ProfileConfigUpdaterTest {
-    private val current = """
-        mixed-port: 7891
-        mode: global
-        dns:
-          enable: true
-          nameserver:
-            - 223.5.5.5
-        geox-url:
-          geoip: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat
-        tun:
-          enable: true
-          stack: system
-        proxies: []
-    """.trimIndent()
-
-    private val downloaded = """
-        mixed-port: 7890
-        mode: rule
-        dns:
-          enable: false
-        geox-url:
-          geoip: https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat
-        proxy-groups:
-          - name: auto
-            type: url-test
-            proxies: [a, b]
-        proxies:
-          - name: a
-            type: ss
-          - name: b
-            type: ss
-    """.trimIndent()
-
-    @Test
-    fun keepsTheAppOwnedBlocks() {
-        val merged = ConfigUpdater.applyOverrides(downloaded, current)
-
-        assertTrue(merged.contains("mixed-port: 7891"), merged)
-        assertTrue(merged.contains("mode: global"), merged)
-        assertTrue(merged.contains("stack: system"), merged)
-        assertTrue(
-            merged.contains(
-                "geoip: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat",
-            ),
-            merged,
-        )
-        assertFalse(merged.contains("mixed-port: 7890"), merged)
-        // Subscription content survives.
-        assertTrue(merged.contains("proxy-groups:"), merged)
-        assertTrue(merged.contains("name: b"), merged)
-        // Duplicates left behind by the subscription are dropped.
-        assertEquals(1, merged.lines().count { it.trim() == "dns:" })
-    }
-
-    @Test
-    fun appendsOverridesMissingFromTheDownload() {
-        val merged = ConfigUpdater.applyOverrides("proxies: []", current)
-
-        assertTrue(merged.contains("tun:"), merged)
-        assertTrue(merged.contains("mixed-port: 7891"), merged)
-        assertTrue(
-            merged.contains(
-                "geoip: https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat",
-            ),
-            merged,
-        )
-    }
-
-    @Test
-    fun leavesTheDocumentAloneWithoutOverrides() {
-        val plain = "mode: rule\nproxies: []"
-
-        assertEquals(plain, ConfigUpdater.applyOverrides(plain, "proxies: []"))
-    }
-
-    @Test
-    fun appliesProfileScriptToTheMergedConfig() {
-        val merged = ConfigUpdater.applyOverrides(
-            "mode: rule\nmixed-port: 7890\nproxies: []",
-            current,
-        )
-        val result = ConfigUpdater.applyScript(
-            merged,
-            """
-                function main(config) {
-                    config.mode = "global";
-                    config.proxies.push({ name: "scripted", type: "direct" });
-                    return config;
-                }
-            """.trimIndent(),
-        )
-
-        assertTrue(result.contains("mode: global"), result)
-        assertTrue(result.contains("mixed-port: 7891"), result)
-        assertTrue(result.contains("name: scripted"), result)
-        assertTrue(result.contains("type: direct"), result)
-    }
-
-    @Test
-    fun keepsTheOriginalConfigWhenTheScriptFails() {
-        val original = "mode: rule\nproxies: []"
-
-        assertEquals(
-            original,
-            ConfigUpdater.applyScript(
-                original,
-                "function main(config) { throw new Error('script failed'); }",
-            ),
-        )
-        assertEquals(
-            original,
-            ConfigUpdater.applyScript(
-                original,
-                "function main(config) { return null; }",
-            ),
-        )
-    }
-
-    @Test
-    fun keepsTheOriginalConfigWhenTheScriptReturnsAJsonString() {
-        val original = "mode: rule\nproxies: []"
-
-        assertEquals(
-            original,
-            ConfigUpdater.applyScript(
-                original,
-                "function main(config) { return JSON.stringify(config); }",
-            ),
-        )
-    }
-
-    @Test
-    fun exposesTheConfigAsTheGlobalProfileConfig() {
-        val result = ConfigUpdater.applyScript(
-            "mode: rule\nproxies: []",
-            "function main() { profileConfig.mode = 'direct'; return profileConfig; }",
-        )
-
-        assertTrue(result.contains("mode: direct"), result)
-    }
-
-    @Test
-    fun extractsBlocksThatRunToTheEnd() {
-        val block = ConfigUpdater.extractTopLevelBlock(current, "tun")
-
-        assertNotNull(block)
-        assertTrue(block.startsWith("tun:"), block)
-        assertTrue(block.contains("stack: system"), block)
-    }
-
     @Test
     fun delaysUntilTheIntervalElapsed() {
         val now = 1_000_000L

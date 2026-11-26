@@ -62,6 +62,15 @@ public final class ClashServicePlugin: NSObject, FlutterPlugin {
         }
       }
 
+    case "isActive":
+      Task {
+        do {
+          Self.deliver(result, value: try await Self.isActive())
+        } catch {
+          Self.deliver(result, error: error)
+        }
+      }
+
     case "start":
       guard let arguments = call.arguments as? [String: Any],
             let configDirectory = arguments["configDir"] as? String,
@@ -97,6 +106,35 @@ public final class ClashServicePlugin: NSObject, FlutterPlugin {
         do {
           let updated = try await Self.updateProfile(configDirectory: configDirectory)
           Self.deliver(result, value: updated)
+        } catch {
+          Self.deliver(result, error: error)
+        }
+      }
+
+    case "refreshProfile":
+      guard let arguments = call.arguments as? [String: Any],
+            let configDirectory = arguments["configDir"] as? String,
+            let url = arguments["url"] as? String,
+            !configDirectory.isEmpty,
+            !url.isEmpty else {
+        result(FlutterError(
+          code: "invalid_arguments",
+          message: IOSVpnError.invalidArguments.localizedDescription,
+          details: nil
+        ))
+        return
+      }
+      let script = arguments["script"] as? String ?? ""
+      let interval = arguments["interval"] as? Int ?? 0
+      Task {
+        do {
+          let refreshed = try await Self.refreshProfile(
+            configDirectory: configDirectory,
+            url: url,
+            script: script,
+            intervalMinutes: interval
+          )
+          Self.deliver(result, value: refreshed)
         } catch {
           Self.deliver(result, error: error)
         }
@@ -174,11 +212,35 @@ public final class ClashServicePlugin: NSObject, FlutterPlugin {
     return manager
   }
 
+  /// Keeps the tunnel alive across reboots and system terminations. On-demand
+  /// is only ever switched on here, from an explicit user start, so that
+  /// turning the VPN off really stops it until the user turns it on again.
+  private static func enableOnDemand(_ manager: NETunnelProviderManager) {
+    manager.isOnDemandEnabled = true
+    manager.onDemandRules = [NEOnDemandRuleConnect()]
+  }
+
+  /// Whether the Packet Tunnel is currently connected. `isConfigured` only says
+  /// the configuration exists, so a core that is running while the tunnel is
+  /// down must not be reported as an active VPN.
+  private static func isActive() async throws -> Bool {
+    guard let manager = try await loadManager(), manager.isEnabled else {
+      return false
+    }
+    switch manager.connection.status {
+    case .connected, .reasserting:
+      return true
+    default:
+      return false
+    }
+  }
+
   private static func start(configDirectory: String) async throws -> Bool {
     #if targetEnvironment(simulator)
     throw IOSVpnError.simulatorUnsupported
     #else
     let manager = try await configuredManager(configDirectory: configDirectory)
+    enableOnDemand(manager)
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
     try manager.connection.startVPNTunnel()
@@ -230,10 +292,61 @@ public final class ClashServicePlugin: NSObject, FlutterPlugin {
     }
   }
 
+  /// Asks the running tunnel to download the subscription and rewrite
+  /// config.yaml itself, so a refresh can happen while the app is suspended.
+  /// The download, the profile script and the app-owned key overlay all run in
+  /// the Go core, the same code the desktop daemon uses.
+  private static func refreshProfile(
+    configDirectory: String,
+    url: String,
+    script: String,
+    intervalMinutes: Int
+  ) async throws -> Bool {
+    guard let manager = try await loadManager(),
+          manager.isEnabled,
+          let session = manager.connection as? NETunnelProviderSession else {
+      return false
+    }
+
+    var payload: [String: String] = [
+      "action": "refresh",
+      "url": url,
+      "interval": String(intervalMinutes),
+    ]
+    if !script.isEmpty {
+      payload["script"] = script
+    }
+    let message = try JSONSerialization.data(withJSONObject: payload)
+
+    return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
+      do {
+        try session.sendProviderMessage(message) { response in
+          guard let response,
+                let result = try? JSONSerialization.jsonObject(with: response) as? [String: Bool] else {
+            continuation.resume(returning: false)
+            return
+          }
+          continuation.resume(returning: result["success"] == true)
+        }
+      } catch {
+        continuation.resume(throwing: error)
+      }
+    }
+  }
+
   private static func stop() async throws -> Bool {
     guard let manager = try await loadManager() else {
       return true
     }
+
+    // On-demand rules would bring the tunnel straight back, so they have to be
+    // cleared before the connection is stopped.
+    if manager.isOnDemandEnabled {
+      manager.isOnDemandEnabled = false
+      manager.onDemandRules = []
+      try await manager.saveToPreferences()
+    }
+
     manager.connection.stopVPNTunnel()
 
     for _ in 0..<40 {
@@ -248,10 +361,38 @@ public final class ClashServicePlugin: NSObject, FlutterPlugin {
 
   private static func uninstall() async throws -> Bool {
     guard let manager = try await loadManager() else {
+      removeSharedConfiguration()
       return true
     }
     manager.connection.stopVPNTunnel()
+
+    // removeFromPreferences fails while the tunnel is still tearing down, so
+    // wait for the connection to leave the transient states first.
+    for _ in 0..<40 {
+      if manager.connection.status == .disconnected ||
+         manager.connection.status == .invalid {
+        break
+      }
+      try await Task.sleep(nanoseconds: 250_000_000)
+    }
+
     try await manager.removeFromPreferences()
+    removeSharedConfiguration()
     return true
+  }
+
+  /// Drops the App Group copy of the profile so a reinstall cannot pick up a
+  /// configuration left behind by the previous installation.
+  private static func removeSharedConfiguration() {
+    guard let groupURL = FileManager.default.containerURL(
+      forSecurityApplicationGroupIdentifier: appGroupIdentifier
+    ) else {
+      return
+    }
+    let configuration = groupURL.appendingPathComponent(
+      "clash_config",
+      isDirectory: true
+    )
+    try? FileManager.default.removeItem(at: configuration)
   }
 }

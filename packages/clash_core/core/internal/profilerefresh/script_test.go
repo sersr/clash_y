@@ -1,4 +1,4 @@
-package main
+package profilerefresh
 
 import (
 	"strings"
@@ -25,7 +25,7 @@ func TestRunProfileScriptRejectsJSONString(t *testing.T) {
 function main(config) {
   return JSON.stringify(config);
 }`
-	if got := runProfileScript(scriptTestConfig, script); got != scriptTestConfig {
+	if got := RunScript(scriptTestConfig, script); got != scriptTestConfig {
 		t.Fatalf("a JSON string return was accepted:\n%s", got)
 	}
 }
@@ -38,7 +38,7 @@ function main(config) {
   return config;
 }`
 
-	result := runProfileScript(scriptTestConfig, script)
+	result := RunScript(scriptTestConfig, script)
 	if strings.Contains(result, "name: b") {
 		t.Fatalf("script did not drop proxy b:\n%s", result)
 	}
@@ -64,7 +64,7 @@ function main() {
   profileConfig.mode = "direct";
   return profileConfig;
 }`
-	result := runProfileScript(scriptTestConfig, script)
+	result := RunScript(scriptTestConfig, script)
 	if !strings.Contains(result, "mode: direct") {
 		t.Fatalf("global profileConfig was not visible:\n%s", result)
 	}
@@ -73,7 +73,7 @@ function main() {
 func TestRunProfileScriptKeepsScalarTypes(t *testing.T) {
 	script := `function main(config) { return config; }`
 	config := "mixed-port: 7890\nallow-lan: true\nsecret: \"\"\ntolerance: 0.5\nname: \"1.2.3\"\n"
-	got := runProfileScript(config, script)
+	got := RunScript(config, script)
 	for _, want := range []string{
 		"mixed-port: 7890\n",
 		"allow-lan: true\n",
@@ -94,7 +94,7 @@ func TestRunProfileScriptReturnsObject(t *testing.T) {
 function main(config) {
   return { ...config, mode: "direct" };
 }`
-	result := runProfileScript(scriptTestConfig, script)
+	result := RunScript(scriptTestConfig, script)
 	if !strings.Contains(result, "mode: direct") {
 		t.Fatalf("script return object was ignored:\n%s", result)
 	}
@@ -113,8 +113,8 @@ func TestProfileScriptRunsBeforeAppOverrides(t *testing.T) {
   config["scripted-key"] = true;
   return config;
 }`
-	scripted := runProfileScript(download, script)
-	merged, err := applyConfigOverrides(scripted, "mode: global\nmixed-port: 4321\n")
+	scripted := RunScript(download, script)
+	merged, err := applyOverrides(scripted, "mode: global\nmixed-port: 4321\n")
 	if err != nil {
 		t.Fatalf("apply overrides: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestRunProfileScriptSupportsModernSyntax(t *testing.T) {
 		"  config.note = first ? `seen ${first.name}` : \"none\";\n" +
 		"  return config;\n" +
 		"}"
-	result := runProfileScript(scriptTestConfig, script)
+	result := RunScript(scriptTestConfig, script)
 	if !strings.Contains(result, "name: 1-a\n") {
 		t.Fatalf("arrow/destructuring/template literal did not run:\n%s", result)
 	}
@@ -158,7 +158,7 @@ func TestRunProfileScriptKeepsConfigOnFailure(t *testing.T) {
 		"number return":    `function main() { return 42; }`,
 	}
 	for name, script := range cases {
-		got := runProfileScript(scriptTestConfig, script)
+		got := RunScript(scriptTestConfig, script)
 		if got != scriptTestConfig {
 			t.Errorf("%s: config changed by a failing script:\n%s", name, got)
 		}
@@ -167,14 +167,14 @@ func TestRunProfileScriptKeepsConfigOnFailure(t *testing.T) {
 
 func TestRunProfileScriptWithoutScript(t *testing.T) {
 	for _, script := range []string{"", "   \n\t"} {
-		if got := runProfileScript(scriptTestConfig, script); got != scriptTestConfig {
+		if got := RunScript(scriptTestConfig, script); got != scriptTestConfig {
 			t.Errorf("blank script changed the config:\n%s", got)
 		}
 	}
 }
 
 func TestRunProfileScriptRejectsNonMapConfig(t *testing.T) {
-	if got := runProfileScript("- a\n", `function main(c) { return c; }`); got != "- a\n" {
+	if got := RunScript("- a\n", `function main(c) { return c; }`); got != "- a\n" {
 		t.Fatalf("non-map config was not kept:\n%s", got)
 	}
 }
@@ -185,7 +185,7 @@ func TestRunProfileScriptTimesOut(t *testing.T) {
 	defer func() { scriptTimeout = previous }()
 
 	started := time.Now()
-	got := runProfileScript(scriptTestConfig, `function main(c) { while (true) {} }`)
+	got := RunScript(scriptTestConfig, `function main(c) { while (true) {} }`)
 	if got != scriptTestConfig {
 		t.Fatalf("timed out script changed the config:\n%s", got)
 	}
@@ -196,7 +196,7 @@ func TestRunProfileScriptTimesOut(t *testing.T) {
 
 func TestRunProfileScriptIgnoresOversizedScript(t *testing.T) {
 	script := "function main(c) { return JSON.stringify(c); }" + strings.Repeat(" ", maxScriptSize)
-	if got := runProfileScript(scriptTestConfig, script); got != scriptTestConfig {
+	if got := RunScript(scriptTestConfig, script); got != scriptTestConfig {
 		t.Fatalf("oversized script was executed")
 	}
 }

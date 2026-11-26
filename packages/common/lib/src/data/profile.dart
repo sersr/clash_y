@@ -16,41 +16,56 @@ extension ProfileExt on Profile {
   }
 
   Future<Map<String, dynamic>> _getConfigData() async {
-    final js = JSInterpreter();
     Map<String, dynamic> data = {};
     try {
       data = await getConfigMap(filePath);
       final script = SettingsHive.getScript(scriptId);
       if (script == null) return data;
-
-      js.setGlobal('profileConfig', data);
-      js.eval(script.script);
-
-      final value = js.evalToDart('main(profileConfig);');
-      if (value == null) {
-        throw const FormatException('profile script returned no config');
-      }
-      // All platforms take the object main() returns; a JSON string is a
-      // mistake that must fail here instead of returning a bogus config.
-      if (value is! Map) {
-        throw FormatException(
-          value is String
-              ? 'profile script must return the config object, not a JSON string'
-              : 'profile script must return a config object, got '
-                    '${value.runtimeType}',
-        );
-      }
-
-      return Map<String, dynamic>.from(value);
+      return _runScript(script.script, data);
     } catch (e, s) {
       Log.e('$e\n$s');
       return data;
-    } finally {
-      // js.close();
     }
+  }
+
+  /// Runs the profile script on [data] and returns the config it produced.
+  ///
+  /// The contract every surface follows: the config is the global
+  /// `profileConfig`, `main(config)` has to return the config object, and a
+  /// JSON string is a mistake rather than a config.
+  ///
+  /// The service runs the same script in Go when it refreshes a profile; this
+  /// copy produces the config the app writes before the service is asked to
+  /// refresh.
+  Map<String, dynamic> _runScript(String script, Map<String, dynamic> data) {
+    final js = JSInterpreter();
+    js.setGlobal('profileConfig', data);
+    js.eval(script);
+
+    final value = js.evalToDart('main(profileConfig);');
+    if (value == null) {
+      throw const FormatException('profile script returned no config');
+    }
+    // All platforms take the object main() returns; a JSON string is a
+    // mistake that must fail here instead of returning a bogus config.
+    if (value is! Map) {
+      throw FormatException(
+        value is String
+            ? 'profile script must return the config object, not a JSON string'
+            : 'profile script must return a config object, got '
+                  '${value.runtimeType}',
+      );
+    }
+    return Map<String, dynamic>.from(value);
   }
 }
 
+/// Writes the settings the app owns rather than the subscription.
+///
+/// The service copies these keys from the config already on disk when it
+/// refreshes a profile, so they survive every subscription update. Keep the
+/// keys in sync with `overrideKeys` in
+/// packages/clash_core/core/internal/profilerefresh/refresh.go.
 void _updateProfileData(Map<String, dynamic> data) {
   final unixSocketPath = G.unixSocketPath;
 

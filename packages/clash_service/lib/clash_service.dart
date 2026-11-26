@@ -254,6 +254,7 @@ abstract final class ClashService {
   /// Whether the platform's VPN interface or tunnel is active.
   static Future<bool> isVpnActive() async {
     if (Platform.isAndroid) return android.AndroidVpnService.isVpnActive();
+    if (Platform.isIOS) return IOSVpnService.isActive();
     if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
       return ClashServiceApi.isVpnActive();
     }

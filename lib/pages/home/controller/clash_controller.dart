@@ -252,11 +252,7 @@ class ClashController with NopLifecycle, AlScopeManager {
   Future<bool> _queryRunningState() async {
     late final bool running;
     try {
-      if (defaultTargetPlatform == .iOS) {
-        running = await clashEvent.clashApi.getProxies() != null;
-      } else {
-        running = await ClashService.isVpnActive();
-      }
+      running = await ClashService.isVpnActive();
     } catch (e) {
       Log.e('check Clash status failed: $e');
       running = false;
