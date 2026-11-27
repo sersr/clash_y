@@ -190,7 +190,7 @@ class ClashController with NopLifecycle, AlScopeManager {
 
       final profile = await _currentProfile();
       final mode = SettingsHive.applicationListMode.value;
-      final started = await ClashService.start(
+      final started = await ClashService.startVpn(
         profile,
         allowList: mode == .whiteList,
         allowedApplications: mode == .whiteList
@@ -310,7 +310,7 @@ class ClashController with NopLifecycle, AlScopeManager {
 
   Future<void> _stop() async {
     try {
-      final success = await ClashService.stop();
+      final success = await ClashService.stopVpn();
       await _loop();
       Log.w('close vpn: $success');
     } catch (_) {}
@@ -318,11 +318,12 @@ class ClashController with NopLifecycle, AlScopeManager {
 
   Future<void> restart() async {
     if (!isRunning) return;
-    await stop();
+    await ClashService.stopVpn();
     await start();
   }
 
   Future<void> uninstall() async {
+    if (!defaultTargetPlatform.isDesktop) return;
     await _initialization;
     final success = await ClashService.uninstall();
     _loop();

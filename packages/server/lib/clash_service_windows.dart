@@ -16,7 +16,7 @@ const _description = 'Clash VPN';
 /// 用 `sc create/config` 写入服务配置，行为对应其他平台的 install：
 /// - 以 LocalSystem 运行：Wintun 适配器、路由和 DNS 都由它自己配置，不需要
 ///   额外的特权 helper
-/// - 开机自启（start= auto + DelayedAutostart，与原实现一致）
+/// - 开机自启（start= demand + DelayedAutostart，与原实现一致）
 /// - 故障自动重启 5 次、间隔 5s、60s 内计数（对应 systemd 的
 ///   `Restart=on-failure` / `RestartSec=5` / `StartLimitBurst=5`）
 ///
@@ -148,7 +148,7 @@ String _installScript() {
   // `sc sdset` 把当前用户加进服务 DACL：只有启动/停止/查询权限，没有改配置
   // 或删除权限，这样之后开 App 只需普通权限 `sc start`，不再弹 UAC。
   return 'sc ${_serviceExists() ? 'config' : 'create'} $windowService '
-      'binPath= $binPath start= auto obj= "LocalSystem"\n'
+      'binPath= $binPath start= demand obj= "LocalSystem"\n'
       'sc description $windowService "$_description"\n'
       'sc failure $windowService reset= 60 '
       'actions= restart/5000/restart/5000/restart/5000/restart/5000/restart/5000\n'

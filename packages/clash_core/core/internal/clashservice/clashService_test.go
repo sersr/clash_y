@@ -26,6 +26,12 @@ func TestRouteAnswersTheApp(t *testing.T) {
 	if response := call(t, http.MethodGet, "/clash/status"); response.Code != http.StatusOK {
 		t.Fatalf("GET /clash/status -> %d", response.Code)
 	}
+	// start/stop 的状态查询：没起内核时是 false，但请求本身要通。
+	if response := call(t, http.MethodGet, "/clash/core/status"); response.Code != http.StatusOK {
+		t.Fatalf("GET /clash/core/status -> %d", response.Code)
+	} else if !strings.Contains(response.Body.String(), "false") {
+		t.Fatalf("core status body = %s", response.Body.String())
+	}
 }
 
 func TestRouteRejectsWrongMethodAndUnknownPath(t *testing.T) {

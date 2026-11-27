@@ -31,6 +31,10 @@ Future<bool> isSystemdServiceInstalled() => File(systemdUnitPath).exists();
 
 /// 安装或重启 systemd 服务（写入 unit + enable + start/restart）。
 ///
+/// 开机 enable：Linux 没有托盘进程，服务不启用的话 App 每次启动都要用
+/// polkit 密码把服务拉起来；unit 里也没有 `Restart=always`，所以手动 stop
+/// 之后不会被拉起。
+///
 /// 当前进程没有 root 权限时，通过 pkexec 弹出 polkit 密码框提权：
 /// 写入 unit 文件 -> daemon-reload -> enable -> start，一次授权完成。
 ///

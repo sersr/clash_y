@@ -149,30 +149,53 @@ private struct ClashClient {
     let serviceSocket: String?
     let clashSocket: String?
 
-    func isRunning() -> Bool {
+    /// 服务端控制面：/clash/* 这些接口挂在 service socket 上，不是 clash
+    /// 控制器 socket（/configs、/proxies 那些才是后者）。
+    private func serviceRequest(
+        method: String,
+        path: String,
+        body: Data? = nil
+    ) -> HTTPResponse? {
         guard let serviceSocket, let fd = openUnixSocket(serviceSocket) else {
-            return false
+            return nil
         }
         defer { close(fd) }
-        let request = "GET /clash/status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
-        guard writeAll(fd, Data(request.utf8)) else { return false }
-        guard let response = readResponse(fd),
+        var request = "\(method) \(path) HTTP/1.1\r\nHost: localhost\r\n"
+        if let body {
+            request += "Content-Type: application/json\r\nContent-Length: \(body.count)\r\n"
+        } else if method != "GET" {
+            request += "Content-Length: 0\r\n"
+        }
+        request += "Connection: close\r\n\r\n"
+        var payload = Data(request.utf8)
+        if let body { payload.append(body) }
+        guard writeAll(fd, payload) else { return nil }
+        return readResponse(fd)
+    }
+
+    /// 通用的服务端布尔状态查询。
+    private func serviceBool(path: String) -> Bool {
+        guard let response = serviceRequest(method: "GET", path: path),
             (200..<300).contains(response.statusCode),
             let json = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any]
         else { return false }
-        return json["success"] as? Bool ?? (json["data"] as? Bool ?? false)
+        return json["data"] as? Bool ?? false
     }
 
+    /// 代理是否在跑（/clash/status）。
+    func isRunning() -> Bool { serviceBool(path: "/clash/status") }
+
+    /// 内核是否在跑（GET /clash/core/status）：与代理是否开着无关。
+    func isCoreRunning() -> Bool { serviceBool(path: "/clash/core/status") }
+
+    /// start：起内核并开代理。托盘没有 profile，服务端沿用持久化的那份。
+    func start() {
+        _ = serviceRequest(method: "POST", path: "/clash", body: Data("{}".utf8))
+    }
+
+    /// stop：撤代理并结束内核。
     func stop() {
-        guard let serviceSocket, let fd = openUnixSocket(serviceSocket) else {
-            return
-        }
-        defer { close(fd) }
-        let request =
-            "POST /clash/stop HTTP/1.1\r\nHost: localhost\r\n"
-            + "Content-Type: application/json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-        _ = writeAll(fd, Data(request.utf8))
-        _ = readResponse(fd)
+        _ = serviceRequest(method: "POST", path: "/clash/stop")
     }
 
     func currentMode() -> String? {
@@ -467,8 +490,12 @@ private func templateTrayImage(from image: NSImage, size: NSSize) -> NSImage? {
 
 private final class TraySpeedView: NSView {
     private static let minimumWidth: CGFloat = 42
+    /// 宽度按 8pt 量化，避免每秒因数字位数变化而触发状态栏长度重排。
+    private static let widthQuantum: CGFloat = 8
     private var titleWidth = TraySpeedView.minimumWidth
     private var attributedTitle: NSAttributedString?
+    private var lastTitle: String?
+    private var cachedTextHeight: CGFloat = 0
 
     private let titleAttributes: [NSAttributedString.Key: Any] = {
         let paragraphStyle = NSMutableParagraphStyle()
@@ -491,14 +518,22 @@ private final class TraySpeedView: NSView {
 
     @discardableResult
     func setTitle(_ title: String) -> Bool {
+        // 文本没变就完全不重绘。
+        if title == lastTitle { return false }
+        lastTitle = title
+
         let previousWidth = titleWidth
         if title.isEmpty {
             attributedTitle = nil
             titleWidth = Self.minimumWidth
+            cachedTextHeight = 0
         } else {
             let text = NSAttributedString(string: title, attributes: titleAttributes)
             attributedTitle = text
-            titleWidth = max(Self.minimumWidth, ceil(measure(text).width))
+            let measured = measure(text)
+            cachedTextHeight = ceil(measured.height)
+            let quantized = ceil(measured.width / Self.widthQuantum) * Self.widthQuantum
+            titleWidth = max(Self.minimumWidth, quantized)
         }
         needsDisplay = true
         let widthChanged = titleWidth != previousWidth
@@ -520,11 +555,8 @@ private final class TraySpeedView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let attributedTitle else { return }
-        let textBounds = attributedTitle.boundingRect(
-            with: NSSize(width: bounds.width, height: CGFloat.greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]
-        )
-        let textHeight = ceil(textBounds.height)
+        // 高度在 setTitle 时算好并缓存，draw 不再做文本排版。
+        let textHeight = cachedTextHeight
         let y = max((bounds.height - textHeight) / 2, 0)
         attributedTitle.draw(in: NSRect(x: 0, y: y, width: bounds.width, height: textHeight))
     }
@@ -574,14 +606,23 @@ private final class TrayController: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem!
     private var contentView: TrayContentView!
+    /// 状态栏刷新下限间隔：mihomo 的 /traffic 每秒一条，不必每秒重绘状态栏。
+    private static let speedMinInterval: TimeInterval = 2
+    private var lastSpeedAppliedAt = Date.distantPast
+    private var pendingSpeed: (up: Int, down: Int)?
+    private var speedFlushScheduled = false
     private var menu: NSMenu!
     private var modeItems: [String: NSMenuItem] = [:]
     private var showAppItem: NSMenuItem!
     private var proxyGroupSeparator: NSMenuItem!
     private var vpnItem: NSMenuItem!
+    private var vpnToggleItem: NSMenuItem!
     private var proxyGroupItems: [NSMenuItem] = []
     private var cachedProxyGroups: [ProxyGroup]?
     private var isRunning = false
+    /// 内核的控制器 API 是否可用（/configs、/proxies 能读）。代理关着时
+    /// 这个仍然是 true，菜单里的模式与代理组照常可用。
+    private var isCoreAvailable = false
     private var isRefreshingMenuState = false
     private var menuRefreshTimer: Timer?
     private var clickWork: DispatchWorkItem?
@@ -653,6 +694,10 @@ private final class TrayController: NSObject, NSApplicationDelegate {
         showAppItem = menu.addItem(
             withTitle: "显示 Clashy", action: #selector(openApp), keyEquivalent: ""
         )
+        vpnToggleItem = menu.addItem(
+            withTitle: "启动", action: #selector(toggleVpn), keyEquivalent: ""
+        )
+        vpnToggleItem.target = self
         menu.addItem(.separator())
 
         showAppItem.target = self
@@ -674,7 +719,7 @@ private final class TrayController: NSObject, NSApplicationDelegate {
 
         proxyGroupSeparator = NSMenuItem.separator()
         menu.addItem(proxyGroupSeparator)
-        vpnItem = menu.addItem(withTitle: "关闭 VPN", action: #selector(stopVpn), keyEquivalent: "")
+        vpnItem = menu.addItem(withTitle: "退出", action: #selector(exitTray), keyEquivalent: "")
         vpnItem.target = self
     }
 
@@ -709,7 +754,9 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     }
 
     private func showMenu() {
-        refreshMenuState()
+        // 弹出前同步取一次状态：异步刷新要等 IO，菜单会先画出旧内容
+        // （代理组为空、模式全灰），看起来就像“组都没了”。
+        refreshMenuStateNow()
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
@@ -733,9 +780,44 @@ private final class TrayController: NSObject, NSApplicationDelegate {
         ) { _, _ in }
     }
 
-    @objc private func stopVpn() {
+    /// 启动/暂停：对应 start（起内核 + 开代理）与 stop（停内核）。
+    @objc private func toggleVpn() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.client.stop()
+            guard let self else { return }
+            // 分支看代理开没开（/clash/status），不是内核可不可用：内核常驻，
+            // isCoreAvailable 一直是 true，之前那样点「启动」还会再 stop 一次。
+            if self.client.isRunning() {
+                self.client.stop()
+            } else {
+                self.client.start()
+            }
+            DispatchQueue.main.async { self.refreshMenuState() }
+        }
+    }
+
+    /// 退出：先 stop（关代理 + 停内核），再关掉 Clashy app，最后关托盘本身。
+    @objc private func exitTray() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            self.client.stop()
+            self.quitApp()
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+    }
+
+    /// 让 Clashy app 正常退出；它若卡住再强杀，免得托盘退了 app 还留着。
+    private func quitApp() {
+        guard let bundleId = options.bundleId,
+            let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+                .first(where: { !$0.isTerminated })
+        else { return }
+        app.terminate()
+        let deadline = Date().addingTimeInterval(3)
+        while !app.isTerminated && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        if !app.isTerminated {
+            app.forceTerminate()
         }
     }
 
@@ -793,35 +875,67 @@ private final class TrayController: NSObject, NSApplicationDelegate {
         menuRefreshTimer = timer
     }
 
+    /// 主线程同步取一次状态并应用：菜单弹出前调用，保证打开就是最新状态。
+    private func refreshMenuStateNow() {
+        let coreRunning = client.isCoreRunning()
+        let mode = coreRunning ? client.currentMode() : nil
+        let vpnActive = coreRunning ? client.isRunning() : false
+        let groups = coreRunning ? client.proxyGroups() : nil
+        applyMenuState(
+            coreRunning: coreRunning,
+            vpnActive: vpnActive,
+            mode: mode,
+            groups: groups
+        )
+    }
+
     private func refreshMenuState() {
         guard !isRefreshingMenuState else { return }
         isRefreshingMenuState = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let running = self.client.isRunning()
-            let mode = running ? self.client.currentMode() : nil
-            let groups = running ? self.client.proxyGroups() : nil
+            // 只要内核在跑（关闭代理但 API 可用也算），模式与代理组就可用；
+            // 代理是否在跑只影响网速采集。
+            let coreRunning = self.client.isCoreRunning()
+            let mode = coreRunning ? self.client.currentMode() : nil
+            let vpnActive = coreRunning ? self.client.isRunning() : false
+            let groups = coreRunning ? self.client.proxyGroups() : nil
             DispatchQueue.main.async {
                 self.isRefreshingMenuState = false
-                self.setRunning(running)
-                if let mode {
-                    self.updateSelectedMode(mode)
-                }
-                if running {
-                    if let groups {
-                        self.updateProxyGroups(groups)
-                    }
-                } else {
-                    self.updateProxyGroups([])
-                }
+                self.applyMenuState(
+                    coreRunning: coreRunning,
+                    vpnActive: vpnActive,
+                    mode: mode,
+                    groups: groups
+                )
             }
+        }
+    }
+
+    private func applyMenuState(
+        coreRunning: Bool,
+        vpnActive: Bool,
+        mode: String?,
+        groups: [ProxyGroup]?
+    ) {
+        setCoreAvailable(coreRunning)
+        setVpnActive(coreRunning && vpnActive)
+        if let mode {
+            updateSelectedMode(mode)
+        }
+        if coreRunning {
+            if let groups {
+                updateProxyGroups(groups)
+            }
+        } else {
+            updateProxyGroups([])
         }
     }
 
     private func monitorLoop() {
         while true {
             let running = client.isRunning()
-            DispatchQueue.main.async { [weak self] in self?.setRunning(running) }
+            DispatchQueue.main.async { [weak self] in self?.setVpnActive(running) }
 
             guard running else {
                 DispatchQueue.main.async { [weak self] in self?.updateSpeed(up: 0, down: 0) }
@@ -836,9 +950,12 @@ private final class TrayController: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func setRunning(_ value: Bool) {
-        isRunning = value
-        vpnItem?.isEnabled = value
+    /// 控制器 API 是否可用：决定模式选项、代理组能不能点。启动/暂停的标题
+    /// 跟的是代理状态（见 setVpnActive），内核常驻，不能拿它当标题依据。
+    private func setCoreAvailable(_ value: Bool) {
+        isCoreAvailable = value
+        // 代理关着也能点「启动」，所以这一项永远可点。
+        vpnToggleItem?.isEnabled = true
         modeItems.values.forEach { $0.isEnabled = value }
         for groupItem in proxyGroupItems {
             groupItem.isEnabled = value && groupItem.submenu != nil
@@ -849,6 +966,18 @@ private final class TrayController: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 代理是否在跑：决定「启动/暂停」的标题与网速显示。
+    private func setVpnActive(_ value: Bool) {
+        isRunning = value
+        // 启动/暂停 = start / stop：代理开着显示「暂停」，关着显示「启动」。
+        vpnToggleItem?.title = value ? "暂停" : "启动"
+        // 「退出」永远可用：代理关着时也能退出托盘。
+        vpnItem?.isEnabled = true
+        if !value {
+            updateSpeed(up: 0, down: 0)
+        }
+    }
+
     private func updateSelectedMode(_ mode: String) {
         for (name, item) in modeItems {
             item.state = name == mode ? .on : .off
@@ -856,7 +985,9 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     }
 
     private func updateProxyGroups(_ groups: [ProxyGroup]) {
-        guard groups != cachedProxyGroups else { return }
+        // groups 没变且菜单项还在时直接跳过；items 被清空过（比如 API
+        // 短暂不可用）就重来一遍，否则代理组会一直空着。
+        guard groups != cachedProxyGroups || proxyGroupItems.isEmpty else { return }
         cachedProxyGroups = groups
         for item in proxyGroupItems {
             menu.removeItem(item)
@@ -888,12 +1019,12 @@ private final class TrayController: NSObject, NSApplicationDelegate {
                     item.representedObject = [group.name, proxy]
                     item.tag = group.supportsManualSelection ? 1 : 0
                     item.state = group.selected == proxy ? .on : .off
-                    item.isEnabled = isRunning && group.supportsManualSelection
+                    item.isEnabled = isCoreAvailable && group.supportsManualSelection
                     submenu.addItem(item)
                 }
             }
             groupItem.submenu = submenu
-            groupItem.isEnabled = isRunning
+            groupItem.isEnabled = isCoreAvailable
             if !group.supportsManualSelection {
                 groupItem.toolTip = "此代理组不支持手动切换"
             }
@@ -904,8 +1035,28 @@ private final class TrayController: NSObject, NSApplicationDelegate {
     }
 
     private func updateSpeed(up: Int, down: Int) {
+        pendingSpeed = (up, down)
+        scheduleSpeedFlush()
+    }
+
+    private func scheduleSpeedFlush() {
+        guard !speedFlushScheduled else { return }
+        let elapsed = Date().timeIntervalSince(lastSpeedAppliedAt)
+        let delay = max(0, Self.speedMinInterval - elapsed)
+        speedFlushScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.flushSpeed()
+        }
+    }
+
+    private func flushSpeed() {
+        speedFlushScheduled = false
+        guard let pending = pendingSpeed else { return }
+        pendingSpeed = nil
+        lastSpeedAppliedAt = Date()
+
         let changed = contentView.speedView.setTitle(
-            "\(speedLine(up))\n\(speedLine(down))"
+            "\(speedLine(pending.up))\n\(speedLine(pending.down))"
         )
         if changed {
             statusItem?.button?.sizeToFit()

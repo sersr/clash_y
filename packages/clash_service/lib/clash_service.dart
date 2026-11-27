@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:clash_service_android/clash_service_android.dart' as android;
 import 'package:file/local.dart' as f;
 import 'package:nop/nop.dart';
-import 'package:server/clash_service_windows.dart';
+import 'package:server/clash_service_windows.dart' as win;
 import 'package:path/path.dart' as p;
 import 'package:server/server.dart' show ApiResp, ClashProfile, version;
 
@@ -27,7 +27,7 @@ const fs = f.LocalFileSystem();
 ///
 /// Two groups of methods are deliberately platform-bound and no-op elsewhere:
 /// desktop ones ([updateDesktopServiceIfOutdated], [hasOtherVpnConnection],
-/// [close], [uninstall]) and mobile ones ([initTunnelSocket]). The rest either
+/// [stopService], [uninstall]) and mobile ones ([initTunnelSocket]). The rest either
 /// route to the right platform backend or talk to whichever service the client
 /// currently points at.
 abstract final class ClashService {
@@ -83,7 +83,7 @@ abstract final class ClashService {
   static Future<bool> isInstalled() async {
     if (Platform.isMacOS) return MacOSServiceProcess.isInstalled();
     if (Platform.isLinux) return isSystemdServiceInstalled();
-    if (Platform.isWindows) return isServiceInstalled();
+    if (Platform.isWindows) return win.isServiceInstalled();
     if (Platform.isAndroid) return true;
     if (Platform.isIOS) return IOSVpnService.isConfigured();
     return false;
@@ -123,7 +123,7 @@ abstract final class ClashService {
   static Future<bool> _isDesktopServiceRunning() async {
     if (Platform.isMacOS) return MacOSServiceProcess.isRunning();
     if (Platform.isLinux) return isSystemdServiceRunning();
-    if (Platform.isWindows) return isServiceRunning();
+    if (Platform.isWindows) return win.isServiceRunning();
     return false;
   }
 
@@ -149,10 +149,10 @@ abstract final class ClashService {
     }
 
     if (Platform.isWindows) {
-      if (!await stopService()) {
+      if (!await win.stopService()) {
         throw StateError('Failed to stop the outdated Windows clashyService.');
       }
-      if (!await startService()) {
+      if (!await win.startService()) {
         throw StateError('Failed to reinstall the Windows clashyService.');
       }
     }
@@ -208,7 +208,38 @@ abstract final class ClashService {
   /// [disallowedApplications] 排除列表。
   ///
   /// Returns `false` if the platform has no VPN backend or startup fails.
+  /// 一键开代理：[startCore] 起内核后立刻 [startVpn]。
+  ///
+  /// 需要分开控制就单独调用这两个方法；[stopVpn] 只关代理，[stop] 才停内核。
   static Future<bool> start(
+    ClashProfile profile, {
+    bool allowList = false,
+    List<String> allowedApplications = const [],
+    List<String> disallowedApplications = const [],
+    required String controllerSocketPath,
+  }) async {
+    if (Platform.isIOS) {
+      // iOS 的 core 只能跟隧道一起活，没有 core-only 阶段。
+      return IOSVpnService.start(profile);
+    }
+    final coreReady = await startCore(
+      profile,
+      controllerSocketPath: controllerSocketPath,
+    );
+    if (!coreReady) return false;
+    return startVpn(
+      profile,
+      allowList: allowList,
+      allowedApplications: allowedApplications,
+      disallowedApplications: disallowedApplications,
+      controllerSocketPath: controllerSocketPath,
+    );
+  }
+
+  /// 开代理：装 TUN、打开入站端口（mixed 等）。内核没起会先起。
+  ///
+  /// 只想要「内核可用、API 可用、但不开代理」用 [startCore]。
+  static Future<bool> startVpn(
     ClashProfile profile, {
     bool allowList = false,
     List<String> allowedApplications = const [],
@@ -275,7 +306,7 @@ abstract final class ClashService {
       // while testing. Reuse that API server instead of asking SCM to launch a
       // second instance that collides on the same named pipe.
       if (await ClashServiceApi.getServiceVersion() != null) return true;
-      if (!await startService()) return false;
+      if (!await win.startService()) return false;
       // 服务已经在 RUNNING，但命名管道可能还没开始监听；先短轮询到管道可用，
       // 免得紧接着的 status 请求走进 2 秒一次的重试退避。
       await _waitUntilWindowsServiceReady();
@@ -322,10 +353,10 @@ abstract final class ClashService {
     return false;
   }
 
-  /// Starts the mihomo core without enabling its VPN interface.
+  /// 起内核，但不开代理：控制器 API 就绪（/proxies 可用），不监听入站端口、
+  /// 不装 TUN。开代理用 [startVpn]。
   ///
-  /// The controller API remains available so the application can load proxies
-  /// before the user turns the VPN on.
+  /// iOS 的 core 只能跟隧道一起活，这里恒返回 false。
   static Future<bool> startCore(
     ClashProfile profile, {
     required String controllerSocketPath,
@@ -358,7 +389,7 @@ abstract final class ClashService {
   /// Starts the daemon's core unless it already runs; throws with the service's
   /// own message so callers can surface it.
   static Future<void> _startDesktopCore(ClashProfile profile) async {
-    if (await ClashServiceApi.isClashRunning()) return;
+    if (await ClashServiceApi.isCoreRunning()) return;
 
     final response = await ClashServiceApi.startClashCore(profile);
     if (response.success) return;
@@ -414,19 +445,13 @@ abstract final class ClashService {
     return true;
   }
 
-  /// Tears the VPN service down.
+  /// 停桌面服务（launchd / systemd / SCM）；移动端没有「服务」这个概念，
+  /// 恒返回 `true`——要停移动端的内核请用 [stop]。
   ///
-  /// Linux 停止 systemd 服务但保留安装；Windows 停止 SCM 服务（未提权时
+  /// Linux 只停止 systemd 服务、保留安装；Windows 停止 SCM 服务（未提权时
   /// 弹 UAC）。已停止时直接返回 `true`，不触发提权。
-  static Future<bool> close() async {
-    if (Platform.isAndroid) {
-      final closed = await android.AndroidVpnService.close();
-      if (!closed) return false;
-      return _waitForVpnState(false);
-    }
-    if (Platform.isIOS) {
-      return IOSVpnService.close();
-    }
+  static Future<bool> stopService() async {
+    if (!_isDesktop) return true;
 
     if (Platform.isMacOS) {
       if (!await MacOSServiceProcess.isRunning()) return true;
@@ -442,20 +467,25 @@ abstract final class ClashService {
     }
 
     if (Platform.isWindows) {
-      return stopService();
+      return win.stopService();
     }
 
     return false;
   }
 
-  static Future<bool> stop() async {
+  /// 关代理：撤 TUN 并关掉所有入站端口（mixed 等），内核与控制器继续存活，
+  /// 所以关掉之后 /proxies 仍然可用。要连内核一起停用 [stop]。
+  ///
+  /// iOS 没有「只关代理」的形态：它的 core 跑在隧道进程里，关代理就等于
+  /// [stop]。
+  static Future<bool> stopVpn() async {
     if (Platform.isAndroid) {
       final stopped = await android.AndroidVpnService.stopVpn();
       if (!stopped) return false;
       return _waitForVpnState(false);
     }
     if (Platform.isIOS) {
-      return IOSVpnService.close();
+      return stop();
     }
 
     if (!_isDesktop) return false;
@@ -468,16 +498,61 @@ abstract final class ClashService {
     }
   }
 
-  /// Removes the VPN service entirely.
+  /// 关代理：撤 TUN、关掉所有入站端口，但内核与控制器继续存活，所以
+  /// /proxies 等 API 仍然可用（托盘、UI 还能切节点）。要停内核用 [stopCore]。
+  ///
+  /// 移动端：Android 走 VPN 服务的「只关代理」路径，内核留在进程里；
+  /// iOS 的 core 跑在隧道进程里，关代理只能停隧道。
+  static Future<bool> stop() async {
+    if (Platform.isAndroid) {
+      final stopped = await android.AndroidVpnService.stopVpn();
+      if (!stopped) return false;
+      return _waitForVpnState(false);
+    }
+    // iOS 的 core 跑在隧道进程里，没有「内核活着但代理关着」的形态：
+    // 关代理只能停隧道（内核随之结束），所以这里等价于 [stopCore]。
+    if (Platform.isIOS) {
+      return IOSVpnService.close();
+    }
+
+    if (!_isDesktop) return false;
+
+    try {
+      return (await ClashServiceApi.stopClash()).success;
+    } catch (e) {
+      Log.e('stopping the desktop proxy failed: $e');
+      return false;
+    }
+  }
+
+  /// 停内核：代理与内核一起结束。桌面端只停内核，服务进程还在（停服务用
+  /// [stopService]）；移动端连 VPN 服务进程一起收掉。
+  static Future<bool> stopCore() async {
+    if (Platform.isAndroid) {
+      final stopped = await android.AndroidVpnService.close();
+      if (!stopped) return false;
+      return _waitForVpnState(false);
+    }
+    if (Platform.isIOS) {
+      return IOSVpnService.close();
+    }
+
+    if (!_isDesktop) return false;
+
+    try {
+      return (await ClashServiceApi.stopClashCore()).success;
+    } catch (e) {
+      Log.e('stopping the desktop Clash core failed: $e');
+      return false;
+    }
+  }
+
+  /// 卸载桌面端的服务本体。移动端没有「卸载服务」这回事：它们只有
+  /// [stop]（停内核）与 [stopService]（无操作），这里恒返回 false。
   ///
   /// Linux 删除 systemd unit；Windows 卸载 SCM 服务（未提权时弹 UAC）。
   static Future<bool> uninstall() async {
-    if (Platform.isAndroid) {
-      return android.AndroidVpnService.close();
-    }
-    if (Platform.isIOS) {
-      return IOSVpnService.uninstall();
-    }
+    if (!_isDesktop) return false;
 
     if (Platform.isMacOS) {
       await MacOSServiceProcess.uninstall();
@@ -491,7 +566,7 @@ abstract final class ClashService {
     }
 
     if (Platform.isWindows) {
-      return uninstallService();
+      return win.uninstallService();
     }
 
     return false;

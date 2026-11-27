@@ -17,6 +17,11 @@ class ClashCore {
 
     external fun stop(): String?
 
+    // stopTun disables the proxy only: TUN and every inbound listener are closed
+    // while the core and its controller API keep running, so /proxies still
+    // answers after the user turns the proxy off.
+    external fun stopTun(): String?
+
     companion object {
         init {
             System.loadLibrary("clash")

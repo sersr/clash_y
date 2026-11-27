@@ -627,35 +627,64 @@ class ClashVpnService : VpnService() {
             val configDir = prefs.getString(KEY_CONFIG_DIR, null)?.trim()
                 ?.takeIf { it.isNotEmpty() }
                 ?: defaultConfigDir()
-            val wasVpnActive = nativeTunFd > 0
-            val error = startCoreOnly(
+            val error = disableProxyOnly(
                 configDir,
                 prefs.getBoolean(KEY_ALLOW_LIST, false),
                 prefs.getStringSet(KEY_ALLOWED_APPS, null)?.toList().orEmpty(),
                 prefs.getStringSet(KEY_DISALLOWED_APPS, null)?.toList().orEmpty(),
             )
             if (error != null) {
-                if (wasVpnActive) {
-                    setEnabled(true)
-                    writeVpnActive(true)
-                    startForegroundCompat()
-                    startTrafficMonitor()
-                } else {
-                    stopForegroundCompat()
-                }
                 sendResult(receiver, false, error)
-                Log.e(TAG, "Failed to disable VPN while keeping the core running: $error")
+                Log.e(TAG, "Failed to disable the proxy while keeping the core running: $error")
                 return@execute
             }
             stopForegroundCompat()
             sendResult(receiver, true)
-            Log.i(TAG, "VPN disabled and notification dismissed; mihomo core remains running")
+            Log.i(TAG, "Proxy disabled (TUN and inbound listeners closed); mihomo core remains running")
         }
     }
 
     /**
-     * Restarts mihomo without a TUN descriptor, keeping its controller API
-     * available while the VPN switch is off.
+     * 关闭代理：撤掉 TUN 和所有入站监听（mixed 等端口不再对外监听），但内核与
+     * 控制器继续存活，VPN 开关为关时 /proxies 等 API 仍可用。三个桌面端由
+     * clashService.disableProxy() 做同一件事，Android 通过 stopTun() 走同一份
+     * Go 侧实现。
+     */
+    private fun disableProxyOnly(
+        configDir: String,
+        allowList: Boolean,
+        allowedApplications: List<String>,
+        disallowedApplications: List<String>,
+    ): String? {
+        Log.i(TAG, "disableProxyOnly configDir=$configDir")
+        return try {
+            stopTrafficMonitor()
+            val error = ClashCore().stopTun()
+            if (error != null) {
+                throw IllegalStateException(error)
+            }
+
+            coreStarted = true
+            nativeTunFd = -1
+            closeTunDescriptor()
+            persistState(
+                configDir,
+                allowList,
+                allowedApplications,
+                disallowedApplications,
+                enabled = false,
+            )
+            writeVpnActive(false)
+            null
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to disable the proxy", t)
+            t.message ?: t.javaClass.simpleName
+        }
+    }
+
+    /**
+     * 起内核（对应 startCore）：内核与控制器可用，不装 TUN，也不监听入站端口。
+     * 原生 start() 会在应用完配置后直接关掉监听，所以这里不需要额外处理。
      */
     private fun startCoreOnly(
         configDir: String,

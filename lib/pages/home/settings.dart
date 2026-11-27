@@ -1,6 +1,7 @@
 import 'package:clashy/pages/home/controller/clash_controller.dart';
 import 'package:clashy/pages/home/widget/home_bottom_padding.dart';
 import 'package:common/common.dart';
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_nop/router.dart';
 
@@ -28,14 +29,17 @@ class _SettingsState extends State<Settings> {
                 onTap: () => NavRoutes.applicationList().go(),
               ),
               const SettingDiv(),
-              SettingItem(
-                label: 'Unregister service',
-                onTap: () {
-                  final ClashController controller = context.getType();
-                  controller.uninstall();
-                },
-              ),
-              const SettingDiv(),
+              // 卸载服务只有桌面端有这回事，移动端整项隐藏。
+              if (defaultTargetPlatform.isDesktop) ...[
+                SettingItem(
+                  label: 'Unregister service',
+                  onTap: () {
+                    final ClashController controller = context.getType();
+                    controller.uninstall();
+                  },
+                ),
+                const SettingDiv(),
+              ],
 
               SettingItem(
                 label: "Clash Settings",

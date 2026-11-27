@@ -73,8 +73,7 @@ var (
 // main is required by -buildmode=c-shared and never runs.
 func main() {}
 
-// start boots the core with the configuration found in configDir, mirroring
-// `mihomo -d configDir`. TUN follows whatever the config file declares.
+// start 起内核但不开代理：内核与控制器可用，入站端口不监听。
 //
 //export start
 func start(configDir *C.char) *C.char {
@@ -96,6 +95,10 @@ func start(configDir *C.char) *C.char {
 	}
 
 	started = true
+
+	// 「起内核」不开代理：控制器 API 就绪即可，入站端口不监听、TUN 也不装。
+	// 开代理走 startTun()，关代理走 stopTun()。
+	clashservice.CloseInboundListeners()
 
 	// The profile API does not need TUN: with the core running the app can
 	// already switch the subscription and have it applied.
@@ -311,13 +314,18 @@ func stop() *C.char {
 	}
 
 	listener.Cleanup()
+	// executor.Shutdown 只关 TUN，Android/iOS 的 app 进程是常驻的，
+	// 不显式关入站监听的话 stop 之后 mixed 端口仍然对外监听。
+	clashservice.CloseInboundListeners()
 	started = false
 	return nil
 }
 
-// stopTun disables only the desktop TUN listener. Keep the core process and
-// its initialized runtime alive so a later start() can apply the config again.
-// Android uses stop(), which also shuts down the complete core.
+// stopTun disables the proxy but keeps the core alive: TUN is removed and every
+// inbound listener (mixed/http/socks/... and dns.listen) is closed, while the
+// core and its controller API stay up so /proxies and friends keep answering.
+// A later start()/startTun() re-applies the config and the ports come back.
+// Android/iOS 用 stopTun() 表达「关闭代理」；stop() 才真正结束内核。
 //
 //export stopTun
 func stopTun() *C.char {
@@ -326,7 +334,9 @@ func stopTun() *C.char {
 
 	resetTunListener()
 	tunnel.OnSuspend()
-	started = false
+	// executor.Shutdown 只关 TUN，进程常驻时不显式关入站监听的话，关掉代理
+	// 之后 mixed 端口仍然对外监听，别的 app 直接把该端口当代理就能用。
+	clashservice.CloseInboundListeners()
 	return nil
 }
 

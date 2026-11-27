@@ -78,6 +78,25 @@ abstract final class MacOSServiceProcess {
         File(_installedServicePath).existsSync();
   }
 
+  /// 托盘进程是否在跑（按 launchd job 状态判断）。
+  static Future<bool> _isTrayRunning(int uid) async {
+    final status = await _launchctlPrint('gui/$uid/$_trayLabel');
+    return status != null && RegExp(r'\bstate = running\b').hasMatch(status);
+  }
+
+  /// 确保托盘在跑：job 没加载就先 bootstrap，加载了但没跑就 kickstart。
+  ///
+  /// App 每次打开都要有托盘——即使上次是用户手动退出的。
+  static Future<void> _ensureTrayRunning(int uid, String plist) async {
+    final domainPath = 'gui/$uid/$_trayLabel';
+    if (await _launchctlPrint(domainPath) == null) {
+      await _installTrayAgent(uid: uid, plist: plist);
+      return;
+    }
+    if (await _isTrayRunning(uid)) return;
+    await Process.run('/bin/launchctl', ['kickstart', domainPath]);
+  }
+
   static Future<bool> isRunning() async {
     final status = await _launchctlPrint('system/$_serviceLabel');
     return status != null && RegExp(r'\bstate = running\b').hasMatch(status);
@@ -166,12 +185,27 @@ abstract final class MacOSServiceProcess {
         // 另一个实例可能已经把它注册上了：只要 job 在，就不算安装失败。
         if (await _launchctlPrint('system/$_serviceLabel') == null) rethrow;
       }
-    } else if (legacyTrayPresent) {
-      // 只清掉老版本留在 root 目录里的托盘 Agent，不重启正在跑的守护进程。
-      await _runElevated(_legacyTrayCleanupScript(uid));
+    } else {
+      // 开机时 launchd 可能还在拉起服务，先给一小段时间，等不到再判断。
+      await _waitForServiceSocket(const Duration(seconds: 3));
+      if (!await isRunning() && !await _isServiceSocketReady()) {
+        // job 还加载着但进程没在跑（崩溃 / 被手动停过）。没有 KeepAlive 时
+        // launchd 不会自己拉回来，这里补一次 kickstart；system 域需要 root。
+        await _runElevated('''
+set -eu
+/bin/launchctl kickstart -k system/$_serviceLabel
+''');
+        await _waitUntilRunning();
+      } else if (legacyTrayPresent) {
+        // 只清掉老版本留在 root 目录里的托盘 Agent，不重启正在跑的守护进程。
+        await _runElevated(_legacyTrayCleanupScript(uid));
+      }
     }
     if (reinstallDaemon || reinstallTray) {
       await _installTrayAgent(uid: uid, plist: expectedTray);
+    } else {
+      // 打开 App 就要有托盘：用户上次手动退出过，这里也要再拉起来。
+      await _ensureTrayRunning(uid, expectedTray);
     }
 
     if (reinstallDaemon) {
@@ -206,6 +240,8 @@ set -eu
     await Process.run('/bin/launchctl', ['bootout', domainPath]);
     await _waitUntilUnloaded(domainPath);
     await _bootstrap('gui/$uid', _trayPlistPath);
+    // bootstrap 只负责加载 job，这里再 kickstart 一次，装上就能立刻看到托盘。
+    await Process.run('/bin/launchctl', ['kickstart', 'gui/$uid/$_trayLabel']);
   }
 
   /// 守护进程安装脚本：装 root 拥有的服务副本、写 daemon plist。
@@ -241,6 +277,7 @@ until /bin/launchctl bootstrap system ${_shellQuote(_daemonPlistPath)}; do
   fi
   /bin/sleep 0.5
 done
+/bin/launchctl kickstart -k system/$_serviceLabel
 '''
         : '''
 /bin/launchctl kickstart -k system/$_serviceLabel
@@ -270,6 +307,10 @@ $applyJob''';
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- 守护进程随 launchd 在开机时启动一次（RunAtLoad）。
+       不带 KeepAlive：手动停掉后 launchd 不会把它拉回来。
+       system 域 job 的 kickstart 需要 root，所以不能指望 App 在开机后
+       无密码地把服务拉起来。 -->
   <key>Label</key>
   <string>$_serviceLabel</string>
   <key>ProgramArguments</key>
@@ -283,8 +324,6 @@ $applyJob''';
     <string>$uid</string>
   </array>
   <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
   <true/>
 </dict>
 </plist>
@@ -312,9 +351,9 @@ $applyJob''';
   <string>${_xmlEscape(_bundlePath)}</string>
   <key>LimitLoadToSessionType</key>
   <string>Aqua</string>
+  <!-- 登录/重启时自动启动托盘；但不带 KeepAlive，用户手动退出后
+       launchd 不会再把它拉回来（同一会话内保持退出状态）。 -->
   <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
   <true/>
 </dict>
 </plist>

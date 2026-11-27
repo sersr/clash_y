@@ -9,6 +9,9 @@ import '../api/dio/unix_socket_dio.dart';
 abstract final class _Apis {
   static const serviceVersion = 'version';
   static const clashStartCore = 'clash/core';
+  static const clashCoreStatus = 'clash/core/status';
+  static const clashStop = 'clash/stop';
+  static const clashCoreStop = 'clash/core/stop';
   static const clashVpnStart = 'clash/vpn/start';
   static const clashVpnStop = 'clash/vpn/stop';
   static const clashVpnStatus = 'clash/vpn/status';
@@ -73,6 +76,20 @@ abstract final class ClashServiceApi {
     return .transform(res.data);
   }
 
+  /// 关代理：撤 TUN、关掉入站端口，内核与控制器继续存活（/proxies 可用）。
+  static Future<ApiResp> stopClash() async {
+    final res = await _dio.post(_Apis.clashStop);
+
+    return .transform(res.data);
+  }
+
+  /// 停内核：撤代理后把内核整个结束，服务进程本身还在。
+  static Future<ApiResp> stopClashCore() async {
+    final res = await _dio.post(_Apis.clashCoreStop);
+
+    return .transform(res.data);
+  }
+
   static Future<ApiResp> reloadClashConfig() async {
     final res = await _dio.post(_Apis.clashReload);
 
@@ -96,6 +113,17 @@ abstract final class ClashServiceApi {
     } catch (e) {
       Log.d('profile API unavailable: $e');
       return null;
+    }
+  }
+
+  /// 内核是否在跑（start/stop 的状态）：与代理是否开着无关。
+  static Future<bool> isCoreRunning() async {
+    try {
+      final res = await _dio.get(_Apis.clashCoreStatus);
+      final response = ApiResp.transform(res.data);
+      return response.success && response.data == true;
+    } catch (_) {
+      return false;
     }
   }
 

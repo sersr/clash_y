@@ -161,3 +161,12 @@ func Java_io_aote_vpnService_ClashCore_stop(env *C.JNIEnv, thiz C.jobject) C.jst
 	C.clash_jni_clear_protector(env)
 	return jniStringResult(env, stop())
 }
+
+// stopTun closes the proxy (TUN + 入站监听) but keeps the core and its
+// controller API alive, matching the desktop "关闭代理" semantics.
+//
+//export Java_io_aote_vpnService_ClashCore_stopTun
+func Java_io_aote_vpnService_ClashCore_stopTun(env *C.JNIEnv, thiz C.jobject) C.jstring {
+	// protector 不清：内核还在跑（关闭代理后仍要能出网拉订阅、健康检查）。
+	return jniStringResult(env, stopTun())
+}

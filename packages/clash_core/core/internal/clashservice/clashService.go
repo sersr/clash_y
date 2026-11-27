@@ -29,6 +29,7 @@ import (
 
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
+	mihomoDNS "github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/hub/executor"
 	mihomoListener "github.com/metacubex/mihomo/listener"
@@ -163,11 +164,17 @@ func (desktopHost) Status() (bool, bool) { return core.status() }
 
 func (desktopHost) Start(body any, vpn bool) *Response { return startProfile(body, vpn) }
 
+func (desktopHost) StartCore(body any) *Response { return startCoreProfile(body) }
+
+func (desktopHost) CoreStarted() bool { return core.isStarted() }
+
 func (desktopHost) StopVPN() *Response { return stopVpn() }
 
 func (desktopHost) Reload() *Response { return reloadConfig() }
 
-func (desktopHost) Stop() *Response { return stopClash() }
+func (desktopHost) Stop() *Response { return stopProxy() }
+
+func (desktopHost) StopCore() *Response { return stopClash() }
 
 // Profiles keeps only the profile metadata that drives the desktop UI; the
 // schedule and the download itself belong to the shared profile API.
@@ -255,6 +262,10 @@ func clashRuntimeInfo() map[string]string {
 func startProfile(data any, vpnEnabled bool) *Response {
 	profile := parseProfile(data)
 	if profile == nil || profile.ConfigDir == "" {
+		// 托盘没有 profile 数据，只能用上一次持久化的那份来开代理。
+		profile = core.apiProfileSnapshot()
+	}
+	if profile == nil || profile.ConfigDir == "" {
 		return Error("invalid profile")
 	}
 
@@ -313,7 +324,7 @@ func (c *coreRuntime) applyRefreshedConfig(dir string) error {
 }
 
 func stopVpn() *Response {
-	if err := core.stopVpn(); err != nil {
+	if err := core.disableProxy(); err != nil {
 		return Error(err.Error())
 	}
 
@@ -336,12 +347,47 @@ func reloadConfig() *Response {
 	return OK(nil)
 }
 
+// stopProxy 是「关代理」：撤掉 TUN 与所有入站监听，内核和控制器保持运行，
+// /proxies、/configs 等 API 继续可用，之后 startVpn 能直接重新监听端口。
+func stopProxy() *Response {
+	if err := core.disableProxy(); err != nil {
+		return Error(err.Error())
+	}
+	return OK(nil)
+}
+
+// stopClash 是「停内核」：先撤代理（TUN + 入站监听），再真正结束内核、
+// 释放 profile 与刷新定时器。服务进程本身仍在，下次 startCore 还能再起。
 func stopClash() *Response {
+	if err := core.disableProxy(); err != nil {
+		return Error(err.Error())
+	}
 	if err := core.stop(); err != nil {
 		return Error(err.Error())
 	}
 	if err := core.clearAPIState(); err != nil {
 		return Error("clear Clash state failed: " + err.Error())
+	}
+	return OK(nil)
+}
+
+// startCoreProfile 是「起内核」：内核与控制器就绪（/proxies 可用），但不监听
+// 入站端口，也不装 TUN。开代理交给 startVpn。
+func startCoreProfile(data any) *Response {
+	profile := parseProfile(data)
+	if profile == nil || profile.ConfigDir == "" {
+		return Error("invalid profile")
+	}
+
+	if err := core.run(profile.ConfigDir, false); err != nil {
+		return Error(err.Error())
+	}
+	core.setProfile(profile)
+	if err := core.disableProxy(); err != nil {
+		return Error(err.Error())
+	}
+	if err := core.commitAPIState(profile, false); err != nil {
+		return Error("save Clash state failed: " + err.Error())
 	}
 	return OK(nil)
 }
@@ -454,7 +500,11 @@ type coreRuntime struct {
 	statePath string
 
 	// Observed runtime state, changed only by native start/stop operations.
-	started      bool
+	started bool
+	// proxyActive 表示入站监听（mixed 等）是否在跑。started 只说明内核与控制器
+	// 是否胜任；关闭代理后 proxyActive=false 而 started 仍为 true，/proxies 等
+	// 控制器 API 继续可用。
+	proxyActive  bool
 	runtimeVPN   bool
 	configDir    string
 	profile      *clashProfile
@@ -511,10 +561,17 @@ func (c *coreRuntime) initialize() {
 	c.restorePersisted()
 }
 
-func (c *coreRuntime) status() (started bool, vpnEnabled bool) {
+// isStarted 报告内核是否在跑（started 只说明内核胜任，不代表代理开着）。
+func (c *coreRuntime) isStarted() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.started, c.runtimeVPN
+	return c.started
+}
+
+func (c *coreRuntime) status() (running bool, vpnEnabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.proxyActive, c.runtimeVPN
 }
 
 func (c *coreRuntime) runtimeConfigDir() string {
@@ -570,14 +627,25 @@ func (c *coreRuntime) updateProfile(profile *clashProfile) {
 	c.replaceProfileLocked(profile)
 }
 
-func (c *coreRuntime) stopVpn() error {
+// disableProxy 关闭 TUN 与所有入站监听，但保留内核和控制器：stop 的语义是
+// 「代理关了」，不是「core 停了」，停止后 /proxies 等 API 仍然可用。
+func (c *coreRuntime) disableProxy() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.disableProxyLocked()
+}
 
-	if !c.started || c.configDir == "" {
+func (c *coreRuntime) disableProxyLocked() error {
+	if !c.started {
 		return nil
 	}
-	return c.runLocked(c.configDir, false)
+	if err := resetTunListener(); err != nil {
+		return err
+	}
+	CloseInboundListeners()
+	c.proxyActive = false
+	c.runtimeVPN = false
+	return nil
 }
 
 func (c *coreRuntime) reload() error {
@@ -586,6 +654,11 @@ func (c *coreRuntime) reload() error {
 
 	if !c.started || c.configDir == "" {
 		return errors.New("Clash core is not running")
+	}
+	// 代理关着时没有需要重放的东西：重放配置会把入站端口重新打开，
+	// 与「关闭代理后端口不监听」的语义冲突。
+	if !c.proxyActive {
+		return nil
 	}
 
 	configDir := c.configDir
@@ -598,6 +671,7 @@ func (c *coreRuntime) reload() error {
 
 // stop stops the runtime without touching the persisted desired state. The
 // stop endpoint separately clears it after a successful stop.
+// stop 结束内核并丢掉 profile / 刷新定时器；服务进程与控制器随之关闭。
 func (c *coreRuntime) stop() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -676,7 +750,7 @@ func (c *coreRuntime) scheduleProfileUpdateLocked() {
 
 // runLocked starts (or restarts) the core for configDir. The caller holds mu.
 func (c *coreRuntime) runLocked(configDir string, vpnEnabled bool) error {
-	if c.configDir == configDir && c.started && c.runtimeVPN == vpnEnabled {
+	if c.configDir == configDir && c.started && c.proxyActive && c.runtimeVPN == vpnEnabled {
 		return nil
 	}
 
@@ -694,7 +768,8 @@ func (c *coreRuntime) runLocked(configDir string, vpnEnabled bool) error {
 
 	c.configDir = configDir
 	c.started = err == nil && engineStarted()
-	c.runtimeVPN = err == nil && engineStarted() && vpnEnabled
+	c.proxyActive = c.started
+	c.runtimeVPN = c.started && vpnEnabled
 	if err != nil {
 		c.tunInterface = ""
 		return err
@@ -723,6 +798,7 @@ func (c *coreRuntime) runLocked(configDir string, vpnEnabled bool) error {
 func (c *coreRuntime) stopLocked() error {
 	err := stopEngine()
 	c.started = engineStarted()
+	c.proxyActive = false
 	if !c.started {
 		c.configDir = ""
 		c.runtimeVPN = false
@@ -870,8 +946,33 @@ func stopEngine() error {
 		// 清 resolver/tproxy，下一次 ApplyConfig 再整体重建。
 		executor.Shutdown()
 	}
+	// mihomo 的 Shutdown 只关 TUN（listener.Cleanup 只 close 了 tun listener），
+	// 它的 CLI 靠进程退出收掉 inbound。桌面服务和移动端 app 都是常驻进程，
+	// 不显式关闭的话 mixed 端口在 stop() 之后仍在 listen。
+	CloseInboundListeners()
 	engine.started = false
 	return nil
+}
+
+// CloseInboundListeners 关掉 executor.Shutdown() 之后仍然存活的入站监听：
+// mixed/http/socks/redir/tproxy/ss/vmess/tuic，以及 config 里 `listeners:` 那批。
+// 用各 ReCreate* 的「0 端口 / 空配置」入口关闭，这样不必改 mihomo 子模块。
+// 桌面服务（clashService）和移动端 C API（libclash 的 stop）共用这一份，
+// 三端行为保持一致。
+func CloseInboundListeners() {
+	mihomoListener.ReCreateMixed(0, tunnel.Tunnel)
+	mihomoListener.ReCreateHTTP(0, tunnel.Tunnel)
+	mihomoListener.ReCreateSocks(0, tunnel.Tunnel)
+	mihomoListener.ReCreateRedir(0, tunnel.Tunnel)
+	mihomoListener.ReCreateTProxy(0, tunnel.Tunnel)
+	mihomoListener.ReCreateShadowSocks("", tunnel.Tunnel)
+	mihomoListener.ReCreateVmess("", tunnel.Tunnel)
+	mihomoListener.ReCreateTuic(LC.TuicServer{}, tunnel.Tunnel)
+	// 空映射 + dropOld 会把 `listeners:` 注册的 inbound 全部 Close 掉。
+	mihomoListener.PatchInboundListeners(nil, tunnel.Tunnel, true)
+	// DNS 服务（config 里的 dns.listen）同样挂在执行器之外，Shutdown 不会关它；
+	// 传空地址会把已建的 TCP/UDP DNS 监听一起 Shutdown。
+	mihomoDNS.ReCreateServer("", nil, nil)
 }
 
 func resetTunListener() error {
@@ -1034,7 +1135,8 @@ func (c *coreRuntime) clearAPIState() error {
 		}
 	}
 
-	c.apiProfile = nil
+	// apiProfile 留在内存里：托盘没有 profile，停掉之后再点「启动」要靠它
+	// 把内核重新拉起来。重启服务进程后才会真正丢掉。
 	c.desiredVPN = false
 	return nil
 }
@@ -1275,6 +1377,7 @@ const (
 	StatusPath       = "/clash/status"
 	VPNStatusPath    = "/clash/vpn/status"
 	CorePath         = "/clash/core"
+	CoreStatusPath   = "/clash/core/status"
 	VPNStartPath     = "/clash/vpn/start"
 	VPNStopPath      = "/clash/vpn/stop"
 	ReloadPath       = "/clash/reload"
@@ -1282,6 +1385,7 @@ const (
 	RefreshPath      = "/clash/refresh"
 	SchedulePath     = "/clash/schedule"
 	StopPath         = "/clash/stop"
+	CoreStopPath     = "/clash/core/stop"
 	maxRequestBody   = 8 << 20
 	maxProfileBody   = 1 << 20
 	apiErrorCode     = 1001
@@ -1321,11 +1425,18 @@ type Host interface {
 	Memory() any
 	// Status reports whether the core runs and whether the tunnel is up.
 	Status() (started bool, vpn bool)
-	// Start boots the core for the profile body, with TUN when vpn is set.
+	// Start 开代理：起内核并装 TUN。
 	Start(body any, vpn bool) *Response
+	// StartCore 只起内核：控制器可用，不装 TUN、不监听入站端口。
+	StartCore(body any) *Response
+	// CoreStarted 报告内核与控制器是否在跑，与代理是否开着无关。
+	CoreStarted() bool
 	StopVPN() *Response
 	Reload() *Response
+	// Stop 关代理：撤 TUN、关入站监听，内核与控制器继续可用。
 	Stop() *Response
+	// StopCore 停内核：代理也一起关，/proxies 等 API 不再应答。
+	StopCore() *Response
 	// Profiles is the profile API's bookkeeping for this host.
 	Profiles() ProfileHooks
 }
@@ -1381,6 +1492,12 @@ func Route(h Host, logf func(format string, args ...any)) RouteFunc {
 			}
 			return h.Start(data, true), http.StatusOK
 
+		case CoreStatusPath:
+			if r.Method != http.MethodGet {
+				return nil, http.StatusMethodNotAllowed
+			}
+			return OK(h.CoreStarted()), http.StatusOK
+
 		case StatusPath:
 			if r.Method != http.MethodGet {
 				return nil, http.StatusMethodNotAllowed
@@ -1403,9 +1520,12 @@ func Route(h Host, logf func(format string, args ...any)) RouteFunc {
 			if res != nil {
 				return res, http.StatusOK
 			}
-			// `/clash` and `/clash/vpn/start` both ask for TUN; `/clash/core`
-			// only boots the proxy so the app can load proxies first.
-			return h.Start(data, r.URL.Path == VPNStartPath), http.StatusOK
+			// `/clash` and `/clash/vpn/start` 开代理（TUN + 入站端口）；
+			// `/clash/core` 只起内核：控制器可用但不监听端口。
+			if r.URL.Path == CorePath {
+				return h.StartCore(data), http.StatusOK
+			}
+			return h.Start(data, true), http.StatusOK
 
 		case VPNStopPath:
 			if r.Method != http.MethodPost {
@@ -1427,6 +1547,12 @@ func Route(h Host, logf func(format string, args ...any)) RouteFunc {
 
 		case SchedulePath:
 			return handleScheduleRoute(r, h.Profiles())
+
+		case CoreStopPath:
+			if r.Method != http.MethodPost {
+				return nil, http.StatusMethodNotAllowed
+			}
+			return h.StopCore(), http.StatusOK
 
 		case StopPath:
 			if r.Method != http.MethodPost {
@@ -1911,7 +2037,13 @@ func (h *tunnelHost) Memory() any { return nil }
 // tunnel is up, so both answers are true by definition.
 func (h *tunnelHost) Status() (bool, bool) { return true, true }
 
+func (h *tunnelHost) CoreStarted() bool { return true }
+
 func (h *tunnelHost) Start(any, bool) *Response {
+	return Error("the tunnel is started by the app, not by this API")
+}
+
+func (h *tunnelHost) StartCore(any) *Response {
 	return Error("the tunnel is started by the app, not by this API")
 }
 
@@ -1929,6 +2061,10 @@ func (h *tunnelHost) Reload() *Response {
 }
 
 func (h *tunnelHost) Stop() *Response {
+	return Error("the tunnel is stopped by the app, not by this API")
+}
+
+func (h *tunnelHost) StopCore() *Response {
 	return Error("the tunnel is stopped by the app, not by this API")
 }
 

@@ -63,7 +63,8 @@ Future<bool> start(
   );
 }
 
-/// Disables the VPN interface while leaving the Clash core running.
+/// 关闭代理：撤掉 VPN 接口并关掉 mixed 等入站端口，内核本身继续存活，
+/// 控制器 API（/proxies 等）照常可用。真正结束内核用 close()。
 Future<bool> stop() => AndroidVpnService.stopVpn();
 
 /// Whether the VPN interface is currently established.
